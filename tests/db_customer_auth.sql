@@ -37,7 +37,7 @@ BEGIN
  PERFORM set_config('app.tenant_id',other_t::text,true);
  EXECUTE 'SET LOCAL ROLE app_orders_executor';
  INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
- VALUES(other_t,foreign_order,1,'a5b77c3f-2710-5f11-85e8-51d464ea72ba',sha256('5e292400-2e01-5a41-8801-7c6a516eaaf0'::bytea),'{"email":"owner@example.invalid"}','USD',0,0,0,'{}',0);
+ VALUES(other_t,foreign_order,1,'a5b77c3f-2710-5f11-85e8-51d464ea72ba',sha256('foreign'::bytea),'{"email":"owner@example.invalid"}','USD',0,0,0,'{}',0);
  UPDATE app.orders SET sealed=true WHERE tenant_id=other_t AND id=foreign_order;
  EXECUTE 'RESET ROLE';
  PERFORM set_config('app.tenant_id',t::text,true);

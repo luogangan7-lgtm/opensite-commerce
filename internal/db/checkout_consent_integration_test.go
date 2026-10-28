@@ -139,7 +139,7 @@ func TestCheckoutPGLegacyOrForgedConsentCannotCapture(t *testing.T) {
 		id := uuid.NewString()
 		if err := a.f.run(a.f.ctx, a.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			_, err := tx.Exec(ctx, `INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,source_kind,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
-			 VALUES($1,$2,'customer',$3,'959ed9b6-34a4-5de7-b93c-efc457c89ca4',sha256('83d8c44f-a133-5a43-b196-1565e9318c2d'::bytea),'cart',$4,1,$5,$6::jsonb,'USD',270,200,20,50,1)`, a.f.tenant, id, a.f.actor.ID(), uuid.NewString(), a.order.ID, snapshot)
+			 VALUES($1,$2,'customer',$3,'959ed9b6-34a4-5de7-b93c-efc457c89ca4',sha256('legacy'::bytea),'cart',$4,1,$5,$6::jsonb,'USD',270,200,20,50,1)`, a.f.tenant, id, a.f.actor.ID(), uuid.NewString(), a.order.ID, snapshot)
 			if err != nil {
 				return err
 			}
@@ -179,7 +179,7 @@ func TestCheckoutPGConsentLegacyRecoveryAndPaidReplay(t *testing.T) {
 			raw, _ := json.Marshal(start)
 			if err := f.run(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 				_, err := tx.Exec(ctx, `INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,source_kind,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
-				 VALUES($1,$2,'customer',$3,'75cd895f-7408-5d5a-be45-a30032e59dae',sha256('83d8c44f-a133-5a43-b196-1565e9318c2d'::bytea),'cart',$4,1,$5,'{}','USD',270,200,20,50,1)`, f.tenant, id, f.actor.ID(), uuid.NewString(), a.order.ID)
+				 VALUES($1,$2,'customer',$3,'75cd895f-7408-5d5a-be45-a30032e59dae',sha256('legacy'::bytea),'cart',$4,1,$5,'{}','USD',270,200,20,50,1)`, f.tenant, id, f.actor.ID(), uuid.NewString(), a.order.ID)
 				if err != nil {
 					return err
 				}

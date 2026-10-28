@@ -80,7 +80,7 @@ BEGIN
   VALUES(t,uuidv7(),2,'991c90ef-f576-5b81-890d-116a2cd22024',sha256('guest'::bytea),'{"email":"erasure-subject@example.invalid"}','USD',100,0,0,'{}',100) RETURNING id INTO oid;
  EXECUTE 'RESET ROLE';
  INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
-  VALUES(t,'order.paid',jsonb_build_object('order_id',oid),'orders.events','991c90ef-f576-5b81-890d-116a2cd22024') RETURNING id INTO source;
+  VALUES(t,'order.paid',jsonb_build_object('order_id',oid),'orders.events','privacy-unowned-guest') RETURNING id INTO source;
  SELECT id INTO source FROM app.notification_deliveries WHERE tenant_id=t AND source_event_id=source;
  PERFORM set_config('test.privacy_unowned_notification',source::text,true);
  PERFORM set_config('test.privacy_unowned_order',oid::text,true);
@@ -201,14 +201,14 @@ BEGIN
  EXECUTE 'SET LOCAL ROLE app_data_rights_executor';
  -- Positive control: the exact (idempotent) scrub is admitted.
  UPDATE app.quotes SET snapshot=app.data_rights_quote_scrub(snapshot) WHERE tenant_id=t AND id=q;
- FOREACH probe IN ARRAY ARRAY['3122fa34-c798-53de-8f57-4223245e2ac0','non_scrub_column','partial','insert','delete'] LOOP
+ FOREACH probe IN ARRAY ARRAY['forged','non_scrub_column','partial','insert','delete'] LOOP
   BEGIN
    CASE probe
-    WHEN '3122fa34-c798-53de-8f57-4223245e2ac0' THEN UPDATE app.quotes SET snapshot='{"forged":true}' WHERE tenant_id=t AND id=q;
+    WHEN 'forged' THEN UPDATE app.quotes SET snapshot='{"forged":true}' WHERE tenant_id=t AND id=q;
     WHEN 'non_scrub_column' THEN UPDATE app.quotes SET status='withdrawn' WHERE tenant_id=t AND id=q;
     WHEN 'partial' THEN UPDATE app.quote_lines SET snapshot='{"forged":true}' WHERE tenant_id=t AND quote_id=q;
     WHEN 'insert' THEN INSERT INTO app.quote_lines(tenant_id,quote_id,line_no,description,quantity,unit_price,line_total,snapshot)
-     VALUES(t,q,999,'3122fa34-c798-53de-8f57-4223245e2ac0',1,1,1,'{}');
+     VALUES(t,q,999,'forged',1,1,1,'{}');
     WHEN 'delete' THEN DELETE FROM app.quote_lines WHERE tenant_id=t AND quote_id=q;
    END CASE;
    RAISE EXCEPTION 'PRIVACY_GATE scrub guard admitted %',probe;

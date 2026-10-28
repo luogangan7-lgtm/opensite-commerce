@@ -69,21 +69,21 @@ BEGIN
  ('b_hostname','42501',$sql$UPDATE app.site_domains SET hostname='hijacked.example.invalid'
   WHERE id=current_setting('test.w2a.domain')::uuid$sql$),
  ('c_upload_insert','42501',$sql$INSERT INTO app.media_uploads(tenant_id,original_filename,expires_at,status)
-  VALUES(current_setting('test.w2a.tenant')::uuid,'3122fa34-c798-53de-8f57-4223245e2ac0',now()+interval '1 hour','ready')$sql$),
+  VALUES(current_setting('test.w2a.tenant')::uuid,'forged',now()+interval '1 hour','ready')$sql$),
  ('c_upload_update','42501',$sql$UPDATE app.media_uploads SET status='ready'
   WHERE id=current_setting('test.w2a.upload')::uuid$sql$),
  ('c_blob_insert','42501',$sql$INSERT INTO app.media_blobs(tenant_id,backend,storage_key,sha256,size_bytes,status)
-  VALUES(current_setting('test.w2a.tenant')::uuid,'local','3122fa34-c798-53de-8f57-4223245e2ac0',decode(repeat('44',32),'hex'),1,'ready')$sql$),
+  VALUES(current_setting('test.w2a.tenant')::uuid,'local','forged',decode(repeat('44',32),'hex'),1,'ready')$sql$),
  ('c_blob_update','42501',$sql$UPDATE app.media_blobs SET status='ready'
   WHERE id=current_setting('test.w2a.blob')::uuid$sql$),
  ('c_asset_insert','42501',$sql$INSERT INTO app.media_assets(tenant_id,blob_id,filename,mime_type,visibility)
   VALUES(current_setting('test.w2a.tenant')::uuid,current_setting('test.w2a.blob')::uuid,
-  '3122fa34-c798-53de-8f57-4223245e2ac0','image/png','public')$sql$),
+  'forged','image/png','public')$sql$),
  ('c_asset_update','42501',$sql$UPDATE app.media_assets SET visibility='public'
   WHERE id=current_setting('test.w2a.asset')::uuid$sql$),
  ('d_insert','42501',$sql$INSERT INTO app.sites(tenant_id,id,organization_id,name,published_release_id)
   VALUES(current_setting('test.w2a.tenant')::uuid,current_setting('test.w2a.site')::uuid,
-  current_setting('test.w2a.org')::uuid,'3122fa34-c798-53de-8f57-4223245e2ac0',current_setting('test.w2a.candidate')::uuid)
+  current_setting('test.w2a.org')::uuid,'forged',current_setting('test.w2a.candidate')::uuid)
   ON CONFLICT(tenant_id,id) DO UPDATE SET published_release_id=EXCLUDED.published_release_id$sql$),
  ('d_update','42501',$sql$UPDATE app.sites SET published_release_id=current_setting('test.w2a.candidate')::uuid
   WHERE id=current_setting('test.w2a.site')::uuid$sql$),

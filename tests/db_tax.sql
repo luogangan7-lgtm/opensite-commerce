@@ -16,10 +16,10 @@ INSERT INTO app.tenants(name) VALUES('tax-A') RETURNING id AS ta \gset
 INSERT INTO app.tenants(name) VALUES('tax-B') RETURNING id AS tb \gset
 INSERT INTO app.tax_zones(tenant_id,name) VALUES(:'ta','country') RETURNING id AS za \gset
 INSERT INTO app.tax_zones(tenant_id,name) VALUES(:'ta','subdivision') RETURNING id AS zs \gset
-INSERT INTO app.tax_zones(tenant_id,name) VALUES(:'tb','5e292400-2e01-5a41-8801-7c6a516eaaf0') RETURNING id AS zb \gset
+INSERT INTO app.tax_zones(tenant_id,name) VALUES(:'tb','foreign') RETURNING id AS zb \gset
 INSERT INTO app.tax_categories(tenant_id,code,name,is_exempt) VALUES
- (:'ta','standard','Standard',false),(:'ta','5997dec8-e818-58d2-93dc-99dd4d35dd0f','Zero',false),(:'ta','exempt','Exempt',true),
- (:'tb','5e292400-2e01-5a41-8801-7c6a516eaaf0','Foreign',false);
+ (:'ta','standard','Standard',false),(:'ta','zero','Zero',false),(:'ta','exempt','Exempt',true),
+ (:'tb','foreign','Foreign',false);
 INSERT INTO app.tax_zone_locations(tenant_id,zone_id,country_code,subdivision) VALUES
  (:'ta',:'za','US',''),(:'ta',:'zs','US','US-CA'),(:'tb',:'zb','CA','');
 INSERT INTO app.tax_settings(tenant_id) VALUES(:'ta'),(:'tb');
@@ -27,8 +27,8 @@ INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from,val
  (:'ta',:'za','standard',500,'2026-01-01Z','2027-01-01Z'),
  (:'ta',:'za','standard',600,'2027-01-01Z',NULL),
  (:'ta',:'zs','standard',700,'2026-01-01Z',NULL),
- (:'ta',:'za','5997dec8-e818-58d2-93dc-99dd4d35dd0f',0,'2026-01-01Z',NULL),
- (:'tb',:'zb','5e292400-2e01-5a41-8801-7c6a516eaaf0',10000,'2026-01-01Z',NULL);
+ (:'ta',:'za','zero',0,'2026-01-01Z',NULL),
+ (:'tb',:'zb','foreign',10000,'2026-01-01Z',NULL);
 SELECT set_config('tax.ta',:'ta',true),set_config('tax.tb',:'tb',true),
  set_config('tax.za',:'za',true),set_config('tax.zs',:'zs',true),set_config('tax.zb',:'zb',true);
 CREATE FUNCTION pg_temp.tax_reject(command text,wanted text,label text) RETURNS void
@@ -56,7 +56,7 @@ BEGIN
  PERFORM pg_temp.tax_reject(format('INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from) VALUES(%L,%L,''standard'',500,''infinity'')',t,z),'23514','infinite_window');
  PERFORM pg_temp.tax_reject(format('INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from) VALUES(%L,%L,''exempt'',500,''10000-01-01Z'')',t,z),'23514','snapshot_year');
  PERFORM pg_temp.tax_reject(format('INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from) VALUES(%L,%L,''standard'',500,''2025-01-01Z'')',t,foreign_z),'23503','foreign_rate_zone');
- PERFORM pg_temp.tax_reject(format('INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from) VALUES(%L,%L,''5e292400-2e01-5a41-8801-7c6a516eaaf0'',500,''2025-01-01Z'')',t,z),'23503','foreign_rate_category');
+ PERFORM pg_temp.tax_reject(format('INSERT INTO app.tax_rates(tenant_id,zone_id,category_code,rate_bp,valid_from) VALUES(%L,%L,''foreign'',500,''2025-01-01Z'')',t,z),'23503','foreign_rate_category');
  PERFORM pg_temp.tax_reject(format('INSERT INTO app.tax_zone_locations(tenant_id,zone_id,country_code) VALUES(%L,%L,''GB'')',t,foreign_z),'23503','foreign_location_zone');
  PERFORM pg_temp.tax_reject(format('INSERT INTO app.tax_zone_locations(tenant_id,zone_id,country_code) VALUES(%L,%L,''US'')',t,s),'23505','destination_unique');
  FOREACH bad_country IN ARRAY ARRAY['ZZ','AC','us','USA','U1',' US',''] LOOP

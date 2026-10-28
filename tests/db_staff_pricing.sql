@@ -8,8 +8,8 @@ INSERT INTO app.tenants(name) VALUES('staff-pricing-unset') RETURNING id AS othe
 INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','STAFF-PRICING') RETURNING id AS p \gset
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'p','STAFF-PRICE','') RETURNING id AS sku \gset
 INSERT INTO app.price_lists(tenant_id,currency,starts_at) VALUES(:'t','EUR','2026-01-01T00:00:00Z') RETURNING id AS legacy \gset
-INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) VALUES(:'t',:'83d8c44f-a133-5a43-b196-1565e9318c2d',:'sku',1,789);
-SELECT set_config('pricing.legacy',:'83d8c44f-a133-5a43-b196-1565e9318c2d',true);
+INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount) VALUES(:'t',:'legacy',:'sku',1,789);
+SELECT set_config('pricing.legacy',:'legacy',true);
 SELECT set_config('app.tenant_id',:'t',true),set_config('pricing.sku',:'sku',true),set_config('pricing.other',:'other',true);
 CREATE FUNCTION pg_temp.pricing_reject(command text,expected text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN

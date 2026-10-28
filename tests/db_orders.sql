@@ -82,8 +82,8 @@ BEGIN
   sha256(convert_to(uuidv4()::text||uuidv4()::text||uuidv4()::text,'UTF8')));
  foreign_reservation:=r.id;
  BEGIN
-  PERFORM app.orders_create(other_id,'df1f31a5-be53-5749-8eca-a1e1185fc465',sha256('3122fa34-c798-53de-8f57-4223245e2ac0'::bytea),NULL,guest,'USD',20,shipping,
-   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','3122fa34-c798-53de-8f57-4223245e2ac0','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
+  PERFORM app.orders_create(other_id,'df1f31a5-be53-5749-8eca-a1e1185fc465',sha256('forged'::bytea),NULL,guest,'USD',20,shipping,
+   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','forged','quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
   RAISE EXCEPTION 'ORDERS_GATE forged reservation owner accepted';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  IF EXISTS(SELECT FROM app.orders WHERE app.orders.id=other_id)

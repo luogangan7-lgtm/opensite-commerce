@@ -186,7 +186,7 @@ BEGIN
  IF app.returns_receive(return_id,receive_version,'35b5f949-2b9d-5cb2-9fc8-95a04269d498',false) IS DISTINCT FROM received THEN
   RAISE EXCEPTION 'FULFILLMENT_GATE receive response drifted after refund'; END IF;
  BEGIN
-  UPDATE app.shipments SET tracking_number='3122fa34-c798-53de-8f57-4223245e2ac0' WHERE tenant_id=t;
+  UPDATE app.shipments SET tracking_number='forged' WHERE tenant_id=t;
   RAISE EXCEPTION 'FULFILLMENT_GATE runtime mutated shipment';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN
@@ -296,7 +296,7 @@ BEGIN
   oid:=uuidv7();lid:=uuidv7();parts:=case_i;
   SELECT on_hand INTO initial_stock FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku;
   res:=app.inventory_reserve(sku,2,'order',oid,(md5(('legacy-reserve-'||case_i)::text)::uuid::text),900);
-  ord:=app.orders_create(oid,(md5(('legacy-order-'||case_i)::text)::uuid::text),sha256(('83d8c44f-a133-5a43-b196-1565e9318c2d'||case_i)::bytea),NULL,
+  ord:=app.orders_create(oid,(md5(('legacy-order-'||case_i)::text)::uuid::text),sha256(('legacy'||case_i)::bytea),NULL,
    '{"email":"legacy@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
    jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
     'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
@@ -417,7 +417,7 @@ BEGIN
   (t,shipping,'zero-shipping','USD','revenue'),(t,cash,'zero-cash','USD','asset');
  SELECT on_hand INTO initial_stock FROM app.stock_levels WHERE tenant_id=t AND sku_id=sku;
  res:=app.inventory_reserve(sku,2,'order',oid,'e5677381-4745-5127-b546-d73aae3703e2',900);
- ord:=app.orders_create(oid,'6801961a-5e04-5d18-a977-e845f9d207a6',sha256('5997dec8-e818-58d2-93dc-99dd4d35dd0f'::bytea),NULL,
+ ord:=app.orders_create(oid,'6801961a-5e04-5d18-a977-e845f9d207a6',sha256('zero'::bytea),NULL,
   '{"email":"zero@example.invalid"}','USD',0,'{"amount_minor":0,"currency":"USD","service":"fixture"}',
   jsonb_build_array(jsonb_build_object('id',lid,'sku_id',sku,'sku','fulfillment-sku','quantity',2,
    'unit_price_minor',1,'line_net_minor',2,'line_tax_minor',0,'line_total_minor',2,
@@ -571,10 +571,10 @@ SELECT set_config('test.refund_c04_t',:'ta',true),set_config('test.refund_c04_ot
  set_config('test.refund_c04_actor',:'actor',true),set_config('test.refund_c04_claim',:'claim',true),
  set_config('app.tenant_id',:'ta',true);
 SET LOCAL ROLE app_runtime;
-SELECT app.idempotency_claim(:'ta','api_key',:'actor','refundReturn','96bff2a2-faf6-5416-8656-d84d4c64712f',sha256('96bff2a2-faf6-5416-8656-d84d4c64712f'::bytea),interval '1 hour',:'claim');
+SELECT app.idempotency_claim(:'ta','api_key',:'actor','refundReturn','96bff2a2-faf6-5416-8656-d84d4c64712f',sha256('refund-service'::bytea),interval '1 hour',:'claim');
 SELECT app.idempotency_claim(:'ta','api_key',:'actor','createShipment','a261d7b6-99af-55e3-8fe8-4ea29e72dd8b',sha256('other-op'::bytea),interval '1 hour',uuidv7());
 SELECT set_config('app.tenant_id',:'tb',true);
-SELECT app.idempotency_claim(:'tb','api_key',:'actor','refundReturn','3d557673-cc15-5fbc-9c67-66542f4e9ed4',sha256('3d557673-cc15-5fbc-9c67-66542f4e9ed4'::bytea),interval '1 hour',uuidv7());
+SELECT app.idempotency_claim(:'tb','api_key',:'actor','refundReturn','3d557673-cc15-5fbc-9c67-66542f4e9ed4',sha256('other-tenant'::bytea),interval '1 hour',uuidv7());
 SELECT set_config('app.tenant_id',:'ta',true);
 SET LOCAL ROLE app_returns_service;
 DO $refund_c04$
@@ -593,7 +593,7 @@ BEGIN
  IF n<>0 THEN RAISE EXCEPTION 'FULFILLMENT_C04_GATE coordinator updated foreign tenant'; END IF;
  BEGIN
   INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at)
-  VALUES(t,'api_key',actor,'refundReturn','3122fa34-c798-53de-8f57-4223245e2ac0',sha256('3122fa34-c798-53de-8f57-4223245e2ac0'::bytea),clock_timestamp()+interval '1 hour');
+  VALUES(t,'api_key',actor,'refundReturn','3122fa34-c798-53de-8f57-4223245e2ac0',sha256('forged'::bytea),clock_timestamp()+interval '1 hour');
   RAISE EXCEPTION 'FULFILLMENT_C04_GATE coordinator claimed new intent';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN
@@ -605,7 +605,7 @@ BEGIN
   UPDATE app.idempotency_records SET state='completed',response_status=200,
    response_body_reference='fixture:refund',completed_at=clock_timestamp()
   WHERE tenant_id=t AND actor_kind='api_key' AND actor_id=actor AND operation='refundReturn'
-   AND idempotency_key='96bff2a2-faf6-5416-8656-d84d4c64712f' AND request_hash=sha256('96bff2a2-faf6-5416-8656-d84d4c64712f'::bytea)
+   AND idempotency_key='96bff2a2-faf6-5416-8656-d84d4c64712f' AND request_hash=sha256('refund-service'::bytea)
    AND claim_token=token AND state='in_progress';
   RAISE EXCEPTION 'FULFILLMENT_C04_GATE stale claim completed';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
@@ -613,7 +613,7 @@ BEGIN
  UPDATE app.idempotency_records SET state='completed',response_status=200,
   response_body_reference='fixture:refund',completed_at=clock_timestamp()
  WHERE tenant_id=t AND actor_kind='api_key' AND actor_id=actor AND operation='refundReturn'
-  AND idempotency_key='96bff2a2-faf6-5416-8656-d84d4c64712f' AND request_hash=sha256('96bff2a2-faf6-5416-8656-d84d4c64712f'::bytea)
+  AND idempotency_key='96bff2a2-faf6-5416-8656-d84d4c64712f' AND request_hash=sha256('refund-service'::bytea)
   AND claim_token=token AND state='in_progress';
  GET DIAGNOSTICS n=ROW_COUNT;
  IF n<>1 THEN RAISE EXCEPTION 'FULFILLMENT_C04_GATE refund completion unavailable'; END IF;
@@ -645,7 +645,7 @@ BEGIN
  SELECT regexp_replace(prosrc,'[[:space:]]+$','') INTO original_body FROM pg_proc WHERE pg_proc.oid=command;
  -- A nested original PL/pgSQL block retains all declarations and RETURNs.
  IF right(original_body,1)<>';' THEN original_body:=original_body||';'; END IF;
- FOREACH phase IN ARRAY ARRAY['83d8c44f-a133-5a43-b196-1565e9318c2d','freeze_before','freeze_after','reserve','lock','complete'] LOOP
+ FOREACH phase IN ARRAY ARRAY['legacy','freeze_before','freeze_after','reserve','lock','complete'] LOOP
   target:=CASE WHEN starts_with(phase,'freeze_') THEN 'freeze' ELSE phase END;
   INSERT INTO app.tenants(name,settlement_currency) VALUES('budget intervention '||phase,'USD') RETURNING id INTO t;
   INSERT INTO app.products(tenant_id,product_code) VALUES(t,'budget') RETURNING id INTO product;
@@ -715,7 +715,7 @@ BEGIN
    END $sentinel$',args,trap,original_body);
   hit:=false;
   BEGIN
-   IF target IN('83d8c44f-a133-5a43-b196-1565e9318c2d','freeze') THEN EXECUTE 'SET LOCAL ROLE app_runtime';
+   IF target IN('legacy','freeze') THEN EXECUTE 'SET LOCAL ROLE app_runtime';
    ELSE EXECUTE 'SET LOCAL ROLE app_returns_service'; END IF;
    IF phase='legacy' THEN
     PERFORM app.orders_transition(oid,'partially_refunded','budget-legacy',2);

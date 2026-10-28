@@ -185,7 +185,7 @@ DECLARE q uuid; oid uuid; base jsonb; split jsonb; two_lines jsonb; zero_line js
  -- Exact positive control runs the same descriptor/hold/order helper as negatives.
  q:=pg_temp.qc_snapshot_quote(base); oid:=pg_temp.qc_snapshot_order(base);
  PERFORM app.quote_conversion_bind(current_setting('qc.t')::uuid,q,current_setting('qc.company')::uuid,
-  current_setting('qc.buyer')::uuid,oid,4,'a9fcda58-26b5-5d24-a2d7-ca67d4b5f21f',sha256('a9fcda58-26b5-5d24-a2d7-ca67d4b5f21f'::bytea));
+  current_setting('qc.buyer')::uuid,oid,4,'a9fcda58-26b5-5d24-a2d7-ca67d4b5f21f',sha256('snapshot:control'::bytea));
  IF NOT EXISTS(SELECT FROM app.quote_conversions WHERE quote_id=q AND order_id=oid) THEN
   RAISE EXCEPTION 'QUOTE_CONVERSION_SNAPSHOT_CONTROL_NOT_BOUND'; END IF;
  q:=pg_temp.qc_snapshot_quote(base); oid:=pg_temp.qc_snapshot_order(jsonb_build_array(pg_temp.qc_snapshot_line(1,100,10)));

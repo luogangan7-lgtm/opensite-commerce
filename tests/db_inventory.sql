@@ -60,7 +60,7 @@ BEGIN
   RAISE EXCEPTION 'INVENTORY_GATE runtime bypasses stock function';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN
-  UPDATE app.inventory_movements SET reason='3122fa34-c798-53de-8f57-4223245e2ac0' WHERE tenant_id=t;
+  UPDATE app.inventory_movements SET reason='forged' WHERE tenant_id=t;
   RAISE EXCEPTION 'INVENTORY_GATE runtime mutates movement';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN

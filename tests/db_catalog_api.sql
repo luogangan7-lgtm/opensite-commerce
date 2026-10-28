@@ -7,7 +7,7 @@ INSERT INTO app.tenants(name) VALUES('catalog-api-a') RETURNING id AS ta \gset
 INSERT INTO app.tenants(name) VALUES('catalog-api-b') RETURNING id AS tb \gset
 SELECT set_config('app.tenant_id',:'ta',true);
 INSERT INTO app.products(tenant_id,product_code) VALUES(:'ta','cas') RETURNING id AS p \gset
-INSERT INTO app.products(tenant_id,product_code) VALUES(:'tb','5e292400-2e01-5a41-8801-7c6a516eaaf0') RETURNING id AS pb \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'tb','foreign') RETURNING id AS pb \gset
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'ta',:'p','SKU-CAS','') RETURNING id AS v \gset
 INSERT INTO app.media_blobs(tenant_id,backend,storage_key,sha256,size_bytes,status)
 VALUES(:'ta','local','catalog-api-a',sha256('catalog-api-a'::bytea),1,'ready') RETURNING id AS b \gset
@@ -41,7 +41,7 @@ DO $guards$ DECLARE t uuid:=current_setting('c07.ta')::uuid; b uuid:=current_set
  PERFORM pg_temp.c07_reject(format('UPDATE app.products SET version=0 WHERE tenant_id=%L AND id=%L',t,p),'23514','product_version_positive');
  PERFORM pg_temp.c07_reject(format('UPDATE app.product_variants SET version=-1 WHERE tenant_id=%L AND id=%L',t,current_setting('c07.v')),'23514','sku_version_positive');
  PERFORM pg_temp.c07_reject(format('UPDATE app.product_variants SET lifecycle_status=''invalid'' WHERE tenant_id=%L',t),'23514','sku_lifecycle');
- PERFORM pg_temp.c07_reject(format('INSERT INTO app.media_uploads(tenant_id,original_filename,expected_size,media_id,expires_at) VALUES(%L,''5e292400-2e01-5a41-8801-7c6a516eaaf0'',1,%L,now()+interval ''1 hour'')',b,a),'23503','upload_media_composite_fk');
+ PERFORM pg_temp.c07_reject(format('INSERT INTO app.media_uploads(tenant_id,original_filename,expected_size,media_id,expires_at) VALUES(%L,''foreign'',1,%L,now()+interval ''1 hour'')',b,a),'23503','upload_media_composite_fk');
 END $guards$;
 SELECT set_config('app.tenant_id',:'ta',true);
 SET LOCAL ROLE app_runtime;

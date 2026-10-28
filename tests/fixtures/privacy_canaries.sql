@@ -155,7 +155,7 @@ BEGIN
  PERFORM app.inventory_adjust(sku,20,'privacy-unowned-stock-control',uuidv7(),'inbound');
  reservation := app.inventory_reserve(sku,1,'order',registered_order,'976f7307-0975-5b80-9fef-0f54beefb77a',900);
  registered := app.orders_create(registered_order,'ebcb4599-59ca-5ee8-9ed9-43166edb6dc5',
-  sha256('ebcb4599-59ca-5ee8-9ed9-43166edb6dc5'::bytea),customer,NULL,'USD',5,
+  sha256('privacy-registered-order'::bytea),customer,NULL,'USD',5,
   jsonb_build_object('method','fixed','contact',{{canary:orders.shipping_snapshot}}),
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
@@ -166,7 +166,7 @@ BEGIN
  INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,
   cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,
   shipping_minor,payable_version)
- VALUES(t,checkout,'customer',customer::text,'c29e1592-1a74-5264-8f0d-9282ee207187',sha256('c29e1592-1a74-5264-8f0d-9282ee207187'::bytea),
+ VALUES(t,checkout,'customer',customer::text,'c29e1592-1a74-5264-8f0d-9282ee207187',sha256('privacy-checkout'::bytea),
   cart,1,registered_order,jsonb_build_object('recipient',{{canary:checkout_sessions.address_snapshot}}),
   registered.currency,registered.total_minor,registered.items_net_minor,registered.tax_minor,
   registered.shipping_minor,registered.version);
@@ -176,12 +176,12 @@ BEGIN
   updated_at=clock_timestamp() WHERE tenant_id=t AND id=checkout;
  UPDATE app.checkout_sessions SET phase='cancelling',claim_kind='cancel',claim_key='0500dffb-2fbd-5351-98af-6c3f55008cdf',
   updated_at=clock_timestamp() WHERE tenant_id=t AND id=checkout;
- PERFORM app.orders_transition(registered_order,'cancelled','0500dffb-2fbd-5351-98af-6c3f55008cdf');
+ PERFORM app.orders_transition(registered_order,'cancelled','privacy-cancel');
  UPDATE app.checkout_sessions SET phase='cancelled',
   final_result=jsonb_build_object('contact',{{canary:checkout_sessions.final_result}}),
   updated_at=clock_timestamp() WHERE tenant_id=t AND id=checkout;
  INSERT INTO app.checkout_attempts(tenant_id,event_kind,event_key,checkout_id,request_hash)
- VALUES(t,'cancel','0500dffb-2fbd-5351-98af-6c3f55008cdf',checkout,sha256('0500dffb-2fbd-5351-98af-6c3f55008cdf'::bytea));
+ VALUES(t,'cancel','0500dffb-2fbd-5351-98af-6c3f55008cdf',checkout,sha256('privacy-cancel'::bytea));
  UPDATE app.checkout_attempts SET result=jsonb_build_object('contact',{{canary:checkout_attempts.result}})
  WHERE tenant_id=t AND event_kind='cancel' AND event_key='0500dffb-2fbd-5351-98af-6c3f55008cdf';
 
@@ -190,7 +190,7 @@ BEGIN
  -- No Sender is invoked by these database-only fixtures.
  reservation := app.inventory_reserve(sku,1,'order',notification_order,'239b4edd-bd2f-5e98-9ca6-5d80e7e20afb',900);
  PERFORM app.orders_create(notification_order,'a199898a-f3e2-589a-9959-d941a006eb7c',
-  sha256('a199898a-f3e2-589a-9959-d941a006eb7c'::bytea),customer,NULL,'USD',0,'{}'::jsonb,
+  sha256('privacy-notification-order'::bytea),customer,NULL,'USD',0,'{}'::jsonb,
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
    'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]'::jsonb);
@@ -207,7 +207,7 @@ BEGIN
  -- bounds and immutable receipt writes; no PSP, ledger post or worker is run.
  reservation := app.inventory_reserve(sku,2,'order',fulfillment_order,'53affb47-ebb8-5586-ae58-2e622fa3e863',900);
  registered := app.orders_create(fulfillment_order,'7149a2b6-fc2d-5356-a134-0b76858eaa41',
-  sha256('7149a2b6-fc2d-5356-a134-0b76858eaa41'::bytea),customer,NULL,'USD',0,'{}'::jsonb,
+  sha256('privacy-fulfillment-order'::bytea),customer,NULL,'USD',0,'{}'::jsonb,
   jsonb_build_array(jsonb_build_object('id',fulfillment_line,'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',2,'unit_price_minor',100,'line_net_minor',200,'line_tax_minor',0,'line_total_minor',200,
    'reservation_id',reservation.id,'tax_snapshot','{"category":"standard"}'::jsonb)),'[]'::jsonb);
@@ -252,7 +252,7 @@ BEGIN
 
  -- Guest contact retains its own independent column canary.
  reservation := app.inventory_reserve(sku,1,'order',guest_order,'f0900b0a-08d4-5c64-b0f7-25e02c9f3247',900);
- PERFORM app.orders_create(guest_order,'2835155d-8253-5aec-a714-3d27fcaa020d',sha256('2835155d-8253-5aec-a714-3d27fcaa020d'::bytea),
+ PERFORM app.orders_create(guest_order,'2835155d-8253-5aec-a714-3d27fcaa020d',sha256('privacy-guest-order'::bytea),
   NULL,jsonb_build_object('email',{{canary:orders.guest_contact}}||'@canary.invalid'),'USD',0,'{}'::jsonb,
   jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',sku,'sku','privacy-fixture-sku',
    'quantity',1,'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,
@@ -267,7 +267,7 @@ BEGIN
  INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,
   cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,
   shipping_minor,payable_version)
- SELECT t,guest_checkout,'guest',encode(sha256('privacy-guest-fixture-token'::bytea),'hex'),'privacy-guest-checkout',sha256('privacy-guest-checkout'::bytea),
+ SELECT t,guest_checkout,'guest',encode(sha256('privacy-guest-fixture-token'::bytea),'hex'),'5e2c096c-1b75-56dd-97b1-1b3a0521d710',sha256('privacy-guest-checkout'::bytea),
   guest_cart,1,id,jsonb_build_object('recipient',{{canary:checkout_sessions.address_snapshot}}),
   currency,total_minor,items_net_minor,tax_minor,shipping_minor,version
  FROM app.orders WHERE tenant_id=t AND id=guest_order;
@@ -276,11 +276,11 @@ BEGIN
  WHERE tenant_id=t AND id=guest_checkout;
  UPDATE app.checkout_sessions SET phase='confirming',claim_kind='payment',claim_key='f898f73c-a708-5563-b5e9-b603ef4c0a4d'
  WHERE tenant_id=t AND id=guest_checkout;
- PERFORM app.orders_transition(guest_order,'paid','f898f73c-a708-5563-b5e9-b603ef4c0a4d');
+ PERFORM app.orders_transition(guest_order,'paid','privacy-guest-payment');
  UPDATE app.checkout_sessions SET phase='paid',final_result=jsonb_build_object('contact',{{canary:checkout_sessions.final_result}})
  WHERE tenant_id=t AND id=guest_checkout;
  INSERT INTO app.checkout_attempts(tenant_id,event_kind,event_key,checkout_id,request_hash)
- VALUES(t,'payment','f898f73c-a708-5563-b5e9-b603ef4c0a4d',guest_checkout,sha256('f898f73c-a708-5563-b5e9-b603ef4c0a4d'::bytea));
+ VALUES(t,'payment','f898f73c-a708-5563-b5e9-b603ef4c0a4d',guest_checkout,sha256('privacy-guest-payment'::bytea));
  UPDATE app.checkout_attempts SET result=jsonb_build_object('contact',{{canary:checkout_attempts.result}})
  WHERE tenant_id=t AND event_kind='payment' AND event_key='f898f73c-a708-5563-b5e9-b603ef4c0a4d';
  -- Mailbox-proven link (customer_guest_order_links): the verified customer now

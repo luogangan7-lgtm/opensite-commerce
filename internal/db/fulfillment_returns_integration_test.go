@@ -405,7 +405,7 @@ func TestFulfillmentPartialShipmentCancelRemainderRefund(t *testing.T) {
 		t.Fatalf("cancel replay repeated restock: %+v %v", replayed, err)
 	}
 	overCancel := cancel
-	overCancel.IdempotencyKey = "over-cancel:" + uuid.NewString()
+	overCancel.IdempotencyKey = uuid.NewString()
 	overCancel.ExpectedVersion = cancelled.OrderVersion
 	overCancel.Lines = []returnscontract.Line{{OrderLineID: f.line, Quantity: 1}}
 	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {

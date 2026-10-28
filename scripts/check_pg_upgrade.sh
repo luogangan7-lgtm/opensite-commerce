@@ -50,7 +50,7 @@ apply_forward() {
 }
 
 SEED_SITE=$(cat <<'SQL'
-INSERT INTO app.tenants(name) VALUES('6c045ad4-5d06-55f1-a725-cf7dadb256a6') RETURNING id AS t \gset
+INSERT INTO app.tenants(name) VALUES('upgrade') RETURNING id AS t \gset
 INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','U') RETURNING id AS o \gset
 INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'t',:'o','U') RETURNING id AS s \gset
 INSERT INTO app.media_blobs(tenant_id,backend,storage_key,sha256,size_bytes,status)
@@ -92,7 +92,7 @@ fresh_009 $DB
   echo "UPDATE app.sites SET published_release_id=:'r2' WHERE id=:'s';"; } | db $DB >/dev/null
 if ! out=$(apply_010 $DB); then bad "010 failed on safe history: $out"; else
   result=$(db $DB 2>&1 <<'SQL'
-SELECT set_config('app.tenant_id',(SELECT id::text FROM app.tenants WHERE name='6c045ad4-5d06-55f1-a725-cf7dadb256a6'),false);
+SELECT set_config('app.tenant_id',(SELECT id::text FROM app.tenants WHERE name='upgrade'),false);
 SET ROLE app_runtime;
 DO $check$
 DECLARE t uuid:=current_setting('app.tenant_id')::uuid; s uuid; pg uuid; a uuid; r record; fresh uuid; n int:=0;
@@ -192,12 +192,12 @@ RELIABILITY_DB=reliability_upgrade_$$
 fresh_before_reliability "$RELIABILITY_DB"
 db "$RELIABILITY_DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('legacy-reliability') RETURNING id AS t \gset
-INSERT INTO app.outbox_events(tenant_id,event_type,payload) VALUES(:'t','83d8c44f-a133-5a43-b196-1565e9318c2d','{}');
+INSERT INTO app.outbox_events(tenant_id,event_type,payload) VALUES(:'t','legacy','{}');
 INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at)
- VALUES(:'t','service',uuidv7(),'83d8c44f-a133-5a43-b196-1565e9318c2d','ac585171-8d9c-5d11-8feb-a32bc62aa7ad',sha256('request'::bytea),now()+interval '1 day');
+ VALUES(:'t','service',uuidv7(),'legacy','ac585171-8d9c-5d11-8feb-a32bc62aa7ad',sha256('request'::bytea),now()+interval '1 day');
 SQL
 if ! out=$(apply_reliability "$RELIABILITY_DB"); then bad "pending reliability upgrade: $out"
-elif [[ $(db "$RELIABILITY_DB" -c "SELECT count(*) FROM app.outbox_events WHERE delivery_target='83d8c44f-a133-5a43-b196-1565e9318c2d' AND dedup_key=id::text AND status='pending' AND lease_owner IS NULL AND attempts=0") != 1 ]]; then bad 'legacy pending event identity changed'
+elif [[ $(db "$RELIABILITY_DB" -c "SELECT count(*) FROM app.outbox_events WHERE delivery_target='legacy' AND dedup_key=id::text AND status='pending' AND lease_owner IS NULL AND attempts=0") != 1 ]]; then bad 'legacy pending event identity changed'
 elif [[ $(db "$RELIABILITY_DB" -c "SELECT count(*) FROM app.idempotency_records WHERE state='in_progress' AND claim_token IS NOT NULL AND request_hash=sha256('request'::bytea) AND response_body_reference IS NULL") != 1 ]]; then bad 'legacy in-progress request identity changed'
 elif ! db "$RELIABILITY_DB" < tests/db_reliability.sql >/dev/null; then bad 'reliability SQL gate after pending-data upgrade'
 else pass 'reliability upgrade preserves pending events/requests and all new invariants'; fi
@@ -208,9 +208,9 @@ for legacy_state in processing delivered failed completed; do
  fresh_before_reliability "$RELIABILITY_DB"
  db "$RELIABILITY_DB" -c "INSERT INTO app.tenants(name) VALUES('legacy-reconcile')" >/dev/null
  if [[ $legacy_state == processing || $legacy_state == delivered ]]; then
-  db "$RELIABILITY_DB" -c "INSERT INTO app.outbox_events(tenant_id,event_type,payload,status) SELECT id,'83d8c44f-a133-5a43-b196-1565e9318c2d','{}','$legacy_state' FROM app.tenants" >/dev/null
+  db "$RELIABILITY_DB" -c "INSERT INTO app.outbox_events(tenant_id,event_type,payload,status) SELECT id,'legacy','{}','$legacy_state' FROM app.tenants" >/dev/null
  else
-  db "$RELIABILITY_DB" -c "INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,state,response_status,response_body) SELECT id,'service',uuidv7(),'83d8c44f-a133-5a43-b196-1565e9318c2d','ac585171-8d9c-5d11-8feb-a32bc62aa7ad',sha256('request'::bytea),now()+interval '1 day','$legacy_state',201,'{\"legacy\":true}' FROM app.tenants" >/dev/null
+  db "$RELIABILITY_DB" -c "INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,state,response_status,response_body) SELECT id,'service',uuidv7(),'legacy','ac585171-8d9c-5d11-8feb-a32bc62aa7ad',sha256('request'::bytea),now()+interval '1 day','$legacy_state',201,'{\"legacy\":true}' FROM app.tenants" >/dev/null
  fi
  if out=$(apply_reliability "$RELIABILITY_DB"); then bad "reliability silently accepted legacy $legacy_state"
  elif [[ $out != *RELIABILITY_UPGRADE_REQUIRES_RECONCILIATION* ]]; then bad "reliability $legacy_state failed for another reason: $out"
@@ -406,7 +406,7 @@ INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key)
  VALUES(:'t',:'p','CUSTOMER-LEGACY','default') RETURNING id AS k \gset
 INSERT INTO app.price_lists(tenant_id,currency,starts_at) VALUES(:'t','USD','2026-01-01Z') RETURNING id AS l \gset
 INSERT INTO app.price_entries(tenant_id,price_list_id,sku_id,min_quantity,unit_amount)
- VALUES(:'t',:'l',:'9fc71cc5-dcdd-5a3f-9e4d-15742b8f3271',1,199);
+ VALUES(:'t',:'l',:'k',1,199);
 SQL
 # Earlier cases created this cluster-wide role. Simulate a legacy deployment's
 # unsafe attributes, memberships and independently granted column privileges;
@@ -657,7 +657,7 @@ INSERT INTO app.ledger_accounts(tenant_id,code,account_type,currency)
  VALUES(:'t','cash','asset','USD') RETURNING id AS a \gset
 INSERT INTO app.ledger_accounts(tenant_id,code,account_type,currency)
  VALUES(:'t','revenue','revenue','USD') RETURNING id AS b \gset
-SELECT app.post_ledger(:'t','USD','6c045ad4-5d06-55f1-a725-cf7dadb256a6','83d8c44f-a133-5a43-b196-1565e9318c2d','capture',ARRAY[:'a',:'b']::uuid[],ARRAY['debit','credit'],ARRAY[125,125]::bigint[]);
+SELECT app.post_ledger(:'t','USD','upgrade','legacy','capture',ARRAY[:'a',:'b']::uuid[],ARRAY['debit','credit'],ARRAY[125,125]::bigint[]);
 COMMIT;
 BEGIN;
 SELECT set_config('app.tenant_id',:'t',true);
@@ -754,10 +754,10 @@ db "$DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('limits-existing') RETURNING id AS t \gset
 INSERT INTO app.outbox_events(tenant_id,id,event_type,payload,delivery_target,dedup_key,status,attempts,lease_owner,lease_until,delivered_at)
 VALUES
-(:'t','00000000-0000-4000-8000-000000000001','83d8c44f-a133-5a43-b196-1565e9318c2d','{}','test','failed','failed',10,NULL,NULL,NULL),
-(:'t','00000000-0000-4000-8000-000000000002','83d8c44f-a133-5a43-b196-1565e9318c2d','{}','test','crashed','processing',10,'11111111-1111-4111-8111-111111111111',clock_timestamp()-interval '1 second',NULL),
-(:'t','00000000-0000-4000-8000-000000000003','83d8c44f-a133-5a43-b196-1565e9318c2d','{}','test','live','processing',10,'11111111-1111-4111-8111-111111111111',clock_timestamp()+interval '1 hour',NULL),
-(:'t','00000000-0000-4000-8000-000000000004','83d8c44f-a133-5a43-b196-1565e9318c2d','{}','test','delivered','delivered',2,NULL,NULL,clock_timestamp());
+(:'t','00000000-0000-4000-8000-000000000001','legacy','{}','test','failed','failed',10,NULL,NULL,NULL),
+(:'t','00000000-0000-4000-8000-000000000002','legacy','{}','test','crashed','processing',10,'11111111-1111-4111-8111-111111111111',clock_timestamp()-interval '1 second',NULL),
+(:'t','00000000-0000-4000-8000-000000000003','legacy','{}','test','live','processing',10,'11111111-1111-4111-8111-111111111111',clock_timestamp()+interval '1 hour',NULL),
+(:'t','00000000-0000-4000-8000-000000000004','legacy','{}','test','delivered','delivered',2,NULL,NULL,clock_timestamp());
 SQL
 apply_forward "$DB" "${limits_files[0]}"
 result=$(db "$DB" <<'SQL'
@@ -813,7 +813,7 @@ SELECT id AS sku FROM app.product_variants WHERE sku='orders-legacy' \gset
 SELECT id AS rid,owner_id AS oid FROM app.inventory_reservations WHERE tenant_id=:'t' \gset
 SELECT set_config('app.tenant_id',:'t',false);
 SET ROLE app_runtime;
-SELECT app.orders_create(:'oid','c814a75e-b677-584b-b658-9cc492943b00',sha256('83d8c44f-a133-5a43-b196-1565e9318c2d'::bytea),NULL,
+SELECT app.orders_create(:'oid','c814a75e-b677-584b-b658-9cc492943b00',sha256('legacy'::bytea),NULL,
  '{"email":"legacy@example.invalid"}','USD',20,'{"currency":"USD","amount_minor":20,"service":"fixture"}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','orders-legacy','quantity',1,
  'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
@@ -973,7 +973,7 @@ INSERT INTO app.tenants(name) VALUES('notification-upgrade') RETURNING id AS t \
 SELECT set_config('app.tenant_id',:'t',false);
 SET ROLE app_orders_executor;
 INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-VALUES(:'t',uuidv7(),1,'6c045ad4-5d06-55f1-a725-cf7dadb256a6',sha256('6c045ad4-5d06-55f1-a725-cf7dadb256a6'::bytea),'{"email":"upgrade@example.test"}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
+VALUES(:'t',uuidv7(),1,'6c045ad4-5d06-55f1-a725-cf7dadb256a6',sha256('upgrade'::bytea),'{"email":"upgrade@example.test"}','USD',100,0,0,'{}',100) RETURNING id AS oid \gset
 RESET ROLE;
 INSERT INTO app.outbox_events(tenant_id,event_type,payload,delivery_target,dedup_key)
 VALUES(:'t','order.paid',jsonb_build_object('order_id',:'oid'),'orders.events','upgrade-source');
@@ -1018,7 +1018,7 @@ INSERT INTO app.customers(tenant_id,email,display_name) VALUES(:'t','legacy-priv
 INSERT INTO app.customers(tenant_id,email,display_name) VALUES(:'t','legacy-domain@erased.invalid','Synthetic legacy domain');
 INSERT INTO app.customer_addresses(tenant_id,customer_id,recipient,address_line1,city,country_code)
  VALUES(:'t',:'customer','Synthetic legacy','Synthetic address','Synthetic city','US');
-INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','cd4d4fb9-c7ae-5881-8fe9-fd4aa2422927') RETURNING id AS product \gset
+INSERT INTO app.products(tenant_id,product_code) VALUES(:'t','privacy-legacy') RETURNING id AS product \gset
 INSERT INTO app.product_variants(tenant_id,product_id,sku,option_key) VALUES(:'t',:'product','privacy-legacy-sku','default') RETURNING id AS sku \gset
 SELECT set_config('app.tenant_id',:'t',false);
 SET ROLE app_inventory_manager;
@@ -1027,7 +1027,7 @@ RESET ROLE;
 SET ROLE app_runtime;
 SELECT uuidv7() AS oid \gset
 SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','542ebc5b-2736-50dd-91f8-4780722cc26b',900)).id AS rid \gset
-SELECT app.orders_create(:'oid','41f67f2c-4129-55be-8b58-0b53f0964ced',sha256('83d8c44f-a133-5a43-b196-1565e9318c2d'::bytea),:'customer',NULL,'USD',20,
+SELECT app.orders_create(:'oid','41f67f2c-4129-55be-8b58-0b53f0964ced',sha256('legacy'::bytea),:'customer',NULL,'USD',20,
  '{"currency":"USD","amount_minor":20,"recipient":"Synthetic legacy"}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','privacy-legacy-sku','quantity',1,
  'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',10,'line_total_minor',110,
@@ -1399,8 +1399,8 @@ for f in migrations/[0-9][0-9][0-9]_*.sql; do
 done
 db "$QUOTES_DB" <<'SQL' >/dev/null
 INSERT INTO app.tenants(name) VALUES('quote-existing') RETURNING id AS t \gset
-INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','83d8c44f-a133-5a43-b196-1565e9318c2d') RETURNING id AS o \gset
-INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'t',:'o','83d8c44f-a133-5a43-b196-1565e9318c2d') RETURNING id AS s \gset
+INSERT INTO app.organizations(tenant_id,display_name) VALUES(:'t','legacy') RETURNING id AS o \gset
+INSERT INTO app.sites(tenant_id,organization_id,name) VALUES(:'t',:'o','legacy') RETURNING id AS s \gset
 INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,buyer_name,message,status)
 VALUES(:'t',:'s','legacy@example.invalid','Legacy contact','preserve this inquiry','contacted');
 SQL
@@ -1467,7 +1467,7 @@ SELECT app.inventory_adjust(:'sku',2,'legacy stock',uuidv7(),'inbound');
 RESET ROLE; SET ROLE app_runtime;
 SELECT uuidv7() AS oid \gset
 SELECT (app.inventory_reserve(:'sku',1,'order',:'oid','9c45e55c-400f-5b91-a5f5-36201bb37bd4',900)).id AS rid \gset
-SELECT app.orders_create(:'oid','417f5891-373e-50d7-8b30-21e3aa2dfe53',sha256('83d8c44f-a133-5a43-b196-1565e9318c2d'::bytea),NULL,'{"email":"legacy@example.invalid"}','USD',0,'{}',
+SELECT app.orders_create(:'oid','417f5891-373e-50d7-8b30-21e3aa2dfe53',sha256('legacy'::bytea),NULL,'{"email":"legacy@example.invalid"}','USD',0,'{}',
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','checkout-legacy','quantity',1,'unit_price_minor',100,
  'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
 SELECT app.orders_transition(:'oid','paid','legacy-paid',0);
@@ -1502,7 +1502,7 @@ INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash) VALUES
 SELECT set_config('app.tenant_id',:'t',false);
 SET ROLE app_orders_executor;
 INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
-VALUES(:'t',uuidv7(),1,'5fbc3309-f14e-5aec-b745-2596a5083c2b',sha256('5fbc3309-f14e-5aec-b745-2596a5083c2b'::bytea),'{"email":"legacy-auth@example.invalid","name":"Immutable"}','USD',0,0,0,'{}',0) RETURNING id AS oid \gset
+VALUES(:'t',uuidv7(),1,'5fbc3309-f14e-5aec-b745-2596a5083c2b',sha256('auth-upgrade'::bytea),'{"email":"legacy-auth@example.invalid","name":"Immutable"}','USD',0,0,0,'{}',0) RETURNING id AS oid \gset
 UPDATE app.orders SET sealed=true WHERE tenant_id=:'t' AND id=:'oid';
 RESET ROLE;
 CREATE TABLE public.customer_auth_upgrade_witness AS
@@ -1695,7 +1695,7 @@ SELECT app.orders_create(:'oid','da30010d-e0e7-511e-ac42-a3bcd85501be',sha256('p
  jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',:'sku','sku','payment-upgrade','quantity',1,'unit_price_minor',100,
  'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',:'rid','tax_snapshot','{"category":"standard"}'::jsonb)),'[]');
 INSERT INTO app.checkout_sessions(tenant_id,id,actor_kind,actor_id,request_key,request_hash,cart_id,cart_version,order_id,address_snapshot,currency,amount_minor,items_net_minor,tax_minor,shipping_minor,payable_version)
-VALUES(:'t',uuidv7(),'guest',repeat('a',64),'6c045ad4-5d06-55f1-a725-cf7dadb256a6',sha256('6c045ad4-5d06-55f1-a725-cf7dadb256a6'::bytea),uuidv7(),1,:'oid','{}','USD',100,100,0,0,1);
+VALUES(:'t',uuidv7(),'guest',repeat('a',64),'6c045ad4-5d06-55f1-a725-cf7dadb256a6',sha256('upgrade'::bytea),uuidv7(),1,:'oid','{}','USD',100,100,0,0,1);
 UPDATE app.checkout_sessions SET phase='ready',provider_ref='fake_upgrade',start_result='{}';
 RESET ROLE;
 CREATE TABLE public.payment_upgrade_witness AS SELECT to_jsonb(s) AS snapshot FROM app.checkout_sessions s;
@@ -1814,7 +1814,7 @@ INSERT INTO app.customers(tenant_id,email) VALUES(:'t','legacy-guest@example.inv
 SELECT set_config('app.tenant_id',:'t',true);
 SET LOCAL ROLE app_orders_executor;
 INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor)
- VALUES(:'t',uuidv7(),1,'cd4d4fb9-c7ae-5881-8fe9-fd4aa2422927',sha256('83d8c44f-a133-5a43-b196-1565e9318c2d'::bytea),'{"email":"legacy-guest@example.invalid"}','USD',100,0,0,'{}',100) RETURNING id AS o \gset
+ VALUES(:'t',uuidv7(),1,'cd4d4fb9-c7ae-5881-8fe9-fd4aa2422927',sha256('legacy'::bytea),'{"email":"legacy-guest@example.invalid"}','USD',100,0,0,'{}',100) RETURNING id AS o \gset
 RESET ROLE;
 INSERT INTO app.customer_guest_order_links(tenant_id,customer_id,order_id) VALUES(:'t',:'c',:'o');
 SET LOCAL ROLE app_runtime;
@@ -1878,7 +1878,7 @@ BEGIN
    contact:='legacy-converter-'||tenant_no||'-'||subject_no||'@example.invalid';
    INSERT INTO app.customers(tenant_id,email) VALUES(t,contact) RETURNING id INTO c;
    INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code) VALUES(t,co,c,'approver');
-   INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message) VALUES(t,s,'inquiry@example.invalid','6c045ad4-5d06-55f1-a725-cf7dadb256a6') RETURNING id INTO i;
+   INSERT INTO app.inquiries(tenant_id,site_id,buyer_email,message) VALUES(t,s,'inquiry@example.invalid','upgrade') RETURNING id INTO i;
    SET LOCAL ROLE app_runtime;
    q:=app.create_quote(t,s,i,co,u,'USD',100,0,0,100,'{}',clock_timestamp()+interval '1 hour',
     '[{"line_no":1,"description":"upgrade","quantity":1,"unit_price":100,"line_total":100,"snapshot":{}}]');
@@ -2024,7 +2024,7 @@ SELECT set_config('app.tenant_id',:'t',false);
 INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment)
  VALUES(:'t','fake','acct_audit_upgrade','test');
 INSERT INTO app.payment_refund_cases(tenant_id,provider,provider_account_id,case_key,provider_refund_id,provider_ref,reason,evidence_hash)
- VALUES(:'t','fake','acct_audit_upgrade','refund:upgrade','6c045ad4-5d06-55f1-a725-cf7dadb256a6','capture','unmatched_refund',sha256('original'::bytea)) RETURNING id AS c \gset
+ VALUES(:'t','fake','acct_audit_upgrade','refund:upgrade','upgrade','capture','unmatched_refund',sha256('original'::bytea)) RETURNING id AS c \gset
 INSERT INTO app.payment_refund_case_resolutions(tenant_id,case_id,outcome,reason,verifier,evidence_hash)
  VALUES(:'t',:'c','resolved_no_posting','no_posting_required',uuidv7(),sha256('staff'::bytea));
 SQL

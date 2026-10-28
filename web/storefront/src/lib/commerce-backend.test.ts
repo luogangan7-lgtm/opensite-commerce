@@ -21,7 +21,7 @@ const names = ['OSC_COMMERCE_MODE','OSC_COMMERCE_API_ORIGIN','OSC_COMMERCE_SITE'
 const saved = new Map(names.map(name => [name, process.env[name]]));
 let mock: ReturnType<typeof spyOn>;
 const calls: Request[] = [];
-let failure = false, failureCode='stock_unavailable';
+let failure = false, failureOnlyCheckout = false, failureCode='stock_unavailable';
 function cookies() {
   const values = new Map<string,string>(), flags: Record<string,unknown>[] = [];
   return { jar: {get: (key: string) => values.has(key) ? {value: values.get(key)!} : undefined,
@@ -34,11 +34,11 @@ function request(operation: string, csrf?: string, value?: unknown) {
 beforeEach(() => {
   (globalThis as typeof globalThis & {__OSC_COMMERCE_TEST_HTTP__?:boolean}).__OSC_COMMERCE_TEST_HTTP__=true;
   Object.assign(process.env, {OSC_COMMERCE_MODE:'backend',OSC_COMMERCE_API_ORIGIN:'http://api:8080',OSC_COMMERCE_SITE:site,OSC_COMMERCE_COOKIE_KEY:randomBytes(32).toString('base64url'),OSC_STOREFRONT_ALLOWED_HOSTS:'shop.example.test',OPENSITE_STOREFRONT_ORIGIN:site,OPENSITE_STOREFRONT_KEY:randomBytes(32).toString('base64url')});
-  calls.length=0; failure=false;failureCode='stock_unavailable';
+  calls.length=0; failure=false;failureOnlyCheckout=false;failureCode='stock_unavailable';
   mock=spyOn(globalThis,'fetch').mockImplementation(Object.assign(async(input:RequestInfo|URL,init?:RequestInit)=>{
     const req=input instanceof Request ? input : new Request(input,init); calls.push(req);
     if(new URL(req.url).pathname==='/api/v1/public/sites/current') return Response.json({tenant_id:tenant,hostname:'shop.example.test',locale:'en',products:[{id:product,name:'Canvas tote',slug:'canvas-tote',skus:[{sku_id:sku,sku_code:'TOTE',option_values:[],price_minor:'2400',currency:'USD',available:true}]}]});
-    if(failure) return Response.json({type:'about:blank',status:409,code:failureCode,detail:'postgres://private/internal'}, {status:409,headers:{'Content-Type':'application/problem+json'}});
+    if(failure && (!failureOnlyCheckout || req.url.endsWith('/checkout'))) return Response.json({type:'about:blank',status:409,code:failureCode,detail:'postgres://private/internal'}, {status:409,headers:{'Content-Type':'application/problem+json'}});
     if(req.url.endsWith('/carts')) return Response.json({cart:{id:cart,currency:'USD',version:1,lines:[],subtotal:0},cart_token:token},{status:201,headers:{ETag:etag}});
     return new Response(`{"id":"${cart}","currency":"USD","version":1,"lines":[{"sku_id":"${sku}","quantity":1,"sellable":true,"unit_amount":9223372036854775807,"line_amount":9223372036854775807}],"subtotal":9223372036854775807}`,{headers:{ETag:etag,'Content-Type':'application/json'}});
   },{preconnect:globalThis.fetch.preconnect}));
@@ -68,9 +68,9 @@ test('backend problem code is visible without returning upstream private detail'
 test('checkout accepts uppercase UUIDs and forwards lowercase',async()=>{
   const jar=cookies(),context=await readPurchaseContext(request('context'),jar.jar);
   await handlePurchaseRequest(request('cart',context.csrf,{sku_id:sku,quantity:1}),jar.jar,'cart');
-  failure=true;
+  failure=true;failureOnlyCheckout=true;
   const key='abcdef01-2345-6789-abcd-ef0123456789';
-  const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/checkout`,{method:'POST',headers:{Host:'shop.example.test',Origin:site,'X-CSRF-Token':context.csrf,'Content-Type':'application/json','Idempotency-Key':key.toUpperCase()},body:'{}'}),jar.jar,'checkout');
+  const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/checkout`,{method:'POST',headers:{Host:'shop.example.test',Origin:site,'X-CSRF-Token':context.csrf,'Content-Type':'application/json','Idempotency-Key':key.toUpperCase()},body:JSON.stringify({shipping_address:{country:'US',postal_code:'10001'},accepted_total:{amount_minor:'2400',currency:'USD'}})}),jar.jar,'checkout');
   expect(response.status).toBe(409);
   expect(calls.at(-1)!.headers.get('Idempotency-Key')).toBe(key);
 });

@@ -73,7 +73,7 @@ BEGIN
   (SELECT id FROM app.ledger_accounts WHERE tenant_id=o.tenant_id AND code='tax_payable'),
   (SELECT id FROM app.ledger_accounts WHERE tenant_id=o.tenant_id AND code='shipping_revenue'),
   (SELECT id FROM app.ledger_accounts WHERE tenant_id=o.tenant_id AND code='cash'));
- journal:=app.payments_post_return_refund(rid,'23f67387-ccdb-5db4-a899-fe18ac4de6f7','re_original_stripe');
+ journal:=app.payments_post_return_refund(rid,'binding-refund','re_original_stripe');
  PERFORM app.returns_complete_refund(rid,'23f67387-ccdb-5db4-a899-fe18ac4de6f7',c.provider_ref,journal);
 END $fixture$`)
 		if err != nil {

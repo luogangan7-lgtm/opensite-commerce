@@ -50,7 +50,7 @@ BEGIN
  PERFORM set_config('app.tenant_id',current_setting('test.checkout_other_t'),true);
  IF EXISTS(SELECT FROM app.checkout_sessions WHERE id=cid) OR EXISTS(SELECT FROM app.checkout_attempts WHERE checkout_id=cid) THEN RAISE EXCEPTION 'CHECKOUT_GATE tenant leaked receipt'; END IF;
  BEGIN
-  INSERT INTO app.checkout_attempts(tenant_id,event_kind,event_key,checkout_id,request_hash) VALUES(current_setting('test.checkout_other_t')::uuid,'payment','5e292400-2e01-5a41-8801-7c6a516eaaf0',cid,sha256('5e292400-2e01-5a41-8801-7c6a516eaaf0'::bytea));
+  INSERT INTO app.checkout_attempts(tenant_id,event_kind,event_key,checkout_id,request_hash) VALUES(current_setting('test.checkout_other_t')::uuid,'payment','5e292400-2e01-5a41-8801-7c6a516eaaf0',cid,sha256('foreign'::bytea));
   RAISE EXCEPTION 'CHECKOUT_GATE cross tenant receipt FK accepted';
  EXCEPTION WHEN foreign_key_violation THEN NULL; END;
  PERFORM set_config('app.tenant_id','',true);
