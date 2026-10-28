@@ -88,6 +88,11 @@ func view(id, keyPrefix string, scopes []string, issuedBy string, created, expir
 func (r *Repository) Membership(ctx context.Context, userID, tenantID string) (auth.Membership, error) {
 	var result auth.Membership
 	err := r.run(ctx, func(ctx context.Context, q *db.Queries) error {
+		// Pre-request lookup has no Router tenant stamp yet. Set its validated
+		// target before the query: SQL join/CTE evaluation order is not a fence.
+		if err := q.TenantSetContext(ctx, id(tenantID)); err != nil {
+			return err
+		}
 		v, e := q.TenantMembership(ctx, db.TenantMembershipParams{UserID: id(userID), TenantID: id(tenantID)})
 		if e != nil {
 			return e

@@ -153,7 +153,7 @@ BEGIN
  SELECT pg_get_functiondef(p.oid),p.prosrc INTO STRICT def,body FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
   WHERE n.nspname='app' AND p.proname='tenant_lifecycle_transition';
  EXECUTE replace(def,body,replace(body,'now_db:=clock_timestamp();',
-  'now_db:=clock_timestamp(); IF p_operation=''cancel'' AND l.phase=''executing'' THEN RAISE EXCEPTION ''tenant deletion cancellation closed'' USING ERRCODE=''55000''; END IF;'));
+  'now_db:=clock_timestamp(); IF p_operation=''cancel'' AND p_request IS NOT NULL AND l.phase=''executing'' THEN IF l.request_id IS DISTINCT FROM p_request OR l.epoch IS DISTINCT FROM p_epoch THEN RAISE EXCEPTION ''stale lifecycle operation'' USING ERRCODE=''55000''; END IF; RAISE EXCEPTION ''tenant deletion cancellation closed'' USING ERRCODE=''55000''; END IF;'));
 END $phase_guard$;
 DO $owners$
 DECLARE f record;
