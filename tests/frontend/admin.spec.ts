@@ -308,8 +308,9 @@ test('notification legal long metadata and failed status retain read-only recove
  await expect(table.getByRole('cell',{name:'failed',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Redrive',exact:true})).toHaveCount(0);
  await expect(page.getByRole('dialog')).toHaveCount(0);
- // Re-position after axe and wait for scrolling to settle before checking and capturing the guidance.
- await audit(page,notificationVisualStates.failed,()=>fullTextFitsVisibleCell(table.getByRole('cell',{name:'Automatic retry pending',exact:true})));
+ // Audit the page, then capture the visible scrollport itself so full-page capture cannot change its framing.
+ await audit(page,undefined,()=>fullTextFitsVisibleCell(table.getByRole('cell',{name:'Automatic retry pending',exact:true})));
+ if(snapshots)await expect(region).toHaveScreenshot(notificationVisualStates.failed);
  expect(writes).toEqual([]);
 });
 test('notification 403 hides all private metadata and mutation controls',async({page})=>{
