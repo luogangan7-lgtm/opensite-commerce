@@ -43,7 +43,7 @@ p { margin-block: var(--space-0) var(--space-5); overflow-wrap: anywhere; }
 .purchase-layout { display: flex; flex-wrap: wrap; align-items: start; gap: var(--space-8); }
 .cart-lines, .checkout-form { flex: 2; min-inline-size: min(100%, var(--layout-dialog)); margin: var(--space-0); }
 .cart-lines { padding: var(--space-0); list-style: none; }
-.cart-line { padding-block: var(--space-6); border-block-start: var(--border-width) solid var(--color-border); }
+.cart-line { padding-block: var(--space-6); border-block-start: var(--border-width) solid var(--color-border); overflow-wrap: anywhere; }
 .cart-line-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-4); }
 .cart-line-heading h2 { margin-block: var(--space-0) var(--space-2); }
 .cart-line-heading p { margin-block: var(--space-0) var(--space-3); }

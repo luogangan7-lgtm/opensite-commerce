@@ -2,10 +2,10 @@
  * Depends on start-real-backend.py and a transparent forwarding fault proxy.
  * No route interception; signed test cookies identify real seeded cart ownership.
  */
-import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type APIResponse, type Locator } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { REAL_VISUAL_STATES } from '../../scripts/frontend/real-visual-manifest';
 
@@ -17,7 +17,7 @@ test.use({ trace: 'off', video: 'off', screenshot: 'off', ignoreHTTPSErrors: tru
 
 function runtime() {
   return JSON.parse(readFileSync('.work/visual-real/runtime.json', 'utf8')) as {
-    pg: Record<string, string>; cookieKey: string; control: string;
+    pg: Record<string, string>; cookieKey: string; control: string; staffPassword: string; fakeWebhookKey: string;
   };
 }
 function sql(statement: string) {
@@ -266,6 +266,7 @@ async function accountSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[235]
   if (pending) await expect(busy).toHaveAttribute('aria-busy', 'true');
 }
 const customerBackend = `/api/v1/t/${tenant}/customer`;
+const historyBackend = `${customerBackend}/orders`;
 const accountPassword = () => randomBytes(24).toString('base64url');
 async function credentials(page: Page, email: string, password: string) {
   await page.getByLabel('Email', { exact: true }).fill(email);
@@ -299,6 +300,372 @@ async function registerAccount(page: Page, email: string, password: string) {
   await expect(page.getByRole('link', { name: 'Order history', exact: true })).toHaveCount(0);
   return mailboxProof(page, email);
 }
+
+// #250 follows scripts/e2e/b2b.py's identity seed, then real Go password login.
+// #235 owns registration/proof coverage. Sharing its IP for 34 writes/minute
+// exhausts the real 30/min budget; seed identities, never relax/reset that budget.
+async function historyCustomer(page: Page, project: string, suffix: string) {
+  if (!['desktop', 'mobile'].includes(project) || !/^[a-z0-9-]+$/.test(suffix)) throw new Error('Invalid owned customer fixture');
+  const email = `visual-250-${project}-${suffix}@example.test`, password = runtime().staffPassword, id = randomUUID();
+  sql(`BEGIN; INSERT INTO app.customers(tenant_id,id,email,verified_at)
+    VALUES('${tenant}','${id}','${email}',clock_timestamp());
+    INSERT INTO app.customer_credentials(tenant_id,customer_id,password_hash)
+      SELECT '${tenant}','${id}',password_hash FROM app.users WHERE email='visual-owner@example.test'; COMMIT;`);
+  await historyLogin(page, email, password);
+  return { id, email, password };
+}
+async function historyLogin(page: Page, email: string, password: string) {
+  await page.goto(`${site}/account`); await credentials(page, email, password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Order history', exact: true })).toBeVisible();
+}
+const historyPanel = (page: Page) => page.locator('.purchase-page[aria-label="Order history"]');
+type Box = { x: number; y: number; width: number; height: number };
+function assertDateMaskBounds(mask: Box, date: Box, protectedBoxes: Box[]) {
+  const right = (box: Box) => box.x + box.width, bottom = (box: Box) => box.y + box.height;
+  if (mask.x < date.x || mask.y < date.y || right(mask) > right(date) || bottom(mask) > bottom(date))
+    throw new Error('Date mask extends outside time element');
+  if (protectedBoxes.some(box => mask.x < right(box) && right(mask) > box.x && mask.y < bottom(box) && bottom(mask) > box.y))
+    throw new Error('Date mask overlaps status or amount');
+}
+// Only the runtime B2B order may supply an exact date mask. Historical dates
+// remain visible; real API timestamp/display assertions precede every mask.
+async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250][number], pending = false, fullPage = true, mask: Locator[] = [], maskColor?: string) {
+  await page.evaluate(async () => { await document.fonts.ready; });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'history fits viewport').toBe(true);
+  if (!pending) {
+    const report = await new AxeBuilder({ page }).analyze();
+    expect(report.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
+  }
+  const panel = historyPanel(page);
+  if (state !== 'account-entry') await expect(panel).toHaveAttribute('aria-busy', String(pending));
+  await expect(page).toHaveScreenshot(`real-250-${state}.png`, { fullPage, mask, maskColor });
+  if (state !== 'account-entry') await expect(panel).toHaveAttribute('aria-busy', String(pending));
+}
+
+// Historical display fixtures use fixed dates/numbers, not a browser-clock expiry.
+// Use the existing Orders executor with every trigger/FK/RLS/check active. The
+// large number is a legal historical snapshot; no trigger suspension or DTO mock.
+function historyOrders(customer: { id: string; email: string }, project: string, batch: number, count = 1, long = false, guest = false, variant?: 'normal' | 'multiline') {
+  const orderIds = Array.from({ length: count }, () => randomUUID());
+  const number = variant ? (variant === 'normal' ? 701234n : 705678n) + BigInt(project === 'mobile' ? 100 : 0) : 9007199254741000n + BigInt(project === 'mobile' ? 1000 : 0) + BigInt(batch * 100);
+  const code = long ? 'S'.repeat(255) : 'C24-CANVAS-TOTE';
+  const stamp = variant === 'normal' ? '2026-01-02T11:00:00Z' : variant === 'multiline' ? '2026-01-02T10:00:00Z' : '2026-01-02T12:00:00Z';
+  sql(`BEGIN; SELECT set_config('app.tenant_id','${tenant}',true);
+    DO $seed$ DECLARE r app.inventory_reservations; r2 app.inventory_reservations; oid uuid; n integer; amount bigint; BEGIN
+      FOR n IN 0..${count - 1} LOOP
+        oid:=(ARRAY[${orderIds.map(id => `'${id}'::uuid`).join(',')}])[n+1]; amount:=CASE WHEN ${long} AND n=0 THEN 9223372036854775807 ELSE 3140 END;
+        r:=app.inventory_reserve('${sku}',1,'order',oid,gen_random_uuid()::text,3600);
+        IF ${variant === 'multiline'} THEN
+          r2:=app.inventory_reserve('${sku}',1,'order',oid,gen_random_uuid()::text,3600);
+        END IF;
+        SET LOCAL ROLE app_orders_executor;
+        INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,customer_id,guest_contact,
+          currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor,created_at)
+        VALUES('${tenant}',oid,${number}::bigint+n,gen_random_uuid()::text,sha256(oid::text::bytea),
+          ${guest ? 'NULL' : `'${customer.id}'::uuid`},${guest ? `jsonb_build_object('email','${customer.email}')` : 'NULL'},
+          'USD',amount,0,0,'{}',amount,'${stamp}'::timestamptz-n*interval '1 second');
+        INSERT INTO app.order_lines(tenant_id,id,order_id,sku_id,sku,quantity,unit_price_minor,line_net_minor,
+          line_tax_minor,line_total_minor,reservation_id,tax_snapshot)
+        VALUES('${tenant}',CASE WHEN ${variant === 'multiline'} THEN 'c2500001-0000-4000-8000-00000000000${project === 'mobile' ? 2 : 1}'::uuid ELSE uuidv7() END,oid,'${sku}',CASE WHEN n=0 THEN '${code}' ELSE 'C24-CANVAS-TOTE' END,
+          1,amount,amount,0,amount,r.id,'{}');
+        IF ${variant === 'multiline'} THEN
+          INSERT INTO app.order_lines(tenant_id,id,order_id,sku_id,sku,quantity,unit_price_minor,line_net_minor,
+            line_tax_minor,line_total_minor,reservation_id,tax_snapshot)
+          VALUES('${tenant}','c2500002-0000-4000-8000-00000000000${project === 'mobile' ? 2 : 1}',oid,'${sku}','SECOND-LINE',1,0,0,0,0,r2.id,'{}');
+        END IF;
+        UPDATE app.orders SET sealed=true WHERE tenant_id='${tenant}' AND id=oid;
+        RESET ROLE;
+      END LOOP;
+    END $seed$; COMMIT;`);
+  if (guest) sql(`BEGIN; SELECT set_config('app.tenant_id','${tenant}',true); SELECT app.customer_claim_guest_orders('${customer.id}'); COMMIT;`);
+  const rows = JSON.parse(sql(`SELECT jsonb_agg(jsonb_build_object('id',id,'number',order_number::text)
+    ORDER BY created_at DESC,id DESC) FROM app.orders WHERE tenant_id='${tenant}' AND id = ANY(ARRAY[${orderIds.map(id => `'${id}'::uuid`).join(',')}]);`)) as { id: string; number: string }[];
+  expect(rows).toHaveLength(count);
+  return { rows, code };
+}
+async function historyReady(page: Page) {
+  await expect(historyPanel(page)).toHaveAttribute('aria-busy', 'false');
+  await expect(historyPanel(page)).toBeFocused();
+}
+function responseCookies(response: APIResponse) {
+  return response.headersArray().filter(header => header.name.toLowerCase() === 'set-cookie')
+    .map(header => header.value.split(';')[0]).join('; ');
+}
+async function customerHeaders(page: Page, api: string) {
+  const cookie = (await page.context().cookies(site)).find(item => item.name === '__Host-osc_customer_session');
+  if (!cookie) throw new Error('Real customer session missing');
+  const headers = { Host: '127.0.0.1', Origin: 'https://store.visual.test', Cookie: `${cookie.name}=${cookie.value}` };
+  const response = await page.request.get(`${api}${customerBackend}/session`, { headers });
+  expect(response.status()).toBe(200);
+  return { ...headers, 'X-CSRF-Token': (await response.json()).csrf_token as string };
+}
+
+test.describe('VISUAL-REAL #250', () => {
+  test.afterEach(async ({ page }) => { await control(page, 'release'); });
+
+  test('real history entry, long snapshots, multiline detail and restored keyboard focus', async ({ page }, info) => {
+    const customer = await historyCustomer(page, info.project.name, 'long');
+    const normal = historyOrders(customer, info.project.name, 8, 1, false, false, 'normal').rows[0]!;
+    await historySnapshot(page, 'account-entry');
+    await page.getByRole('link', { name: 'Order history', exact: true }).click();
+    await historyReady(page);
+    const normalOrder = page.getByRole('button', { name: `Order #${normal.number}`, exact: true });
+    await expect(normalOrder).toBeVisible();
+    await historySnapshot(page, 'history-list');
+    await normalOrder.click(); await historyReady(page);
+    await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('C24-CANVAS-TOTE');
+    await historySnapshot(page, 'history-detail');
+    const fixture = historyOrders(customer, info.project.name, 1, 1, true), row = fixture.rows[0]!;
+    await page.goto(`${site}/account/orders`); await historyReady(page);
+    const order = page.getByRole('button', { name: `Order #${row.number}`, exact: true });
+    await expect(order).toBeVisible();
+    await expect(historyPanel(page)).toContainText('$92,233,720,368,547,758.07');
+    await historySnapshot(page, 'history-long-order');
+    await fault(page, `${historyBackend}/${row.id}`, 'GET', 'hold');
+    await order.click();
+    await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(200);
+    await expect(page.getByRole('status')).toHaveText('Loading orders…');
+    await historySnapshot(page, 'history-detail-loading', true);
+    await control(page, 'release'); await historyReady(page);
+    const detail = page.getByRole('region', { name: 'Order details', exact: true });
+    await expect(detail).toContainText(fixture.code);
+    await expect(detail).toContainText('$92,233,720,368,547,758.07');
+    const line = detail.locator('.cart-line');
+    expect(await line.evaluate(element => element.scrollWidth <= element.clientWidth), 'long SKU fits its detail line').toBe(true);
+    expect(await line.evaluate(element => {
+      const range = document.createRange(); range.selectNodeContents(element.firstChild!);
+      return range.getClientRects().length;
+    }), 'long SKU wraps into multiple visible lines').toBeGreaterThan(1);
+    await historySnapshot(page, 'history-long-sku');
+    const multi = historyOrders(customer, info.project.name, 9, 1, false, false, 'multiline').rows[0]!;
+    await page.goto(`${site}/account/orders`); await historyReady(page);
+    await page.getByRole('button', { name: `Order #${multi.number}`, exact: true }).click(); await historyReady(page);
+    await expect(detail.locator('.cart-line')).toHaveCount(2);
+    await expect(detail).toContainText('C24-CANVAS-TOTE');
+    await expect(detail).toContainText('SECOND-LINE');
+    await historySnapshot(page, 'history-multiline');
+    await page.getByRole('button', { name: 'Back to orders', exact: true }).click();
+    await historyReady(page);
+    expect(await historyPanel(page).evaluate(element => element.getBoundingClientRect().top >= 0)).toBe(true);
+    await page.keyboard.press('Tab'); await expect(order).toBeFocused();
+    expect(await order.evaluate(element => Number.parseFloat(getComputedStyle(element).outlineWidth))).toBeGreaterThan(0);
+    await historySnapshot(page, 'history-focus-restored');
+  });
+
+  test('real cursor pagination, held loading, scroll focus and retry without disabled actions', async ({ page }, info) => {
+    const customer = await historyCustomer(page, info.project.name, 'pages');
+    const fixture = historyOrders(customer, info.project.name, 2, 26);
+    const listed = page.waitForResponse(response => new URL(response.url()).pathname === '/purchase/api/history');
+    await page.goto(`${site}/account/orders`); const first = await (await listed).json();
+    await historyReady(page);
+    expect(first.items).toHaveLength(25); expect(first.next_cursor).toMatch(/^[A-Za-z0-9_-]+$/);
+    await expect(historyPanel(page).getByRole('button', { name: /^Order #/ })).toHaveCount(25);
+    const next = page.getByRole('button', { name: 'Next orders', exact: true });
+    await next.focus(); await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Tab');
+    await expect(next).toBeFocused();
+    expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0);
+    await historySnapshot(page, 'history-focus-scroll', false, false);
+    await fault(page, historyBackend, 'GET', 'hold');
+    const continuation = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.pathname === '/purchase/api/history' && url.searchParams.get('cursor') === first.next_cursor;
+    });
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(200);
+    // Read-only history has no disabled mutation action. Busy removes navigation.
+    await expect(historyPanel(page).getByRole('button')).toHaveCount(0);
+    await historySnapshot(page, 'history-pagination-loading', true);
+    await control(page, 'release');
+    expect((await continuation).status()).toBe(200); await historyReady(page);
+    await expect(page.getByRole('button', { name: `Order #${fixture.rows[25]!.number}`, exact: true })).toBeVisible();
+    await expect(next).toHaveCount(0);
+    expect(await page.evaluate(() => scrollY)).toBe(0);
+    await historySnapshot(page, 'history-pagination');
+    await page.reload(); await historyReady(page);
+    await fault(page, historyBackend, 'GET', '503'); await next.click();
+    await expect(page.getByRole('alert')).toHaveText('Orders could not be loaded. Try again.');
+    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 200 });
+    await historySnapshot(page, 'history-pagination-503');
+    await control(page, 'release'); await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await historyReady(page); await expect(next).toBeEnabled();
+  });
+
+  test('real empty, held list, 503 and expired session remove private cached history', async ({ page }, info) => {
+    const customer = await historyCustomer(page, info.project.name, 'errors');
+    await fault(page, historyBackend, 'GET', 'hold'); await page.goto(`${site}/account/orders`);
+    await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(200);
+    await expect(page.getByRole('status')).toHaveText('Loading orders…');
+    await historySnapshot(page, 'history-loading', true);
+    await control(page, 'release'); await historyReady(page);
+    await expect(page.getByRole('main')).toContainText('No orders yet.');
+    await expect(historyPanel(page).locator('button:disabled')).toHaveCount(0);
+    await historySnapshot(page, 'history-empty');
+    const fixture = historyOrders(customer, info.project.name, 3);
+    await page.reload(); await historyReady(page);
+    await expect(page.getByRole('button', { name: `Order #${fixture.rows[0]!.number}`, exact: true })).toBeVisible();
+    await fault(page, historyBackend, 'GET', '503'); await page.reload();
+    await expect(page.getByRole('alert')).toHaveText('Orders could not be loaded. Try again.');
+    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 200 });
+    await historySnapshot(page, 'history-list-503'); await control(page, 'release');
+    await page.getByRole('button', { name: 'Try again', exact: true }).click(); await historyReady(page);
+    sql(`WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AS n)
+      UPDATE app.customer_sessions SET created_at=stamp.n-interval '2 hours',
+      last_seen_at=stamp.n-interval '1 hour',idle_expires_at=stamp.n-interval '1 second',
+      expires_at=stamp.n-interval '1 second' FROM stamp
+      WHERE tenant_id='${tenant}' AND customer_id='${customer.id}' AND revoked_at IS NULL;`);
+    await page.reload(); await expect(page.getByRole('alert')).toHaveText('Sign in to view your orders.');
+    await expect(historyPanel(page).getByRole('button', { name: /^Order #/ })).toHaveCount(0);
+    await historySnapshot(page, 'history-expired-session');
+    await historyLogin(page, customer.email, customer.password);
+    await page.getByRole('link', { name: 'Order history', exact: true }).click(); await historyReady(page);
+    await expect(page.getByRole('button', { name: `Order #${fixture.rows[0]!.number}`, exact: true })).toBeVisible();
+  });
+
+  test('real detail ownership 404 and forwarded 503 recover through a fresh list', async ({ page }, info) => {
+    const customer = await historyCustomer(page, info.project.name, 'ownership');
+    const fixture = historyOrders(customer, info.project.name, 4, 1, false, true), row = fixture.rows[0]!;
+    await page.goto(`${site}/account/orders`); await historyReady(page);
+    const order = page.getByRole('button', { name: `Order #${row.number}`, exact: true });
+    await expect(order).toBeVisible();
+    sql(`DELETE FROM app.customer_guest_order_links WHERE tenant_id='${tenant}' AND customer_id='${customer.id}' AND order_id='${row.id}';`);
+    const denied = page.waitForResponse(response => new URL(response.url()).pathname === `/purchase/api/history/${row.id}`);
+    await order.click(); expect((await denied).status()).toBe(404);
+    await expect(page.getByRole('alert')).toHaveText('Order not found.');
+    await expect(page.getByRole('region', { name: 'Order details', exact: true })).toHaveCount(0);
+    await historySnapshot(page, 'history-not-found');
+    sql(`BEGIN; SELECT set_config('app.tenant_id','${tenant}',true); SELECT app.customer_claim_guest_orders('${customer.id}'); COMMIT;`);
+    await page.getByRole('button', { name: 'Try again', exact: true }).click(); await historyReady(page);
+    await fault(page, `${historyBackend}/${row.id}`, 'GET', '503'); await order.click();
+    await expect(page.getByRole('alert')).toHaveText('Orders could not be loaded. Try again.');
+    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 200 });
+    await historySnapshot(page, 'history-detail-503'); await control(page, 'release');
+    await page.getByRole('button', { name: 'Try again', exact: true }).click(); await historyReady(page);
+    await order.click(); await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('$31.40');
+  });
+
+  test('real B2B approved quote and captured 27 dollar order list and detail', async ({ page, browser, playwright }, info) => {
+    const api = 'http://127.0.0.1:4184', base = `${api}/api/v1/t/${tenant}`;
+    const buyer = await historyCustomer(page, info.project.name, 'b2b-buyer');
+    const approver = await browser.newPage({ ignoreHTTPSErrors: true, viewport: page.viewportSize()! });
+    const staff = await playwright.request.newContext();
+    try {
+      const other = await historyCustomer(approver, info.project.name, 'b2b-approver'), company = randomUUID();
+      sql(`BEGIN; INSERT INTO app.buyer_companies(tenant_id,id,name) VALUES('${tenant}','${company}','Visual B2B');
+        INSERT INTO app.buyer_company_members(tenant_id,buyer_company_id,customer_id,role_code)
+        VALUES('${tenant}','${company}','${buyer.id}','purchaser'),('${tenant}','${company}','${other.id}','approver'); COMMIT;`);
+      const buyerHeaders = await customerHeaders(page, api), approverHeaders = await customerHeaders(approver, api);
+      const origin = 'https://admin.visual.test';
+      const challenge = await staff.get(`${api}/api/v1/auth/login`, { headers: { Origin: origin } });
+      expect(challenge.status()).toBe(200);
+      const login = await staff.post(`${api}/api/v1/auth/login`, {
+        headers: { Origin: origin, Cookie: responseCookies(challenge), 'X-CSRF-Token': (await challenge.json()).csrf_token },
+        data: { email: 'visual-owner@example.test', password: runtime().staffPassword },
+      });
+      expect(login.status()).toBe(201);
+      const staffHeaders = { Host: '127.0.0.1', Origin: origin, Cookie: responseCookies(login), 'X-CSRF-Token': (await login.json()).csrf_token as string };
+      // A login is global; the fixture must also confer real tenant admission.
+      expect((await staff.get(`${base}/orders?limit=1`, { headers: staffHeaders })).status()).toBe(200);
+      const inquiry = await page.request.post(`${api}/api/public/v1/inquiries`, { headers: { Host: '127.0.0.1' },
+        data: { buyer_email: buyer.email, buyer_name: 'Visual B2B', message: 'Negotiated mugs', quantity: 2,
+          product_id: 'c0900007-0000-4000-8000-000000000002' } });
+      expect(inquiry.status()).toBe(202);
+      const quoteResponse = await staff.post(`${base}/quotes`, {
+        headers: { ...staffHeaders, 'If-Match': '*', 'Idempotency-Key': randomUUID() }, data: {
+          site_id: 'c0900003-0000-4000-8000-000000000001', inquiry_id: (await inquiry.json()).id,
+          company_id: company, currency: 'USD', expires_at: sql(`SELECT to_char((clock_timestamp()+interval '1 day') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"');`),
+          lines: [{ product_id: 'c0900007-0000-4000-8000-000000000002', variant_id: 'c2400008-0000-4000-8000-000000000002',
+            description: 'Negotiated ceramic mugs', quantity: 2, unit_price: 1000, tax_category: 'standard' }],
+          destination: { country: 'US', subdivision: '' }, shipping_profile_id: 'c2400014-0000-4000-8000-000000000001', weight_g: 200,
+        },
+      });
+      expect(quoteResponse.status()).toBe(201); const quote = await quoteResponse.json();
+      expect(quote).toMatchObject({ status: 'draft', snapshot: { total: 2700 } });
+      const seller = `${base}/quotes/${quote.id}`, publicQuote = `${api}/api/public/v1/quotes/${quote.id}`;
+      const sent = await staff.post(`${seller}/send`, { data: {}, headers: { ...staffHeaders, 'If-Match': quoteResponse.headers().etag!, 'Idempotency-Key': randomUUID() } });
+      expect(sent.status()).toBe(200);
+      const accepted = await page.request.post(`${publicQuote}/accept`, { data: {}, headers: { ...buyerHeaders, 'If-Match': sent.headers().etag!, 'Idempotency-Key': randomUUID() } });
+      expect(accepted.status()).toBe(200); expect((await accepted.json()).status).toBe('accepted_pending_approval');
+      const approved = await approver.request.post(`${publicQuote}/approve`, { data: {}, headers: { ...approverHeaders, 'If-Match': accepted.headers().etag!, 'Idempotency-Key': randomUUID() } });
+      expect(approved.status()).toBe(200); expect((await approved.json()).status).toBe('approved');
+      const converted = await page.request.post(`${seller}/orders`, { data: {}, headers: { ...buyerHeaders, 'Idempotency-Key': randomUUID() } });
+      expect(converted.status()).toBe(201); const receipt = await converted.json();
+      expect(receipt).toMatchObject({ amount: '2700', currency: 'USD', state: 'pending_payment' });
+      expect(receipt.order_id).toMatch(/^[0-9a-f-]{36}$/);
+      const payable = await staff.get(`${base}/orders/${receipt.order_id}`, { headers: staffHeaders });
+      expect(payable.status()).toBe(200);
+      const event = { event_id: `visual-250:${info.project.name}:captured`, account_id: 'c09d-e2e', order_id: receipt.order_id,
+        order_version: Number((await payable.json()).version), provider_ref: receipt.provider_ref, status: 'captured', amount_minor: 2700, currency: 'USD' };
+      const raw = JSON.stringify(event), stamp = sql('SELECT floor(extract(epoch FROM clock_timestamp()))::bigint;');
+      const signature = `t=${stamp},v1=${createHmac('sha256', Buffer.from(runtime().fakeWebhookKey, 'base64url')).update(`${stamp}.${raw}`).digest('hex')}`;
+      const captured = await page.request.post(`${api}/api/v1/testing/payments/fake/webhook`, { data: raw, headers: { 'Content-Type': 'application/json', 'X-Fake-Signature': signature } });
+      expect(captured.status()).toBe(200); expect(await captured.json()).toMatchObject({ status: 'processed' });
+      expect(sql(`SELECT count(*) FROM app.quote_conversions c JOIN app.orders o ON (o.tenant_id,o.id)=(c.tenant_id,c.order_id)
+        WHERE c.tenant_id='${tenant}' AND c.order_id='${receipt.order_id}' AND c.customer_id='${buyer.id}' AND o.state='paid' AND o.total_minor=2700;`)).toBe('1');
+      const foreign = await approver.request.get(`${base}/customer/orders/${receipt.order_id}`, { headers: approverHeaders });
+      expect(foreign.status()).toBe(404);
+      await page.goto(`${site}/account/orders`); await historyReady(page);
+      await expect(historyPanel(page)).toContainText('$27.00'); await expect(historyPanel(page)).toContainText('paid');
+      const persisted = await page.request.get(`${base}/customer/orders/${receipt.order_id}`, { headers: buyerHeaders });
+      expect(persisted.status()).toBe(200);
+      const createdAt = (await persisted.json()).order.created_at as string;
+      const order = page.getByRole('button', { name: `Order #${receipt.order_number}`, exact: true });
+      const row = historyPanel(page).locator('li.cart-line').filter({ has: order });
+      const date = row.locator('time');
+      await expect(row.locator('.cart-line-heading p')).toHaveText('$27.00');
+      await expect(date.locator('..')).toContainText('paid');
+      await expect(date).toHaveCount(1);
+      await expect(date).toHaveAttribute('datetime', createdAt);
+      await expect(date).toHaveText(/^(?:[1-9]|1[0-2])\/(?:[1-9]|[12][0-9]|3[01])\/\d{4}$/);
+      await expect(date).toHaveText(new Date(createdAt).toLocaleDateString('en-US', { timeZone: 'UTC' }));
+      // Exercise a different calendar date without changing the real backend fact.
+      await page.evaluate(async () => { await document.fonts.ready; });
+      // Proportional date glyphs change the mask's width. Matching the actual
+      // flat canvas keeps that rectangle's edge from becoming a date-shaped signal.
+      const maskColor = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
+      const original = await date.innerText();
+      const beforeBox = await date.boundingBox();
+      const amountBox = await row.locator('.cart-line-heading p').boundingBox();
+      const statusBox = await date.locator('..').evaluate(element => {
+        const range = document.createRange(); range.selectNodeContents(element.firstChild!);
+        const r = range.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
+      });
+      if (!beforeBox || !amountBox) throw new Error('Missing date mask geometry');
+      const maskBox = async (locator: Locator) => {
+        const box = await locator.boundingBox();
+        if (!box) throw new Error('Missing date mask geometry');
+        return box;
+      };
+      const dateMasks = [date];
+      // The adversarial candidate spans the whole row; it must be rejected.
+      const awaitedRowBox = await maskBox(row);
+      expect(() => assertDateMaskBounds(awaitedRowBox, beforeBox, [statusBox, amountBox])).toThrow('Date mask extends outside time element');
+      assertDateMaskBounds(await maskBox(dateMasks[0]), beforeBox, [statusBox, amountBox]);
+      const before = await page.screenshot({ fullPage: true, mask: dateMasks, maskColor });
+      await date.evaluate(node => { node.textContent = '12/31/2099'; });
+      const afterBox = await date.boundingBox();
+      if (!afterBox) throw new Error('Missing shifted date mask geometry');
+      assertDateMaskBounds(await maskBox(dateMasks[0]), afterBox, [statusBox, amountBox]);
+      const after = await page.screenshot({ fullPage: true, mask: dateMasks, maskColor });
+      await date.evaluate((node, value) => { node.textContent = value; }, original);
+      console.info('VISUAL runtime date mask geometry', { beforeBox, afterBox, maskColor });
+      if (!after.equals(before)) {
+        // This page contains only the owned synthetic order, never credentials.
+        await info.attach('runtime-date-before', { body: before, contentType: 'image/png' });
+        await info.attach('runtime-date-shifted', { body: after, contentType: 'image/png' });
+      }
+      expect(after.equals(before), 'date change must not alter screenshot pixels').toBe(true);
+      assertDateMaskBounds(await maskBox(dateMasks[0]), await maskBox(date), [statusBox, amountBox]);
+      await historySnapshot(page, 'b2b-paid-list', false, true, dateMasks, maskColor);
+      await order.click(); await historyReady(page);
+      await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('$27.00');
+      await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('paid');
+      // The shipped detail has no date element; its entire image stays compared.
+      await expect(historyPanel(page).locator('time')).toHaveCount(0);
+      await historySnapshot(page, 'b2b-paid-detail');
+    } finally { await approver.close(); await staff.dispose(); }
+  });
+});
 
 test.describe('VISUAL-REAL #235', () => {
   test('notification sink rejects missing authority and malformed reads', async ({ page }) => {

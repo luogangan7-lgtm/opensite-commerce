@@ -115,8 +115,21 @@ def main():
         spawn([str(owned / 'api')], env)
         wait('http://127.0.0.1:4180/healthz', 204)
         purchase.publish(query, {}, 'http://127.0.0.1:4180')
+        # publish() revokes its temporary issuer membership in finally. B2B's
+        # separately authorized test staff identity needs its own tenant binding.
+        query(f"INSERT INTO app.tenant_memberships(tenant_id,user_id,role) SELECT '{purchase.TENANT}',id,'owner' FROM app.users WHERE email='visual-owner@example.test';")
+        # Reuse the existing MVP B2B opt-in composition on the same owned DB.
+        # Its existing-order checkout must not replace the cart checkout above.
+        b2b = {**env, 'OSC_API_ADDR': '127.0.0.1:4184', 'OPENSITE_STOREFRONT_KEY': '',
+               'OPENSITE_CHECKOUT_FAKE_ENABLED': 'true',
+               'OPENSITE_CHECKOUT_FAKE_SIGNING_KEY': env['OPENSITE_FAKE_WEBHOOK_KEY'],
+               'OPENSITE_SERVING_REFRESH_TENANTS': ''}
+        spawn([str(owned / 'api')], b2b)
+        wait('http://127.0.0.1:4184/healthz', 204)
         query(f"SELECT set_config('app.tenant_id','{purchase.TENANT}',false); SELECT app.inventory_adjust('{purchase.SKU}',1000,'Visual CI stock','c4490001-0000-4000-8000-000000000001','inbound');")
-        runtime = {'pg': pg, 'cookieKey': secrets.token_urlsafe(32), 'control': secrets.token_urlsafe(32)}
+        runtime = {'pg': pg, 'cookieKey': secrets.token_urlsafe(32), 'control': secrets.token_urlsafe(32),
+                   'staffPassword': boot_env['OSC_BOOTSTRAP_PASSWORD'],
+                   'fakeWebhookKey': env['OPENSITE_FAKE_WEBHOOK_KEY']}
         runtime_path = owned / 'runtime.json'
         runtime_path.write_text(json.dumps(runtime))
         runtime_path.chmod(0o600)

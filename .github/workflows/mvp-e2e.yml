@@ -1,4 +1,4 @@
-# Responsibility: nonrequired CI-only full-stack MVP browser acceptance.
+# Responsibility: required CI-only full-stack MVP browser acceptance.
 # Dependencies: existing frozen Bun dependencies and pinned operations images.
 # Invariants: genuine failure stays red; isolated stack cleanup and evidence on every exit.
 name: mvp-e2e
