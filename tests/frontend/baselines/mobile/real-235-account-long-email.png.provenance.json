@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "mobile/real-235-account-long-email.png",
   "scope": "real-backend",
-  "sourceFingerprint": "218c095d16aeea01731e2d7863b4d52163528ea748aaeed6c2fd382280fccfc1",
+  "sourceFingerprint": "0a8a2e4583a3af51c624b0728ba5d98ef32bcbc3058a3f4ee017f0343af5bee6",
   "pngSha256": "978098631d66de54d90fffbea9ac321140fc17833a3b0e372babc49801c22388",
   "scopeSnapshots": [
     "desktop/real-213-checkout-ambiguous-failure.png",
@@ -76,8 +76,8 @@
     "mobile/real-235-verification-success.png",
     "mobile/real-235-verification-valid-proof.png"
   ],
-  "sourceSha": "ce13b54d1268ac932ae71f3d91f01d51984395b0",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40676457601",
+  "sourceSha": "b5694f4bec1f0a283142d120b334201b88180e73",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40678060443",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
