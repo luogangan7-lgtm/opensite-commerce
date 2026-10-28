@@ -2,6 +2,11 @@
  * The issue inventory is explicit: deleting a screenshot call cannot silently pass.
  */
 export const REAL_VISUAL_STATES = {
+  250: ['account-entry', 'history-list', 'history-detail', 'history-long-order', 'history-long-sku',
+    'history-multiline', 'history-loading', 'history-detail-loading', 'history-empty',
+    'history-expired-session', 'history-not-found', 'history-list-503', 'history-detail-503',
+    'history-pagination', 'history-pagination-loading', 'history-pagination-503',
+    'history-focus-restored', 'history-focus-scroll', 'b2b-paid-list', 'b2b-paid-detail'],
   235: ['account-guest', 'account-signed-in', 'account-registration-notice', 'account-validation-errors',
     'account-in-flight', 'account-disabled', 'account-request-failure', 'account-long-email', 'account-long-help',
     'verification-no-proof', 'verification-invalid-proof', 'verification-valid-proof', 'verification-enabled',
@@ -20,6 +25,17 @@ export function realVisualPaths() {
 }
 
 export function realBackendEvidence(snapshot: string) {
+  const history = /^real-250-(.+)\.png$/.exec(snapshot.split('/').at(-1) ?? '')?.[1];
+  if (history) return { application: 'Go', database: 'PostgreSQL 18.6', mode: 'test',
+    seed: history.startsWith('b2b-')
+      ? 'real registration, inquiry, quote, separate approver, conversion and signed Fake payment HTTP flow'
+      : 'real registration/session and constrained owned historical order fixtures; all DB guards remain enabled',
+    fault: history.endsWith('-loading') ? 'proxy holds a completed real Go customer orders GET response'
+      : history.endsWith('-503') ? 'proxy substitutes HTTP 503 after forwarding real Go customer orders GET'
+      : 'none',
+    boundary: history === 'history-expired-session' ? 'owned real session expires against DB clock; backend rejects it'
+      : history === 'history-not-found' ? 'owned guest-order link removed; real backend ownership predicate returns 404'
+      : 'read-only history: disabled action N/A; busy navigation is absent; bigint order number and SKU <=255 characters' };
   const account = /^real-235-(.+)\.png$/.exec(snapshot.split('/').at(-1) ?? '')?.[1];
   if (account) return { application: 'Go', database: 'PostgreSQL 18.6', mode: 'test',
     seed: 'real registration and loopback SMTP notification sink; backend-issued single-use proof',
