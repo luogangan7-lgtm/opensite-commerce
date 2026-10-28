@@ -634,7 +634,7 @@ func (s *Service) finish(ctx context.Context, actor contract.AuthorizedActor, te
 			return contract.ErrConflict
 		}
 		if terminal == "paid" {
-			posting, e := factJournal(ctx, q, current, event.EventID)
+			posting, e := factJournal(ctx, q, current, current.ClaimKey.String)
 			if e != nil {
 				return e
 			}
