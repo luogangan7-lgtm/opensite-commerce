@@ -1649,6 +1649,12 @@ BEGIN
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
   OR EXISTS(SELECT FROM pg_auth_members WHERE roleid=r.oid OR member=r.oid)
   OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'MDEL01_UNSAFE_EXECUTOR'; END IF;
+ IF NOT EXISTS(SELECT FROM pg_policy WHERE polrelid='app.tenant_memberships'::regclass
+  AND polname='lifecycle_membership_read' AND polcmd='r' AND polpermissive
+  AND polroles=ARRAY[r.oid] AND polwithcheck IS NULL
+  AND pg_get_expr(polqual,polrelid)=(SELECT pg_get_expr(p.polqual,p.polrelid) FROM pg_policy p
+   WHERE p.polrelid='app.tenant_lifecycles'::regclass AND p.polname='tenant_scope')) THEN
+  RAISE EXCEPTION 'MDEL01_MEMBERSHIP_READ_POLICY'; END IF;
  IF (SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND starts_with(proname,'tenant_lifecycle_'))<>cardinality(names) THEN
   RAISE EXCEPTION 'MDEL01_ROUTINE_INVENTORY'; END IF;
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names) LOOP

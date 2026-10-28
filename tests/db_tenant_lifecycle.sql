@@ -127,6 +127,22 @@ BEGIN
   RAISE EXCEPTION 'MDEL01_REVOKED_REPLAY_ACCEPTED';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $test$;
+-- Empty-tenant cleanup is compatible; recorded lifecycle history is not lost
+-- through that cascade (no membership/business FK can mask this witness).
+DO $root_fk$
+DECLARE fresh uuid; recorded uuid;
+BEGIN
+ INSERT INTO app.tenants(name) VALUES('mdel01-empty') RETURNING id INTO fresh;
+ DELETE FROM app.tenants WHERE id=fresh;
+ IF EXISTS(SELECT FROM app.tenant_lifecycles WHERE tenant_id=fresh) THEN RAISE EXCEPTION 'MDEL01_EMPTY_ROOT_ORPHAN'; END IF;
+ INSERT INTO app.tenants(name) VALUES('mdel01-recorded') RETURNING id INTO recorded;
+ INSERT INTO app.tenant_lifecycle_events(tenant_id,lifecycle_id,request_id,epoch,state,phase)
+  VALUES(recorded,recorded,uuidv7(),1,'requested','none');
+ BEGIN
+  DELETE FROM app.tenants WHERE id=recorded;
+  RAISE EXCEPTION 'MDEL01_RECORDED_ROOT_REMOVED';
+ EXCEPTION WHEN foreign_key_violation THEN NULL; END;
+END $root_fk$;
 -- Runtime has read-only status, no transitions or drain capability. Empty and
 -- missing GUC returns zero rows; explicitly naming another tenant never helps.
 SET LOCAL ROLE app_runtime;
