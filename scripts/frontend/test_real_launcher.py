@@ -31,7 +31,7 @@ class LauncherCleanup(unittest.TestCase):
             if argv[0] == 'psql':
                 statement = kwargs['input']
                 statements.append(statement)
-                if statement.startswith('DROP DATABASE'):
+                if statement.startswith('DROP DATABASE') or statement == 'DROP ROLE visual_cleanup_one;':
                     return subprocess.CompletedProcess(argv, 1, '', '')
                 return subprocess.CompletedProcess(argv, 0, '0\n', '')
             if argv[:3] == ['go', 'run', './cmd/bootstrap-admin']:
@@ -53,8 +53,13 @@ class LauncherCleanup(unittest.TestCase):
                  patch.object(launcher.urllib.request, 'urlopen') as ready, \
                  patch.object(launcher.subprocess, 'run', side_effect=command):
                 ready.return_value.__enter__.return_value.status = 204
-                with self.assertRaisesRegex(RuntimeError, 'cleanup'):
+                with self.assertRaisesRegex(RuntimeError, 'cleanup') as caught:
                     launcher.main()
+            self.assertIn('drop database', str(caught.exception))
+            self.assertIn('drop role visual_cleanup_one', str(caught.exception))
+            self.assertIn('REVOKE CONNECT ON DATABASE ' + next(
+                s.split()[2] for s in statements if s.startswith('CREATE DATABASE')) +
+                ' FROM visual_cleanup_two;', statements)
             self.assertIn('DROP ROLE visual_bootstrap;', statements)
             self.assertIn('DROP ROLE visual_cleanup_one;', statements)
             self.assertIn('DROP ROLE visual_cleanup_two;', statements)

@@ -77,7 +77,7 @@ test('VISUAL-REAL provenance identifies injected faults and unreachable boundary
 test('VISUAL-REAL proxy and launcher match the reviewed no-DTO sources', () => {
   const approved: Record<string, string> = {
     'scripts/frontend/real-proxy.ts': '76076331f022df650544b3a465952ef9b19cd78101a6e3c861b073d338b67189',
-    'scripts/frontend/start-real-backend.py': 'f28929e06059ce0f540dee2c2c5e827f07b95ed43592994d9f3fbfe688c0e28e',
+    'scripts/frontend/start-real-backend.py': 'ad31ab875e5ce8500bacb8d728f4f2d1b41d09c30a0876bcc3369c15262aa6f2',
   };
   for (const [path, digest] of Object.entries(approved)) expect(sha256(path), path).toBe(digest);
 });
