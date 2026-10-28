@@ -88,6 +88,19 @@ def assert_contract(registry, source):
     assert deletion['x-opensite-access'] == 'AdminSession'
     assert deletion['security'] == [{'adminSession': []}]
     assert deletion['x-required-scope'] == 'tenant:delete'
+    assert deletion['responses']['202'].get('content', {}).get('application/json', {}).get('schema') == {'$ref': '#/components/schemas/MerchantDeletionMetadata'}
+    metadata = components['schemas']['MerchantDeletionMetadata']
+    fields = {'request_id', 'state', 'phase', 'epoch', 'requested_at', 'execute_after', 'attempt', 'next_retry_at', 'categories'}
+    assert metadata['type'] == 'object' and metadata['additionalProperties'] is False
+    assert set(metadata['properties']) == fields and set(metadata['required']) == fields, 'MDEL01 metadata is a closed non-PII allowlist'
+    assert metadata['properties']['request_id'] == {'type': 'string', 'format': 'uuid'}
+    assert metadata['properties']['state']['enum'] == ['active', 'cooling_off', 'executing', 'failed', 'deleted']
+    assert metadata['properties']['execute_after'] == {'type': 'string', 'format': 'date-time', 'maxLength': 40}
+    counts = metadata['properties']['categories']
+    assert counts['type'] == 'object' and counts['additionalProperties'] is False and counts['maxProperties'] == 8
+    assert set(counts['properties']) == {'paid_unfulfilled', 'fulfillment_return', 'payment_refund', 'checkout_capture', 'refund_reconciliation', 'pending_payout', 'unsettled_provider_balance', 'legal_hold'}
+    for count in counts['properties'].values():
+        assert count == {'type': 'integer', 'format': 'int64', 'minimum': 0, 'maximum': 999999999999999999}, 'MDEL01 bounded category counts'
     for key, operation in KEY_OPERATIONS.items():
         body = blocks[key]
         assert body['operationId'] == operation and body['x-opensite-status'] == 'implemented', key
@@ -154,10 +167,17 @@ api = yaml.safe_load(source)
 for fault in ['anonymous session', 'login CSRF removed', 'planned status changed', 'actual status changed',
               'bearer key management', 'key CSRF removed', 'unknown scope', 'unknown staff route scope',
               'secret in list', 'secret replay', 'stale buyer exception', 'buyer scope on staff route',
-              'module scope missing', 'module operation missing']:
+              'module scope missing', 'module operation missing',
+              'merchant metadata missing', 'merchant contact field', 'merchant unbounded counts']:
     bad_api = copy.deepcopy(api)
     bad_registry = copy.deepcopy(registry)
-    if fault == 'anonymous session':
+    if fault == 'merchant metadata missing':
+        del bad_api['paths']['/api/v1/t/{tenant_id}/merchant-deletion']['post']['responses']['202']['content']
+    elif fault == 'merchant contact field':
+        bad_api['components']['schemas']['MerchantDeletionMetadata']['properties']['contact'] = {'type': 'string'}
+    elif fault == 'merchant unbounded counts':
+        del bad_api['components']['schemas']['MerchantDeletionMetadata']['properties']['categories']['properties']['pending_payout']['maximum']
+    elif fault == 'anonymous session':
         bad_api['paths']['/api/v1/auth/session']['get']['security'] = []
     elif fault == 'login CSRF removed':
         bad_api['paths']['/api/v1/auth/login']['post']['parameters'] = []

@@ -98,6 +98,14 @@ BEGIN
  IF r->>'state'<>'failed' OR r->>'phase'<>'preconditions' THEN RAISE EXCEPTION 'MDEL01_EXECUTION_BLOCKER_ERASE_STARTED'; END IF;
  SELECT * INTO STRICT row_value FROM app.tenant_lifecycles WHERE tenant_id=t;
  IF row_value.next_retry_at IS NULL OR row_value.execute_after>clock_timestamp() THEN RAISE EXCEPTION 'MDEL01_FAILURE_RESTARTED_COOLING'; END IF;
+ BEGIN
+  PERFORM app.tenant_lifecycle_transition(t,req,actor,sess,'execute',NULL,NULL,row_value.epoch,zeroes);
+  RAISE EXCEPTION 'MDEL01_PRECONDITION_RETRY_TOO_EARLY';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ IF EXISTS(SELECT FROM app.tenant_lifecycles l WHERE l.tenant_id=t AND
+  (l.epoch<>row_value.epoch OR l.attempt<>row_value.attempt OR l.next_retry_at<>row_value.next_retry_at)) THEN
+  RAISE EXCEPTION 'MDEL01_EARLY_RETRY_CHANGED_STATE'; END IF;
+ UPDATE app.tenant_lifecycles SET next_retry_at=clock_timestamp() WHERE tenant_id=t;
  r:=app.tenant_lifecycle_transition(t,req,actor,sess,'execute',NULL,NULL,row_value.epoch,zeroes);
  IF r->>'state'<>'executing' THEN RAISE EXCEPTION 'MDEL01_RETRY_NOT_EXECUTING'; END IF;
  BEGIN
@@ -111,6 +119,11 @@ BEGIN
   PERFORM app.tenant_lifecycle_transition(t,req,actor,sess,'cancel',uuidv7(),sha256('cancel'::bytea),epoch,zeroes);
   RAISE EXCEPTION 'MDEL01_DESTRUCTIVE_FAILURE_CANCEL';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ BEGIN
+  PERFORM app.tenant_lifecycle_transition(t,req,actor,sess,'execute',NULL,NULL,epoch,zeroes);
+  RAISE EXCEPTION 'MDEL01_EXECUTION_RETRY_TOO_EARLY';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
+ UPDATE app.tenant_lifecycles SET next_retry_at=clock_timestamp() WHERE tenant_id=t;
  r:=app.tenant_lifecycle_transition(t,req,actor,sess,'execute',NULL,NULL,epoch,zeroes);
  IF r->>'state'<>'executing' OR (r->>'execute_after')::timestamptz<>row_value.execute_after THEN
   RAISE EXCEPTION 'MDEL01_RETRY_RESTARTED_DEADLINE'; END IF;
