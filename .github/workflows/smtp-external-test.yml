@@ -27,7 +27,8 @@ jobs:
         env:
           APP_ENV: test
           ENVIRONMENT: test
-          SMTP_TEST_HOST: smtp.qq.com
+          SMTP_TEST_HOST: ${{ secrets.SMTP_TEST_HOST }}
+          SMTP_TEST_PORT: ${{ secrets.SMTP_TEST_PORT }}
           SMTP_TEST_FROM: ${{ secrets.SMTP_TEST_USER }}
           SMTP_TEST_USER: ${{ secrets.SMTP_TEST_USER }}
           SMTP_TEST_AUTH_CODE: ${{ secrets.SMTP_TEST_AUTH_CODE }}

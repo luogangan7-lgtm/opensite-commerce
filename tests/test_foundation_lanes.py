@@ -7,12 +7,16 @@ import json
 import re
 import subprocess
 import tempfile
+import sys
 from unittest.mock import patch
 import unittest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 LANES = {'go', 'offline', 'pg', 'pgx', 'sqlc'}
+sys.path.insert(0, str(ROOT / 'scripts'))
+from check_modules import go_imports
+
 
 # A wall-clock bound is a numeric literal or a variable holding one; `sudo` may
 # sit between `timeout` and the command (literal or the SUDO=(sudo) array).
@@ -52,20 +56,71 @@ class FoundationLanes(unittest.TestCase):
         self.assertEqual(job['if'], "github.ref == 'refs/heads/main'")
         self.assertLessEqual(job['timeout-minutes'], 5)
         consumer = job['steps'][-1]
-        self.assertEqual(consumer['env']['SMTP_TEST_HOST'], '${{ secrets.SMTP_TEST_HOST }}')
-        self.assertEqual(consumer['env']['SMTP_TEST_PORT'], '${{ secrets.SMTP_TEST_PORT }}')
+        self.assertEqual(consumer['run'], '\"$RUNNER_TEMP/smtp-external-test\"')
+        expected = {'SMTP_TEST_HOST', 'SMTP_TEST_PORT', 'SMTP_TEST_FROM',
+                    'SMTP_TEST_USER', 'SMTP_TEST_AUTH_CODE', 'SMTP_TEST_TO'}
+        self.assertEqual(set(consumer['env']), expected | {'APP_ENV', 'ENVIRONMENT'})
+        self.assertEqual(consumer['env']['APP_ENV'], 'test')
+        self.assertEqual(consumer['env']['ENVIRONMENT'], 'test')
+        for key in expected:
+            secret = 'SMTP_TEST_USER' if key == 'SMTP_TEST_FROM' else key
+            self.assertRegex(consumer['env'][key],
+                             r"^\$\{\{\s*secrets(?:\." + secret +
+                             r"|\[\s*'" + secret + r"'\s*\]|\[\s*\"" + secret +
+                             r"\"\s*\])\s*\}\}$")
+        # Exempt a single structural path, not object identity: YAML aliases may
+        # reuse the same mapping in another step and must still be rejected.
+        consumer_env = ('jobs', 'smtp-test', 'steps', len(job['steps']) - 1, 'env')
+        def reject_test_references(value, location=(), permitted=None):
+            if location == permitted:
+                return
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    reject_test_references(key, location, permitted)
+                    reject_test_references(item, location + (key,), permitted)
+            elif isinstance(value, list):
+                for index, item in enumerate(value):
+                    reject_test_references(item, location + (index,), permitted)
+            elif isinstance(value, str):
+                self.assertIsNone(re.search(r'SMTP_TEST_', value, re.I),
+                                  'SMTP_EXTERNAL_SECRET_ISOLATION')
+        reject_test_references(document, permitted=consumer_env)
         for other in (ROOT / '.github/workflows').glob('*'):
             if other != path and other.suffix in ('.yml', '.yaml'):
-                self.assertNotIn('SMTP_TEST_', other.read_text(), 'SMTP_EXTERNAL_SECRET_ISOLATION')
+                reject_test_references(yaml.safe_load(other.read_text()))
 
     def test_production_never_composes_external_smtp(self):
-        for folder in ('cmd', 'internal/bootstrap'):
-            for source in (ROOT / folder).rglob('*.go'):
-                if source.name.endswith('_test.go') or 'smtp-external-test' in source.parts:
+        symbol = 'ExternalTestSenderFromEnv'
+        constructors = {
+            Path('internal/modules/notifications/module.go'),
+            Path('internal/modules/notifications/internal/service/smtp_external.go'),
+        }
+        for source in ROOT.rglob('*.go'):
+            relative = source.relative_to(ROOT)
+            if source.name.endswith('_test.go') or any(
+                    part in {'.git', 'node_modules', '.orchestrator', '.worktrees', '.work'}
+                    for part in relative.parts):
+                continue
+            tokens, _ = go_imports(source.read_text())
+            cursor = 0
+            while cursor < len(tokens):
+                # Exempt named constructor declarations, never their entire file.
+                # The isolated smoke command is the sole permitted caller.
+                allowed = ((relative in constructors and tokens[cursor:cursor + 2] == ['func', symbol]) or
+                           (relative == Path('cmd/smtp-external-test/main.go') and
+                            tokens[cursor:cursor + 2] == ['func', 'run']))
+                if allowed:
+                    while cursor < len(tokens) and tokens[cursor] != '{':
+                        cursor += 1
+                    depth = 1
+                    cursor += 1
+                    while cursor < len(tokens) and depth:
+                        depth += {'{': 1, '}': -1}.get(tokens[cursor], 0)
+                        cursor += 1
+                    self.assertEqual(depth, 0, 'SMTP_EXTERNAL_CONSTRUCTOR_INVALID')
                     continue
-                self.assertNotIn('ExternalTestSenderFromEnv', source.read_text(),
-                                 'SMTP_EXTERNAL_PRODUCTION_WIRING')
-
+                self.assertNotEqual(tokens[cursor], symbol, 'SMTP_EXTERNAL_PRODUCTION_WIRING: ' + str(relative))
+                cursor += 1
 
     def smtp_workflow_fixture(self, root):
         path = root / '.github/workflows/smtp-external-test.yml'
@@ -117,6 +172,15 @@ class FoundationLanes(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             path, document = self.smtp_workflow_fixture(root)
+            steps = document['jobs']['smtp-test']['steps']
+            # safe_dump retains this shared mapping as a YAML anchor/alias.
+            steps.insert(-1, {'env': steps[-1]['env'], 'run': 'echo "$SMTP_TEST_USER"'})
+            path.write_text(yaml.safe_dump(document))
+            with patch.dict(globals(), ROOT=root), self.assertRaises(AssertionError):
+                self.test_external_smtp_workflow_is_owner_gated()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path, document = self.smtp_workflow_fixture(root)
             # Positive control: bracket references are legal in the sole env consumer.
             for key in document['jobs']['smtp-test']['steps'][-1]['env']:
                 if key.startswith('SMTP_TEST_'):
@@ -131,7 +195,8 @@ class FoundationLanes(unittest.TestCase):
                  'internal/bootstrap/leak.go', 'internal/modules/notifications/leak.go',
                  'internal/modules/notifications/module.go',
                  'internal/modules/notifications/internal/service/smtp_external.go',
-                 'internal/other/leak.go', 'new-package/leak.go')
+                 'internal/other/leak.go', 'new-package/leak.go',
+                 'cmd/smtp-external-test/main.go')
         for relative in paths:
             for use in ('notifications.ExternalTestSenderFromEnv(nil)',
                         'factory := notifications.ExternalTestSenderFromEnv; _ = factory'):

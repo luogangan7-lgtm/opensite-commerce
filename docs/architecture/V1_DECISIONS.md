@@ -1120,11 +1120,17 @@ PR-17 必须通过真实 Stripe 沙箱流程，不能以 Fake Provider 的结果
 
 ### External SMTP test sender (owner-gated, nonproduction)
 
-Owner decision (2026-10-26, SMTP-EXT-TEST): “外部邮件发送服务如果是测试的话使用那个什么qq的接入先进行测试”. This approves only an isolated QQ Mail smoke test;
+Owner decision (2026-10-26, SMTP-EXT-TEST): “外部邮件发送服务如果是测试的话使用那个什么qq的接入先进行测试”. This approves only an isolated external SMTP smoke test;
 production external sending remains disabled and requires a later provider decision.
 `MERCHANT_DELETION.md` §4's production sender prerequisite remains in force.
 
-The separate test transport pins configured host `smtp.qq.com` and port 465,
+Continuation decision (2026-10-26): QQ rejects GitHub runner US-IP logins, so
+**Spacemail is the test relay**. Environment `smtp-test` supplies `SMTP_TEST_HOST`
+and `SMTP_TEST_PORT`. The fixed code allowlist accepts only `smtp.qq.com` or
+`mail.spacemail.com`, with port exactly `465`; any other host/port is refused
+before dialing. This is a test relay decision, not a production provider decision.
+
+The separate test transport uses the validated configured host and port 465,
 uses implicit TLS with ServerName verification, system trust roots and TLS >=1.2,
 and authenticates only after TLS succeeds. `APP_ENV` or `ENVIRONMENT=production`
 is refused. From must equal the authenticated full mailbox. Every envelope
@@ -1136,10 +1142,12 @@ investigation and never an automatic retry. There are no database writes.
 
 Only `.github/workflows/smtp-external-test.yml` may read the test secrets. It is
 manual-dispatch only, main-only, read-only token, protected Environment `smtp-test`.
-The owner enables SMTP in QQ Mail settings, generates an SMTP **授权码** (not the
-account password), configures required owner approval and main-only deployment
-branches for that Environment, and adds secrets `SMTP_TEST_USER` (full mailbox),
-`SMTP_TEST_AUTH_CODE`, `SMTP_TEST_TO` (one explicitly approved test mailbox).
+The owner configures the Spacemail test mailbox SMTP credential, required owner
+approval and main-only deployment branches for that Environment, and adds secrets
+`SMTP_TEST_HOST=mail.spacemail.com`, `SMTP_TEST_PORT=465`, `SMTP_TEST_USER` (full
+mailbox), `SMTP_TEST_AUTH_CODE` (SMTP credential), and `SMTP_TEST_TO` (one explicitly
+approved test mailbox). QQ remains code-allowlisted for an owner-controlled test;
+when using QQ the SMTP credential is its **授权码**, not the account password.
 The adapter supports a comma-separated allowlist; the smoke command deliberately
 requires one recipient so it sends exactly eight messages per authorized run:
 customer verification/reset and all six current order/quote template kinds.
@@ -1153,7 +1161,10 @@ Acceptance: GitHub CI offline tests use an injected test CA and loopback TLS pee
 to exercise allowlist-before-dial, host/From/production rejection, implicit TLS
 and certificate failure, safe canary errors, bounded cancellation, MIME reuse,
 and ambiguous DATA with one attempt. Foundation offline gates enforce dispatch,
-Environment, main-only and secret/workflow isolation plus production composition.
+Environment, main-only and secret/workflow isolation (dot and both bracket
+secret spellings, env indirection, every workflow/job/step scope, exactly one
+env-only consumer) plus production composition across all production Go files,
+including cmd; only named constructor declarations are exempt from that scan.
 Tests-first RED then implementation GREEN and temporary draft mutation probes
 must be recorded in the PR. No implementer may dispatch this workflow or connect
-to QQ SMTP. Real delivery remains **NOT_RUN** until owner approval and execution.
+to a real SMTP server. Real delivery remains **NOT_RUN** until owner approval and execution.

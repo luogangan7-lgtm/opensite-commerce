@@ -11,7 +11,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications/contract"
 )
 
-type smtpTestCapture struct { messages []contract.Message }
+type smtpTestCapture struct{ messages []contract.Message }
 
 func (s *smtpTestCapture) Send(_ context.Context, message contract.Message) error {
 	s.messages = append(s.messages, message)
@@ -22,10 +22,14 @@ func (s *smtpTestCapture) Send(_ context.Context, message contract.Message) erro
 func CustomerSMTPTestMessages() ([]contract.Message, error) {
 	capture := &smtpTestCapture{}
 	mailer, err := newCustomerMailer(capture, "https://smtp-test.invalid")
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	for _, purpose := range []string{"register", "reset"} {
 		err = mailer.Send(context.Background(), "11111111-1111-4111-8111-111111111111", "fake@safe.test", purpose, base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("f", 32))))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 	}
 	return capture.messages, nil
 }
