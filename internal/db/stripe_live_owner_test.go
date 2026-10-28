@@ -6,13 +6,54 @@
 package db_test
 
 import (
+	"net/http"
 	"os"
 	"testing"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 )
 
+// Set only by the compile-time offline canary file. Even replacing its fake
+// transport with a real one must not make an offline binary owner-admissible.
+var stripeLiveOfflineCompiled bool
+
+func stripeLiveRealHTTPTransport() bool {
+	transport, real := http.DefaultTransport.(*http.Transport)
+	return !stripeLiveOfflineCompiled && real && transport != nil
+}
+
 func TestStripeLiveOwnerGate(t *testing.T) {
+	if !stripeLiveRealHTTPTransport() {
+		t.Fatal("owner entry requires real HTTP transport and no offline build")
+	}
+	runStripeLiveProbe(t)
+}
+
+func TestStripeLiveTransportGuard(t *testing.T) {
+	original := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = original })
+	if stripeLiveRealHTTPTransport() == stripeLiveOfflineCompiled {
+		t.Fatal("unexpected build transport admission")
+	}
+	http.DefaultTransport = &livePGTransport{}
+	if stripeLiveRealHTTPTransport() {
+		t.Fatal("fake transport admitted")
+	}
+	var absent *http.Transport
+	http.DefaultTransport = absent
+	if stripeLiveRealHTTPTransport() {
+		t.Fatal("nil transport admitted")
+	}
+	http.DefaultTransport = &http.Transport{}
+	if stripeLiveRealHTTPTransport() == stripeLiveOfflineCompiled {
+		t.Fatal("restored transport erased offline build identity")
+	}
+}
+
+// Shared probe body; offline output canaries use their own test entry, never
+// bypass the real-transport assertion in TestStripeLiveOwnerGate.
+func runStripeLiveProbe(t *testing.T) {
+	t.Helper()
 	if os.Getenv("GITHUB_EVENT_NAME") != "workflow_dispatch" || os.Getenv("GITHUB_REF") != "refs/heads/main" || os.Getenv("OPENSITE_DISPOSABLE_PG") != "stripe-live" {
 		t.Fatal("owner-dispatch gate required")
 	}
