@@ -95,7 +95,7 @@ func TestPGCommandActorIsolationReplayAndProcessing(t *testing.T) {
 			return fn(ctx, tx)
 		})
 	}
-	spec := httpapi.RouteSpec{OperationID: "createShipment", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/command", Access: httpapi.AdminOrAPIKey, Scope: "fulfillment:write", MaxBodySize: 1024}
+	spec := httpapi.RouteSpec{OperationID: "createShipment", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/products", Access: httpapi.AdminOrAPIKey, Scope: "fulfillment:write", MaxBodySize: 1024}
 	var entered = make(chan struct{})
 	var release = make(chan struct{})
 	var once sync.Once
@@ -113,7 +113,7 @@ func TestPGCommandActorIsolationReplayAndProcessing(t *testing.T) {
 				_ = httpapi.WriteCommandResponse(w, *replay)
 				return
 			}
-			if r.Header.Get("Idempotency-Key") == "processing" {
+			if r.Header.Get("Idempotency-Key") == "c1841e95-9dd8-59f2-a4d0-e00ca74f9117" {
 				close(entered)
 				select {
 				case <-release:
@@ -142,7 +142,7 @@ func TestPGCommandActorIsolationReplayAndProcessing(t *testing.T) {
 	}
 	handler := makeHandler(config)
 	request := func(handler http.Handler, actor, key, body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("POST", "/api/v1/t/"+tenant+"/command", bytes.NewBufferString(body))
+		r := httptest.NewRequest("POST", "/api/v1/t/"+tenant+"/products", bytes.NewBufferString(body))
 		r = r.WithContext(ctx)
 		r.Header.Set("X-Test-Actor", actor)
 		r.Header.Set("Idempotency-Key", key)
@@ -151,30 +151,30 @@ func TestPGCommandActorIsolationReplayAndProcessing(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	first := request(handler, actorA, "same", "{}")
+	first := request(handler, actorA, "b1bfce98-1539-5b12-ac2f-920705702dfc", "{}")
 	if first.Code != 201 {
 		t.Fatalf("first: %d %s", first.Code, first.Body.String())
 	}
-	replay := request(handler, actorA, "same", "{}")
+	replay := request(handler, actorA, "b1bfce98-1539-5b12-ac2f-920705702dfc", "{}")
 	if replay.Code != first.Code || replay.Body.String() != first.Body.String() || replay.Header().Get("Content-Type") != first.Header().Get("Content-Type") {
 		t.Fatalf("replay differs: %d %s", replay.Code, replay.Body.String())
 	}
-	other := request(handler, actorB, "same", "{}")
+	other := request(handler, actorB, "b1bfce98-1539-5b12-ac2f-920705702dfc", "{}")
 	if other.Code != 201 || other.Body.String() == first.Body.String() {
 		t.Fatalf("different actor shared receipt: %d %s", other.Code, other.Body.String())
 	}
-	changed := request(handler, actorA, "same", "{\"changed\":true}")
+	changed := request(handler, actorA, "b1bfce98-1539-5b12-ac2f-920705702dfc", "{\"changed\":true}")
 	if changed.Code != 422 {
 		t.Fatalf("changed request: %d %s", changed.Code, changed.Body.String())
 	}
 	done := make(chan *httptest.ResponseRecorder, 1)
-	go func() { done <- request(handler, actorA, "processing", "{}") }()
+	go func() { done <- request(handler, actorA, "c1841e95-9dd8-59f2-a4d0-e00ca74f9117", "{}") }()
 	select {
 	case <-entered:
 	case <-ctx.Done():
 		t.Fatal("processing owner did not enter")
 	}
-	processing := request(handler, actorA, "processing", "{}")
+	processing := request(handler, actorA, "c1841e95-9dd8-59f2-a4d0-e00ca74f9117", "{}")
 	if processing.Code != 409 || !bytes.Contains(processing.Body.Bytes(), []byte("idempotency_in_progress")) {
 		t.Fatalf("active processing: %d %s", processing.Code, processing.Body.String())
 	}
@@ -189,7 +189,7 @@ func TestPGCommandActorIsolationReplayAndProcessing(t *testing.T) {
 	}
 	broken := config
 	broken.Store = failingCommandStore{ResponseStore: store, fail: true}
-	failure := request(makeHandler(broken), actorA, "store-failure", "{}")
+	failure := request(makeHandler(broken), actorA, "0b68a8a2-fc63-55d5-ba4e-c98d05bcf355", "{}")
 	if failure.Code != 503 {
 		t.Fatalf("store failure: %d %s", failure.Code, failure.Body.String())
 	}

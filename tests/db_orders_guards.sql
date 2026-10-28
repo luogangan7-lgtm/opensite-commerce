@@ -15,7 +15,7 @@ DECLARE r app.inventory_reservations; owner_a uuid:=uuidv7(); owner_b uuid:=uuid
  bearer bytea:=sha256(convert_to(uuidv4()::text||uuidv4()::text||uuidv4()::text,'UTF8'));
  before_movements bigint; before_orders bigint; before_reserved bigint; before_on_hand bigint;
 BEGIN
- r:=app.inventory_reserve_non_order(current_setting('test.h2c_sku')::uuid,2,'checkout',owner_a,'h2c-owner',900,bearer);
+ r:=app.inventory_reserve_non_order(current_setting('test.h2c_sku')::uuid,2,'checkout',owner_a,'e953c619-446d-5443-88b1-0aeac5633bfc',900,bearer);
  SELECT count(*) INTO before_movements FROM app.inventory_movements;
  SELECT count(*) INTO before_orders FROM app.orders;
  SELECT reserved,on_hand INTO before_reserved,before_on_hand FROM app.stock_levels;
@@ -47,21 +47,21 @@ BEGIN
  FOREACH kind IN ARRAY ARRAY['order','Order','ORDER'] LOOP
   BEGIN
    PERFORM app.inventory_reserve_non_order(current_setting('test.h2c_sku')::uuid,1,kind,owner_a,
-    'h2c-nonorder-case-'||kind,900,bearer);
+    (md5(('h2c-nonorder-case-'||kind)::text)::uuid::text),900,bearer);
    RAISE EXCEPTION 'H2C_CASE_GATE nonorder reserve accepted order alias %',kind;
   EXCEPTION WHEN insufficient_privilege THEN
    IF SQLERRM<>'INVENTORY_ORDER_OWNED_RESERVATION' THEN RAISE; END IF;
   END;
   IF kind<>'order' THEN
    BEGIN
-    PERFORM app.inventory_reserve(current_setting('test.h2c_sku')::uuid,1,kind,owner_a,'h2c-case-'||kind,900);
+    PERFORM app.inventory_reserve(current_setting('test.h2c_sku')::uuid,1,kind,owner_a,(md5(('h2c-case-'||kind)::text)::uuid::text),900);
     RAISE EXCEPTION 'H2C_CASE_GATE noncanonical order reserve accepted %',kind;
    EXCEPTION WHEN insufficient_privilege THEN
     IF SQLERRM<>'INVENTORY_HOLDER_REQUIRED' THEN RAISE; END IF;
    END;
    CONTINUE;
   END IF;
-  r:=app.inventory_reserve(current_setting('test.h2c_sku')::uuid,1,kind,owner_a,'h2c-case-'||kind,900);
+  r:=app.inventory_reserve(current_setting('test.h2c_sku')::uuid,1,kind,owner_a,(md5(('h2c-case-'||kind)::text)::uuid::text),900);
   FOREACH command IN ARRAY ARRAY['inventory_release_non_order','inventory_commit_non_order'] LOOP
    BEGIN
     EXECUTE format('SELECT app.%I($1,$2,$3,$4)',command) USING r.id,kind,owner_a,bearer;
@@ -74,7 +74,7 @@ BEGIN
  -- Invalid tax categories fail before reservation lookup and leave no snapshot.
  FOREACH kind IN ARRAY ARRAY['', 'Standard', '_standard', '1standard', 'bad-code', 'é', repeat('a',65)] LOOP
   BEGIN
-   PERFORM app.orders_create(uuidv7(),'h2c-tax-'||kind,sha256(convert_to(kind,'UTF8')),NULL,
+   PERFORM app.orders_create(uuidv7(),(md5(('h2c-tax-'||kind)::text)::uuid::text),sha256(convert_to(kind,'UTF8')),NULL,
     '{"email":"gate@example.test"}'::jsonb,'USD',0,'{}'::jsonb,
     jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',current_setting('test.h2c_sku')::uuid,'sku','H2C','quantity',1,
      'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',uuidv7(),
@@ -86,7 +86,7 @@ BEGIN
  END LOOP;
  -- A category must be a JSON string, not a scalar that ->> coerces to text.
  BEGIN
-  PERFORM app.orders_create(uuidv7(),'h2c-tax-json',sha256('json'::bytea),NULL,
+  PERFORM app.orders_create(uuidv7(),'b47fb748-7660-52f2-a4c6-b493d27d65af',sha256('json'::bytea),NULL,
    '{"email":"gate@example.test"}'::jsonb,'USD',0,'{}'::jsonb,
    jsonb_build_array(jsonb_build_object('id',uuidv7(),'sku_id',current_setting('test.h2c_sku')::uuid,'sku','H2C','quantity',1,
     'unit_price_minor',100,'line_net_minor',100,'line_tax_minor',0,'line_total_minor',100,'reservation_id',uuidv7(),

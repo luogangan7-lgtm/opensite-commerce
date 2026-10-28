@@ -21,6 +21,7 @@ import (
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
 // QuotesService is implemented by the quotes application transaction facade.
@@ -167,9 +168,8 @@ func quotePreconditions(r *http.Request, create bool) error {
 	if len(match) != 1 || create && match[0] != "*" || !create && !quoteVersion.MatchString(match[0]) {
 		return apperrors.New(412, "etag_mismatch", "A single strong current quote ETag is required")
 	}
-	key := r.Header.Values("Idempotency-Key")
-	if len(key) != 1 || len(key[0]) == 0 || len(key[0]) > 128 || strings.TrimSpace(key[0]) != key[0] || strings.IndexFunc(key[0], func(c rune) bool { return c < 0x21 || c > 0x7e }) >= 0 {
-		return apperrors.New(400, "invalid_idempotency_key", "One visible ASCII Idempotency-Key of at most 128 bytes is required")
+	if _, err := idempotency.ValidateKey(r.Header); err != nil {
+		return err
 	}
 	return nil
 }

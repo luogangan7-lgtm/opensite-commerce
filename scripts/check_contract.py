@@ -182,8 +182,8 @@ def validate_contract(api):
             "notification limit must be bounded")
     key = api["components"]["parameters"].get("NotificationIdempotencyKey", {})
     require(key.get("name") == "Idempotency-Key" and key.get("in") == "header" and key.get("required") is True and
-            key.get("schema") == {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[!-~]+$"},
-            "notification redrive key must be bounded printable ASCII")
+            key.get("schema") == {"type": "string", "format": "uuid", "minLength": 36, "maxLength": 36, "x-go-type": "string"},
+            "notification redrive key must be a canonical UUID")
     require({"$ref": "#/components/parameters/NotificationIdempotencyKey"} in
             operations["redriveNotification"][2].get("parameters", []), "notification redrive key missing")
     schemas = api["components"]["schemas"]
@@ -343,8 +343,9 @@ def validate_contract(api):
                         "conversion requires an explicitly authenticated company buyer")
                 headers = {p["name"]: p for p in parameters if p["in"] == "header"}
                 require(headers.get("Idempotency-Key", {}).get("required") is True and
-                        headers["Idempotency-Key"].get("schema", {}).get("maxLength") == 128,
-                        "conversion requires bounded idempotency key")
+                        headers["Idempotency-Key"].get("schema", {}).get("format") == "uuid" and
+                        headers["Idempotency-Key"].get("schema", {}).get("maxLength") == 36,
+                        "conversion requires canonical UUID idempotency key")
                 for header, schema in {"Origin": {"type": "string", "format": "uri"},
                                        "X-CSRF-Token": {"type": "string", "minLength": 1, "maxLength": 512}}.items():
                     require(headers.get(header, {}).get("required") is True and
@@ -391,6 +392,9 @@ def validate_contract(api):
         if any(p["name"] == "If-Match" for p in parameters):
             require({"412", "428"} <= op["responses"].keys(), f"If-Match mappings missing: {ident}")
         if any(p["name"] == "Idempotency-Key" for p in parameters):
+            require(all(p.get("schema", {}).get("format") == "uuid" for p in parameters
+                        if p["name"] == "Idempotency-Key" and p["in"] == "header"),
+                    f"idempotency key must declare UUID format: {ident}")
             require({"409", "422"} <= op["responses"].keys(), f"idempotency mappings missing: {ident}")
     require(QUOTE_OPERATIONS <= operations.keys(), "quote operation missing")
     require(CART_OPERATIONS <= operations.keys(), "cart operation missing")

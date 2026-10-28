@@ -12,7 +12,7 @@ import (
 )
 
 func TestValidateKey(t *testing.T) {
-	for _, key := range []string{"x", strings.Repeat("!", 128), "a,b", "A~@"} {
+	for _, key := range []string{"11111111-1111-4111-8111-111111111111", "abcdefab-cdef-abcd-efab-cdefabcdefab"} {
 		got, err := ValidateKey(http.Header{"Idempotency-Key": {key}})
 		if err != nil || got != key {
 			t.Errorf("valid key length%d: %q %v", len(key), got, err)
@@ -28,6 +28,32 @@ func TestValidateKey(t *testing.T) {
 				t.Fatalf("expected400/invalid_idempotency_key, got%v", err)
 			}
 		})
+	}
+}
+
+func TestCanonicalUUIDBoundary(t *testing.T) {
+	const lower = "abcdefab-cdef-abcd-efab-cdefabcdefab"
+	for _, key := range []string{lower, strings.ToUpper(lower)} {
+		header := http.Header{"Idempotency-Key": {key}}
+		got, err := ValidateKey(header)
+		if err != nil || got != lower || header.Get("Idempotency-Key") != lower {
+			t.Fatalf("canonical UUID must normalize before downstream decoding: got=%q header=%q err=%v", got, header.Get("Idempotency-Key"), err)
+		}
+	}
+	for _, key := range []string{"alice@example.test", "ordinary-key", strings.ReplaceAll(lower, "-", ""), "{" + lower + "}", "urn:uuid:" + lower, lower + " ", " " + lower, "abcdefab-cdef-abcd-efab-cdefabcdefag"} {
+		_, err := ValidateKey(http.Header{"Idempotency-Key": {key}})
+		var problem *apperrors.Error
+		if !errors.As(err, &problem) || problem.Status != 400 || problem.Code != "invalid_idempotency_key" {
+			t.Errorf("non-UUID caller key %q accepted: %v", key, err)
+		}
+	}
+	for _, header := range []http.Header{
+		{"Idempotency-Key": {lower, lower}},
+		{"Idempotency-Key": {lower}, "idempotency-key": {lower}},
+	} {
+		if _, err := ValidateKey(header); err == nil {
+			t.Fatal("duplicate UUID headers accepted")
+		}
 	}
 }
 func TestFingerprintAxesCanonicalAndRawBody(t *testing.T) {

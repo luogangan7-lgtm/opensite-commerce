@@ -80,6 +80,7 @@ func (s *Service) write(tenant, id string, b []byte) error {
 		}
 	}
 	tmp := p + "." + uuid.NewString() + ".tmp"
+	// privacy-artifact: datarights.export_temp
 	f, e := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if e != nil {
 		return e
@@ -95,6 +96,7 @@ func (s *Service) write(tenant, id string, b []byte) error {
 	if ce != nil {
 		return ce
 	}
+	// privacy-artifact: datarights.customer_export
 	if e = r.Rename(tmp, p); e != nil {
 		return e
 	}

@@ -31,7 +31,7 @@ func TestAuthorizedTenantStamp(t *testing.T) {
 		{httpapi.AdminOrAPIKey, "00000000-0000-0000-0000-000000000000", 400},
 	} {
 		router := httpapi.New(acceptTenant{}, nil)
-		spec := httpapi.RouteSpec{OperationID: "stamp", Method: "GET", Pattern: "/t/{tenant_id}", Access: tc.access}
+		spec := httpapi.RouteSpec{OperationID: "stamp", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/products", Access: tc.access}
 		if tc.access != httpapi.Public {
 			spec.Scope = "catalog:read"
 		}
@@ -50,7 +50,7 @@ func TestAuthorizedTenantStamp(t *testing.T) {
 			t.Fatal(err)
 		}
 		rr := httptest.NewRecorder()
-		router.ServeHTTP(rr, httptest.NewRequest("GET", "/t/"+tc.tenant, nil))
+		router.ServeHTTP(rr, httptest.NewRequest("GET", "/api/v1/t/"+tc.tenant+"/products", nil))
 		if rr.Code != tc.want {
 			t.Errorf("%s %s: %d want %d", tc.access, tc.tenant, rr.Code, tc.want)
 		}

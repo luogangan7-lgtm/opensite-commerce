@@ -53,7 +53,7 @@ func TestMediaTrustAndAdmission(t *testing.T) {
 	} {
 		req := httptest.NewRequest("POST", "/api/v1/t/"+id.String()+"/media/uploads", strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Idempotency-Key", "media-admission")
+		req.Header.Set("Idempotency-Key", "bf281518-de88-5533-8606-223fc79db7fb")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 		if w.Code != tc.want {
@@ -88,7 +88,7 @@ func TestPutReadsBodyBeforeTransaction(t *testing.T) {
 	id := "11111111-1111-4111-8111-111111111111"
 	req := httptest.NewRequest("PUT", "/api/v1/t/"+id+"/media/uploads/"+id+"/content", eofReader{strings.NewReader("bytes"), &read})
 	req.Header.Set("Content-Type", "application/octet-stream")
-	req.Header.Set("Idempotency-Key", "media-read-first")
+	req.Header.Set("Idempotency-Key", "7a59aeb7-287a-58f1-800c-007e4a507988")
 	router.ServeHTTP(httptest.NewRecorder(), req)
 	if !readFirst {
 		t.Fatal("transaction opened before the upload body was read")

@@ -7,102 +7,103 @@
     "customers": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "customers.id"},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "email": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "email_normalized": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "display_name": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include"},
-        "status": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "verified_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep customers.tenant_id only as an opaque witness uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customers.tenant_id"}, "value_type": "uuid", "retained_kind": "witness"}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep customers.id only as an opaque witness uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customers.tenant_id"}, "value_type": "uuid", "retained_kind": "witness"}},
+        "email": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "row_id_placeholder", "reason": "Erase original customers.email using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customers.tenant_id"}, "value": "erased-{id}@invalid.test"}},
+        "email_normalized": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "generated_from", "reason": "Erase original customers.email_normalized using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customers.tenant_id"}, "value": "customers.email"}},
+        "display_name": {"classification": "personal", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "row_id_placeholder", "reason": "Erase original customers.display_name using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customers.tenant_id"}, "value": "erased:{id}"}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "constant", "reason": "Erase original customers.status using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customers.tenant_id"}, "value": "disabled"}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "database_time", "reason": "Erase original customers.created_at using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customers.tenant_id"}}},
+        "verified_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "constant", "reason": "Erase original customers.verified_at using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customers.tenant_id"}, "value": null}}
       }
     },
     "customer_credentials": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "customer_credentials.customer_id -> customers.id"},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "customer_id": {"classification": "operational"},
-        "password_hash": {"classification": "secret_hash", "export": "exclude", "structure": "Argon2idPHC"},
-        "updated_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_credentials.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_credentials.tenant_id"}}},
+        "customer_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_credentials.customer_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_credentials.tenant_id"}}},
+        "password_hash": {"classification": "secret_hash", "export": "exclude", "structure": "Argon2idPHC", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_credentials.password_hash with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_credentials.tenant_id"}}},
+        "updated_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_credentials.updated_at with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_credentials.tenant_id"}}}
       }
     },
     "customer_addresses": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "customer_addresses.customer_id -> customers.id"},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "customer_id": {"classification": "operational"},
-        "recipient": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "address_line1": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "address_line2": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "city": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "subdivision": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "postal_code": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "country_code": {"classification": "operational", "note": "ISO alpha-2 reference code, not free-form address text; retained geography alone has no direct identifying contact."}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_addresses.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_addresses.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_addresses.id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_addresses.tenant_id"}}},
+        "customer_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_addresses.customer_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_addresses.tenant_id"}}},
+        "recipient": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_addresses.recipient with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_addresses.tenant_id"}}},
+        "address_line1": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_addresses.address_line1 with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_addresses.tenant_id"}}},
+        "address_line2": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_addresses.address_line2 with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_addresses.tenant_id"}}},
+        "city": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_addresses.city with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_addresses.tenant_id"}}},
+        "subdivision": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_addresses.subdivision with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_addresses.tenant_id"}}},
+        "postal_code": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_addresses.postal_code with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_addresses.tenant_id"}}},
+        "country_code": {"classification": "operational", "note": "ISO alpha-2 reference code, not free-form address text; retained geography alone has no direct identifying contact.", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_addresses.country_code with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_addresses.tenant_id"}}}
       }
     },
     "customer_auth_tokens": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "customer_auth_tokens.customer_id -> customers.id"},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "customer_id": {"classification": "operational"},
-        "token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
-        "purpose": {"classification": "operational"},
-        "email_normalized": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include"},
-        "pending_password_hash": {"classification": "secret_hash", "structure": "Argon2idPHC", "export": "exclude"},
-        "credential_version": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "expires_at": {"classification": "operational"},
-        "consumed_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_tokens.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_tokens.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_tokens.id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_tokens.tenant_id"}}},
+        "customer_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_tokens.customer_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_tokens.tenant_id"}}},
+        "token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_tokens.token_hash with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_tokens.tenant_id"}}},
+        "purpose": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_tokens.purpose with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_tokens.tenant_id"}}},
+        "email_normalized": {"classification": "contact", "erase": {"strategy": "scrub"}, "export": "include", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_tokens.email_normalized with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_tokens.tenant_id"}}},
+        "pending_password_hash": {"classification": "secret_hash", "structure": "Argon2idPHC", "export": "exclude", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_tokens.pending_password_hash with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_tokens.tenant_id"}}},
+        "credential_version": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_tokens.credential_version with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_tokens.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_tokens.created_at with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_tokens.tenant_id"}}},
+        "expires_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_tokens.expires_at with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_tokens.tenant_id"}}},
+        "consumed_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_tokens.consumed_at with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_tokens.tenant_id"}}}
       }
     },
     "customer_sessions": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "customer_sessions.customer_id -> customers.id"},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "customer_id": {"classification": "operational"},
-        "token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
-        "credential_version": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "expires_at": {"classification": "operational"},
-        "idle_expires_at": {"classification": "operational"},
-        "last_seen_at": {"classification": "operational"},
-        "revoked_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_sessions.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_sessions.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_sessions.id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_sessions.tenant_id"}}},
+        "customer_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_sessions.customer_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_sessions.tenant_id"}}},
+        "token_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_sessions.token_hash with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_sessions.tenant_id"}}},
+        "credential_version": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_sessions.credential_version with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_sessions.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_sessions.created_at with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_sessions.tenant_id"}}},
+        "expires_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_sessions.expires_at with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_sessions.tenant_id"}}},
+        "idle_expires_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_sessions.idle_expires_at with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_sessions.tenant_id"}}},
+        "last_seen_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_sessions.last_seen_at with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_sessions.tenant_id"}}},
+        "revoked_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_sessions.revoked_at with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_sessions.tenant_id"}}}
       }
     },
     "customer_guest_order_links": {
       "subject": {"tenant_key": "tenant_id", "identity_path": "customer_guest_order_links.customer_id -> customers.id"},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "customer_id": {"classification": "operational"},
-        "order_id": {"classification": "operational"},
-        "linked_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_guest_order_links.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_guest_order_links.tenant_id"}}},
+        "customer_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_guest_order_links.customer_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_guest_order_links.tenant_id"}}},
+        "order_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_guest_order_links.order_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_guest_order_links.tenant_id"}}},
+        "linked_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_guest_order_links.linked_at with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_guest_order_links.tenant_id"}}}
       }
     },
     "customer_auth_limits": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "Keyed account admission digest may refer to an unknown identifier; counters are anti-abuse infrastructure, not proof of customer ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "kind": {"classification": "operational"},
-        "key_hash": {"classification": "secret_hash", "structure": "CustomerAuthAdmissionDigest", "export": "exclude"},
-        "window_start": {"classification": "operational"},
-        "attempts": {"classification": "operational"},
-        "failures": {"classification": "operational"},
-        "cooldown_until": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_limits.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_limits.tenant_id"}}},
+        "kind": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_limits.kind with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_limits.tenant_id"}}},
+        "key_hash": {"classification": "secret_hash", "structure": "CustomerAuthAdmissionDigest", "export": "exclude", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_limits.key_hash with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_limits.tenant_id"}}},
+        "window_start": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_limits.window_start with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_limits.tenant_id"}}},
+        "attempts": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_limits.attempts with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_limits.tenant_id"}}},
+        "failures": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_limits.failures with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_limits.tenant_id"}}},
+        "cooldown_until": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned customer_auth_limits.cooldown_until with its row, including all merchant/guest/derived copies.", "handler": "customer.erase", "ownership": {"kind": "tenant_column", "path": "customer_auth_limits.tenant_id"}}}
       }
     },
     "customer_auth_global_limits": {
       "subject": {"tenant_key": null, "null_subject_policy": "Cross-tenant global and IP-prefix admission digests are shared anti-abuse infrastructure; no raw IP or email, no registered-customer relationship or tenant authority."},
       "columns": {
-        "kind": {"classification": "operational"},
-        "key_hash": {"classification": "secret_hash", "structure": "CustomerAuthAdmissionDigest", "export": "exclude"},
-        "window_start": {"classification": "operational"},
-        "attempts": {"classification": "operational"},
-        "failures": {"classification": "operational"},
-        "cooldown_until": {"classification": "operational"}
+        "kind": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "customer_auth_global_limits.kind is global identity/anti-abuse state, not owned by the target merchant; preserve other tenants and revoke only target-tenant authorization.", "handler": "customer.erase", "ownership": {"kind": "global_exclusion", "path": "global_anti_abuse", "reason": "No tenant ownership relationship exists; no email/payload inference may assign one."}, "retained_kind": "global", "value_type": "global"}},
+        "key_hash": {"classification": "secret_hash", "structure": "CustomerAuthAdmissionDigest", "export": "exclude", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "customer_auth_global_limits.key_hash is global identity/anti-abuse state, not owned by the target merchant; preserve other tenants and revoke only target-tenant authorization.", "handler": "customer.erase", "ownership": {"kind": "global_exclusion", "path": "global_anti_abuse", "reason": "No tenant ownership relationship exists; no email/payload inference may assign one."}, "retained_kind": "global", "value_type": "global"}},
+        "window_start": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "customer_auth_global_limits.window_start is global identity/anti-abuse state, not owned by the target merchant; preserve other tenants and revoke only target-tenant authorization.", "handler": "customer.erase", "ownership": {"kind": "global_exclusion", "path": "global_anti_abuse", "reason": "No tenant ownership relationship exists; no email/payload inference may assign one."}, "retained_kind": "global", "value_type": "global"}},
+        "attempts": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "customer_auth_global_limits.attempts is global identity/anti-abuse state, not owned by the target merchant; preserve other tenants and revoke only target-tenant authorization.", "handler": "customer.erase", "ownership": {"kind": "global_exclusion", "path": "global_anti_abuse", "reason": "No tenant ownership relationship exists; no email/payload inference may assign one."}, "retained_kind": "global", "value_type": "global"}},
+        "failures": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "customer_auth_global_limits.failures is global identity/anti-abuse state, not owned by the target merchant; preserve other tenants and revoke only target-tenant authorization.", "handler": "customer.erase", "ownership": {"kind": "global_exclusion", "path": "global_anti_abuse", "reason": "No tenant ownership relationship exists; no email/payload inference may assign one."}, "retained_kind": "global", "value_type": "global"}},
+        "cooldown_until": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "customer_auth_global_limits.cooldown_until is global identity/anti-abuse state, not owned by the target merchant; preserve other tenants and revoke only target-tenant authorization.", "handler": "customer.erase", "ownership": {"kind": "global_exclusion", "path": "global_anti_abuse", "reason": "No tenant ownership relationship exists; no email/payload inference may assign one."}, "retained_kind": "global", "value_type": "global"}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"customer.erase": {"depends_on": ["b2b.erase"], "tables": ["customer_guest_order_links", "customer_auth_tokens", "customer_sessions", "customer_credentials", "customer_addresses", "customer_auth_limits", "customers", "customer_auth_global_limits"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

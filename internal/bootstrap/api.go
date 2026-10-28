@@ -75,6 +75,12 @@ type Config struct {
 }
 
 func New(config Config) (server *http.Server, err error) {
+	return newServer(config, func(router *httpapi.Router, route httpapi.Route) error {
+		return router.Register(route.Spec, route.Handler)
+	})
+}
+
+func newServer(config Config, register func(*httpapi.Router, httpapi.Route) error) (server *http.Server, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			server = nil
@@ -174,7 +180,7 @@ func New(config Config) (server *http.Server, err error) {
 	routes = append(routes, customerHTTP.Routes()...)
 	routes = append(routes, config.Routes...)
 	for _, route := range routes {
-		if err := router.Register(route.Spec, route.Handler); err != nil {
+		if err := register(router, route); err != nil {
 			return nil, err
 		}
 	}

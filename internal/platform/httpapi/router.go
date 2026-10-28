@@ -13,7 +13,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
 )
 
@@ -93,11 +95,25 @@ func New(auth Authenticator, logger *slog.Logger) *Router {
 // Register is called during static startup; all errors must reach bootstrap.
 // ServeMux conflicts are configuration errors, not process-level panics.
 func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
+	contract, err := GetSwagger()
+	if err != nil {
+		return fmt.Errorf("load idempotency admission contract: %w", err)
+	}
+	return s.registerWithContract(spec, handler, contract)
+}
+
+// registerWithContract is private: production callers can register only against
+// the embedded contract. Arbitrary fixture contracts enter through export_test.go.
+func (s *Router) registerWithContract(spec RouteSpec, handler http.Handler, contract *openapi3.T) (err error) {
 	if err = validateRoute(spec); err != nil {
 		return err
 	}
 	if handler == nil {
 		return fmt.Errorf("route %q: nil handler", spec.OperationID)
+	}
+	requiresKey, err := requiresIdempotencyKey(spec, contract)
+	if err != nil {
+		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -110,6 +126,14 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 		}
 	}()
 	s.mux.Handle(spec.Method+" "+spec.Pattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The contract, rather than a handler-maintained allowlist, selects every
+		// key ingress. Reject caller text before auth refreshes or domain IO.
+		if requiresKey {
+			if _, err := idempotency.ValidateKey(r.Header); err != nil {
+				WriteProblem(w, r, err)
+				return
+			}
+		}
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, authorizedTenantKey{}, "")
 		ctx = context.WithValue(ctx, authorizedActorKey{}, Actor{})
@@ -179,6 +203,30 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 	}))
 	s.operations[spec.OperationID] = spec
 	return nil
+}
+
+// Every route must resolve in the embedded contract before startup can succeed.
+// Path-level inherited parameters participate in the same admission policy.
+func requiresIdempotencyKey(spec RouteSpec, doc *openapi3.T) (bool, error) {
+	if doc == nil || doc.Paths == nil {
+		return false, fmt.Errorf("route %q: admission contract required", spec.OperationID)
+	}
+	item := doc.Paths.Value(spec.Pattern)
+	if item == nil {
+		return false, fmt.Errorf("route %q: path absent from admission contract", spec.OperationID)
+	}
+	op := item.GetOperation(spec.Method)
+	if op == nil {
+		return false, fmt.Errorf("route %q: method absent from admission contract", spec.OperationID)
+	}
+	for _, parameters := range []openapi3.Parameters{item.Parameters, op.Parameters} {
+		for _, parameter := range parameters {
+			if parameter.Value != nil && parameter.Value.In == "header" && strings.EqualFold(parameter.Value.Name, "Idempotency-Key") {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 // RouteSpecs exposes a copy of successfully registered routes for contract gates.

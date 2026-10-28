@@ -175,19 +175,19 @@ func TestHTTPAdmissionAndCommands(t *testing.T) {
 		mutate                              func(*http.Request)
 		want, runs, calls                   int
 	}{
-		{name: "default deny", operation: "request", body: returnBody, version: `"4"`, key: "one", want: 401},
-		{name: "scope denied", operation: "refund", body: `{}`, version: `"4"`, key: "one", auth: httpAuth{true}, want: 403},
-		{name: "missing version", operation: "receive", body: `{"restock":true}`, key: "one", auth: httpAuth{}, want: 428},
-		{name: "weak version", operation: "refund", body: `{}`, version: `W/"4"`, key: "one", auth: httpAuth{}, want: 400},
+		{name: "default deny", operation: "request", body: returnBody, version: `"4"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", want: 401},
+		{name: "scope denied", operation: "refund", body: `{}`, version: `"4"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{true}, want: 403},
+		{name: "missing version", operation: "receive", body: `{"restock":true}`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, want: 428},
+		{name: "weak version", operation: "refund", body: `{}`, version: `W/"4"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, want: 400},
 		{name: "missing key", operation: "request", body: returnBody, version: `"4"`, auth: httpAuth{}, want: 400},
-		{name: "duplicate key", operation: "request", body: returnBody, version: `"4"`, key: "one", auth: httpAuth{}, mutate: func(r *http.Request) { r.Header.Add("Idempotency-Key", "one") }, want: 400},
-		{name: "unknown query", operation: "refund", body: `{}`, version: `"4"`, key: "one", auth: httpAuth{}, mutate: func(r *http.Request) { r.URL.RawQuery = "paid=1" }, want: 400},
-		{name: "client provider proof", operation: "refund", body: `{"provider_ref":"client","amount":9,"cash_account":"client"}`, version: `"4"`, key: "one", auth: httpAuth{}, want: 400},
-		{name: "client receive proof", operation: "receive", body: `{"restock":true,"quantity":10}`, version: `"4"`, key: "one", auth: httpAuth{}, want: 400},
-		{name: "foreign tenant", operation: "refund", body: `{}`, version: `"4"`, key: "one", auth: httpAuth{}, mutate: func(r *http.Request) { r.URL.Path = strings.ReplaceAll(r.URL.Path, httpTenant, httpOrder) }, want: 404},
-		{name: "request", operation: "request", body: returnBody, version: `"4"`, key: "one", auth: httpAuth{}, want: 201, runs: 2, calls: 1},
-		{name: "receive", operation: "receive", body: `{"restock":true}`, version: `"4"`, key: "one", auth: httpAuth{}, want: 200, runs: 2, calls: 1},
-		{name: "refund", operation: "refund", body: `{}`, version: `"4"`, key: "one", auth: httpAuth{}, want: 200, runs: 1, calls: 1},
+		{name: "duplicate key", operation: "request", body: returnBody, version: `"4"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, mutate: func(r *http.Request) { r.Header.Add("Idempotency-Key", "b47bb372-4ddf-5f46-bdb1-f20e176b3941") }, want: 400},
+		{name: "unknown query", operation: "refund", body: `{}`, version: `"4"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, mutate: func(r *http.Request) { r.URL.RawQuery = "paid=1" }, want: 400},
+		{name: "client provider proof", operation: "refund", body: `{"provider_ref":"client","amount":9,"cash_account":"client"}`, version: `"4"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, want: 400},
+		{name: "client receive proof", operation: "receive", body: `{"restock":true,"quantity":10}`, version: `"4"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, want: 400},
+		{name: "foreign tenant", operation: "refund", body: `{}`, version: `"4"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, mutate: func(r *http.Request) { r.URL.Path = strings.ReplaceAll(r.URL.Path, httpTenant, httpOrder) }, want: 404},
+		{name: "request", operation: "request", body: returnBody, version: `"4"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, want: 201, runs: 2, calls: 1},
+		{name: "receive", operation: "receive", body: `{"restock":true}`, version: `"4"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, want: 200, runs: 2, calls: 1},
+		{name: "refund", operation: "refund", body: `{}`, version: `"4"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, want: 200, runs: 1, calls: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			service := &httpService{}
@@ -208,15 +208,15 @@ func TestHTTPAdmissionAndCommands(t *testing.T) {
 			if tc.calls > 0 {
 				switch tc.operation {
 				case "request":
-					if service.request.ExpectedVersion != 4 || service.request.Kind != contract.UnshippedCancel || len(service.request.IdempotencyKey) != 64 {
+					if service.request.ExpectedVersion != 4 || service.request.Kind != contract.UnshippedCancel || len(service.request.IdempotencyKey) != 36 {
 						t.Fatal("request input lost")
 					}
 				case "receive":
-					if service.receive.ExpectedVersion != 4 || !service.receive.Restock || len(service.receive.IdempotencyKey) != 64 {
+					if service.receive.ExpectedVersion != 4 || !service.receive.Restock || len(service.receive.IdempotencyKey) != 36 {
 						t.Fatal("receive input lost")
 					}
 				case "refund":
-					if service.refund.ExpectedVersion != 4 || len(service.refund.IdempotencyKey) != 64 {
+					if service.refund.ExpectedVersion != 4 || len(service.refund.IdempotencyKey) != 36 {
 						t.Fatal("refund input lost")
 					}
 				}
@@ -245,7 +245,7 @@ func TestHTTPRefundMinorLosslessSerialization(t *testing.T) {
 			var first []byte
 			for attempt := 0; attempt < 2; attempt++ {
 				w := httptest.NewRecorder()
-				router.ServeHTTP(w, commandRequest(tc.operation, tc.body, `"4"`, "lossless-refund"))
+				router.ServeHTTP(w, commandRequest(tc.operation, tc.body, `"4"`, "c7b6e1f5-a6a1-56f5-848f-6a4a1859212e"))
 				if w.Code != tc.status {
 					t.Fatalf("attempt=%d status=%d body=%s", attempt, w.Code, w.Body.String())
 				}
@@ -291,7 +291,7 @@ func TestHTTPDirectAndRunnerAuthorization(t *testing.T) {
 		}
 	}
 	w := httptest.NewRecorder()
-	httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("request", returnBody, `"4"`, "one"))
+	httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("request", returnBody, `"4"`, "b47bb372-4ddf-5f46-bdb1-f20e176b3941"))
 	if w.Code != 401 || service.calls != 0 {
 		t.Fatalf("lost authorization: %d calls=%d", w.Code, service.calls)
 	}
@@ -304,7 +304,7 @@ func TestHTTPDomainAndProviderErrorsAreSanitized(t *testing.T) {
 		t.Run(tc.err.Error(), func(t *testing.T) {
 			s := NewHTTP(HTTPConfig{Idempotency: claimConfig(t, &httpClaims{}), Service: &httpService{err: tc.err}, Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }})
 			w := httptest.NewRecorder()
-			httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("refund", `{}`, `"4"`, "one"))
+			httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("refund", `{}`, `"4"`, "b47bb372-4ddf-5f46-bdb1-f20e176b3941"))
 			if w.Code != tc.want || strings.Contains(w.Body.String(), "PRIVATE") {
 				t.Fatalf("unsafe error status=%d want=%d %s", w.Code, tc.want, w.Body.String())
 			}
@@ -313,7 +313,7 @@ func TestHTTPDomainAndProviderErrorsAreSanitized(t *testing.T) {
 }
 func TestHTTPUnconfiguredRefundFailsClosed(t *testing.T) {
 	w := httptest.NewRecorder()
-	httpRouter(t, NewHTTP(HTTPConfig{}), httpAuth{}).ServeHTTP(w, commandRequest("refund", `{}`, `"4"`, "one"))
+	httpRouter(t, NewHTTP(HTTPConfig{}), httpAuth{}).ServeHTTP(w, commandRequest("refund", `{}`, `"4"`, "b47bb372-4ddf-5f46-bdb1-f20e176b3941"))
 	if w.Code != 503 {
 		t.Fatalf("unconfigured refund status=%d: %s", w.Code, w.Body.String())
 	}
@@ -329,28 +329,28 @@ func TestHTTPCommandReplayAndActor(t *testing.T) {
 	}})
 	handler := httpRouter(t, s, httpAuth{})
 	first := httptest.NewRecorder()
-	handler.ServeHTTP(first, commandRequest("request", returnBody, `"4"`, "same"))
+	handler.ServeHTTP(first, commandRequest("request", returnBody, `"4"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if first.Code != 201 || claims.claims != 1 || claims.completions != 1 || runs != 2 || service.calls != 1 {
 		t.Fatalf("protocol not used: status=%d claims=%d completions=%d runs=%d calls=%d", first.Code, claims.claims, claims.completions, runs, service.calls)
 	}
 	replay := httptest.NewRecorder()
-	handler.ServeHTTP(replay, commandRequest("request", returnBody, `"4"`, "same"))
+	handler.ServeHTTP(replay, commandRequest("request", returnBody, `"4"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if replay.Code != first.Code || !bytes.Equal(replay.Body.Bytes(), first.Body.Bytes()) || replay.Header().Get("Content-Type") != first.Header().Get("Content-Type") || service.calls != 1 || claims.completions != 1 {
 		t.Fatalf("response drift or duplicate command: %d %s", replay.Code, replay.Body.String())
 	}
 	changed := httptest.NewRecorder()
-	handler.ServeHTTP(changed, commandRequest("request", strings.ReplaceAll(returnBody, "buyer cancellation", "other reason"), `"4"`, "same"))
+	handler.ServeHTTP(changed, commandRequest("request", strings.ReplaceAll(returnBody, "buyer cancellation", "other reason"), `"4"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if changed.Code != 422 || service.calls != 1 {
 		t.Fatalf("different body bypass: %d calls=%d", changed.Code, service.calls)
 	}
 	oldKey := service.request.IdempotencyKey
 	otherActor := httptest.NewRecorder()
-	httpRouter(t, s, alternateActorAuth{}).ServeHTTP(otherActor, commandRequest("request", returnBody, `"4"`, "same"))
+	httpRouter(t, s, alternateActorAuth{}).ServeHTTP(otherActor, commandRequest("request", returnBody, `"4"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if otherActor.Code != 201 || service.calls != 2 || service.request.IdempotencyKey == oldKey {
 		t.Fatalf("actor scopes collapsed: %d calls=%d", otherActor.Code, service.calls)
 	}
 	missing := httptest.NewRecorder()
-	httpRouter(t, s, legacyHTTPAuth{httpAuth{}}).ServeHTTP(missing, commandRequest("request", returnBody, `"4"`, "same"))
+	httpRouter(t, s, legacyHTTPAuth{httpAuth{}}).ServeHTTP(missing, commandRequest("request", returnBody, `"4"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if missing.Code != 401 || service.calls != 2 {
 		t.Fatalf("missing actor bypass: %d calls=%d", missing.Code, service.calls)
 	}
@@ -370,12 +370,12 @@ func TestHTTPActiveClaimAndFailedCompletion(t *testing.T) {
 			s := NewHTTP(HTTPConfig{Service: service, Idempotency: claimConfig(t, claims), Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }})
 			handler := httpRouter(t, s, httpAuth{})
 			first := httptest.NewRecorder()
-			handler.ServeHTTP(first, commandRequest("request", returnBody, `"4"`, "same"))
+			handler.ServeHTTP(first, commandRequest("request", returnBody, `"4"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 			if first.Code != tc.first || claims.completions != 0 || strings.Contains(first.Body.String(), "PRIVATE") {
 				t.Fatalf("failed completion emitted result: %d %s", first.Code, first.Body.String())
 			}
 			second := httptest.NewRecorder()
-			handler.ServeHTTP(second, commandRequest("request", returnBody, `"4"`, "same"))
+			handler.ServeHTTP(second, commandRequest("request", returnBody, `"4"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 			if second.Code != 409 || !strings.Contains(second.Body.String(), "idempotency_in_progress") || service.calls != 1 {
 				t.Fatalf("active claim ran command: %d calls=%d %s", second.Code, service.calls, second.Body.String())
 			}
@@ -386,11 +386,11 @@ func TestHTTPActiveClaimAndFailedCompletion(t *testing.T) {
 func TestHTTPBusinessTransactionMustRetainActor(t *testing.T) {
 	var tenantOnly context.Context
 	legacy := httpapi.New(legacyHTTPAuth{httpAuth{}}, nil)
-	spec := httpapi.RouteSpec{OperationID: "actorless", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/actorless", Access: httpapi.AdminOrAPIKey, Scope: "returns:write"}
+	spec := httpapi.RouteSpec{OperationID: "actorless", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/customer/session", Access: httpapi.AdminOrAPIKey, Scope: "returns:write"}
 	if err := legacy.Register(spec, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { tenantOnly = r.Context(); w.WriteHeader(204) })); err != nil {
 		t.Fatal(err)
 	}
-	legacy.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/v1/t/"+httpTenant+"/actorless", nil))
+	legacy.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/v1/t/"+httpTenant+"/customer/session", nil))
 	service := &httpService{}
 	runs := 0
 	claims := &httpClaims{}
@@ -402,7 +402,7 @@ func TestHTTPBusinessTransactionMustRetainActor(t *testing.T) {
 		return fn(ctx, nil)
 	}})
 	w := httptest.NewRecorder()
-	httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("request", returnBody, `"4"`, "same"))
+	httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("request", returnBody, `"4"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if w.Code != 404 || service.calls != 0 || claims.completions != 0 {
 		t.Fatalf("business tx lost actor: status=%d calls=%d completions=%d", w.Code, service.calls, claims.completions)
 	}
@@ -415,10 +415,10 @@ func TestHTTPReceiveRefundUseAtomicCompletionAndExactReplay(t *testing.T) {
 	handler := httpRouter(t, s, httpAuth{})
 	for _, tc := range []struct{ operation, body string }{{"receive", `{"restock":true}`}, {"refund", `{}`}} {
 		first := httptest.NewRecorder()
-		handler.ServeHTTP(first, commandRequest(tc.operation, tc.body, `"4"`, "shared-wire-key"))
+		handler.ServeHTTP(first, commandRequest(tc.operation, tc.body, `"4"`, "d5287bc5-5649-5093-b02f-c01277d56d30"))
 		calls, completions := service.calls, claims.completions
 		replay := httptest.NewRecorder()
-		handler.ServeHTTP(replay, commandRequest(tc.operation, tc.body, `"4"`, "shared-wire-key"))
+		handler.ServeHTTP(replay, commandRequest(tc.operation, tc.body, `"4"`, "d5287bc5-5649-5093-b02f-c01277d56d30"))
 		if first.Code != 200 || replay.Code != 200 || !bytes.Equal(first.Body.Bytes(), replay.Body.Bytes()) || service.calls != calls || claims.completions != completions {
 			t.Fatalf("%s receipt not atomic/replayed: %d %d calls=%d completions=%d", tc.operation, first.Code, replay.Code, service.calls, claims.completions)
 		}
@@ -444,7 +444,7 @@ func TestHTTPRefundWithoutAtomicCompleterFailsClosed(t *testing.T) {
 	claims := &httpClaims{}
 	s := NewHTTP(HTTPConfig{Service: noCompletionService{service}, Idempotency: claimConfig(t, claims), Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }})
 	w := httptest.NewRecorder()
-	httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("refund", `{}`, `"4"`, "same"))
+	httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("refund", `{}`, `"4"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if w.Code != 503 || service.calls != 0 || claims.completions != 0 {
 		t.Fatalf("unsafe simple Refund fallback: %d calls=%d completions=%d", w.Code, service.calls, claims.completions)
 	}
@@ -466,7 +466,7 @@ func TestHTTPTrustedLedgerDatabaseErrors(t *testing.T) {
 			err := store.MapError(&pgxadapter.PgError{Code: tc.code, Message: tc.message})
 			s := NewHTTP(HTTPConfig{Idempotency: claimConfig(t, &httpClaims{}), Service: &httpService{err: err}, Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }})
 			w := httptest.NewRecorder()
-			httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("refund", `{}`, `"4"`, "ledger-error"))
+			httpRouter(t, s, httpAuth{}).ServeHTTP(w, commandRequest("refund", `{}`, `"4"`, "278d00ea-d5e2-5518-9b56-bf326056a375"))
 			if w.Code != tc.want || strings.Contains(w.Body.String(), "PRIVATE") || strings.Contains(w.Body.String(), "FULFILLMENT_") || strings.Contains(w.Body.String(), "SQLSTATE") {
 				t.Fatalf("unsafe trusted posting error: status=%d want=%d %s", w.Code, tc.want, w.Body.String())
 			}

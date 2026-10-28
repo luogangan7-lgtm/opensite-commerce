@@ -54,7 +54,7 @@ func TestRefundNegativeAdjustedIncomeCapacity(t *testing.T) {
 			if tc.physical {
 				version, _, _ := conservationOrder(t, f)
 				err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
-					s, err := fulfillment.New().CreateShipment(ctx, tx, f.tenant, fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: "negative-income-shipment", Carrier: "manual", TrackingNumber: "negative-income", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: 2}}})
+					s, err := fulfillment.New().CreateShipment(ctx, tx, f.tenant, fulfillmentcontract.CreateInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: "7e3d1b2b-11a6-5901-94d2-d405ae91e203", Carrier: "manual", TrackingNumber: "negative-income", Lines: []fulfillmentcontract.Line{{OrderLineID: f.line, Quantity: 2}}})
 					if err == nil {
 						shipmentLine = s.Lines[0].ID
 					}
@@ -74,7 +74,7 @@ func TestRefundNegativeAdjustedIncomeCapacity(t *testing.T) {
 				var rma returnscontract.Return
 				err := f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 					var err error
-					rma, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: fmt.Sprintf("negative-income-rma-%d", i), Kind: kind, Reason: "discount exceeds merchandise income", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipmentLine, Quantity: quantity}}})
+					rma, err = f.returns.Request(ctx, tx, f.tenant, returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: version, IdempotencyKey: fixtureCallerKey(fmt.Sprintf("negative-income-rma-%d", i)), Kind: kind, Reason: "discount exceeds merchandise income", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipmentLine, Quantity: quantity}}})
 					return err
 				})
 				if err != nil {
@@ -102,7 +102,7 @@ func TestRefundNegativeAdjustedIncomeCapacity(t *testing.T) {
 					version, _, _ = conservationOrder(t, f)
 					err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 						var err error
-						rma, err = f.returns.Receive(ctx, tx, f.tenant, returnscontract.ReceiveInput{ReturnID: rma.ID, ExpectedVersion: version, IdempotencyKey: fmt.Sprintf("negative-income-receive-%d", i), Restock: true})
+						rma, err = f.returns.Receive(ctx, tx, f.tenant, returnscontract.ReceiveInput{ReturnID: rma.ID, ExpectedVersion: version, IdempotencyKey: fixtureCallerKey(fmt.Sprintf("negative-income-receive-%d", i)), Restock: true})
 						return err
 					})
 					if err != nil {
@@ -110,7 +110,7 @@ func TestRefundNegativeAdjustedIncomeCapacity(t *testing.T) {
 					}
 				}
 				version, _, _ = conservationOrder(t, f)
-				out, err := f.returns.Refund(f.ctx, f.tenant, returnscontract.RefundInput{ReturnID: rma.ID, ExpectedVersion: version, IdempotencyKey: fmt.Sprintf("negative-income-refund-%d", i)})
+				out, err := f.returns.Refund(f.ctx, f.tenant, returnscontract.RefundInput{ReturnID: rma.ID, ExpectedVersion: version, IdempotencyKey: fixtureCallerKey(fmt.Sprintf("negative-income-refund-%d", i))})
 				if err != nil || out.Status != "refunded" || out.RefundMinor != want {
 					t.Fatalf("refund completion: %+v err=%v", out, err)
 				}

@@ -19,7 +19,7 @@ const jar={get:(name:string)=>values.has(name)?{value:values.get(name)!}:undefin
 function csrf() { return createHmac('sha256',Buffer.from(process.env.OPENSITE_CUSTOMER_CSRF_SECRET!,'base64url')).update(`customer-http:${site}:customer-session:${tenant}:${bearer}`).digest('base64url'); }
 function session() { return {customer:{tenant_id:foreign?'c0900001-0000-4000-8000-000000000002':tenant,customer_id:customer,session_id:cart,email:'buyer@example.test',expires_at:'2000-01-01T00:00:00Z',idle_expires_at:'2000-01-01T00:00:00Z'},csrf_token:csrf()}; }
 function request(operation:string,token?:string,input?:unknown,method=input?'POST':'GET') {
-  return new Request(`${site}/purchase/api/${operation}`,{method,headers:{Host:'shop.example.test',...(token?{Origin:site,'X-CSRF-Token':token,'Content-Type':'application/json'}:{}),'Idempotency-Key':'c09f'},...(input?{body:JSON.stringify(input)}:{})});
+  return new Request(`${site}/purchase/api/${operation}`,{method,headers:{Host:'shop.example.test',...(token?{Origin:site,'X-CSRF-Token':token,'Content-Type':'application/json'}:{}),'Idempotency-Key':'c09f0001-0000-4000-8000-000000000001'},...(input?{body:JSON.stringify(input)}:{})});
 }
 async function send(operation:string,token?:string,input?:unknown,method?:string) { return handlePurchaseRequest(request(operation,token,input,method),jar,operation); }
 beforeEach(()=>{

@@ -40,7 +40,7 @@ async function setup(fixture=false) {
     if(path.endsWith('/checkout')||path.includes('/checkout/')||path==='/__fixture/completion')return Response.json(result);
     return new Response(null,{status:404});
   },{preconnect:globalThis.fetch.preconnect}));
-  const req=(operation:string,body?:unknown)=>new Request(`${site}/purchase/api/${operation}`,{method:body?'POST':'GET',headers:{Host:new URL(site).host,...(body?{Origin:site,'Content-Type':'application/json','X-CSRF-Token':context.csrf,'Idempotency-Key':'same-start-key'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  const req=(operation:string,body?:unknown)=>new Request(`${site}/purchase/api/${operation}`,{method:body?'POST':'GET',headers:{Host:new URL(site).host,...(body?{Origin:site,'Content-Type':'application/json','X-CSRF-Token':context.csrf,'Idempotency-Key':'c09d0001-0000-4000-8000-000000000001'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   const context=await readPurchaseContext(new Request(site,{headers:{Host:new URL(site).host}}),jar);
   expect(context.enabled).toBe(true);
   expect((await handlePurchaseRequest(req('cart',{sku_id:sku,quantity:1}),jar,'cart')).status).toBe(200);

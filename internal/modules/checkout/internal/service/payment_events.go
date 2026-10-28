@@ -20,6 +20,7 @@ import (
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
 	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
 var _ contract.PaymentEventApplier = (*Service)(nil)
@@ -63,7 +64,8 @@ func (s *Service) applyPaymentFact(ctx context.Context, tx pgx.Tx, event payment
 	}
 	// The same permanent identity used by command confirmation binds all facts.
 	hash := digest(event)
-	attempt, err := q.GetCheckoutAttempt(ctx, db.GetCheckoutAttemptParams{TenantID: row.TenantID, EventKind: "payment", EventKey: event.EventID})
+	eventKey := idempotency.DerivedKey("checkout.payment", event.EventID)
+	attempt, err := q.GetCheckoutAttempt(ctx, db.GetCheckoutAttemptParams{TenantID: row.TenantID, EventKind: "payment", EventKey: eventKey})
 	if err == nil {
 		if attempt.CheckoutID != row.ID || !bytes.Equal(attempt.RequestHash, hash) {
 			return false, contract.ErrKeyReused
@@ -73,7 +75,7 @@ func (s *Service) applyPaymentFact(ctx context.Context, tx pgx.Tx, event payment
 		}
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return false, store.MapError(err)
-	} else if _, err = q.InsertCheckoutAttempt(ctx, db.InsertCheckoutAttemptParams{TenantID: row.TenantID, EventKind: "payment", EventKey: event.EventID, CheckoutID: row.ID, RequestHash: hash}); err != nil {
+	} else if _, err = q.InsertCheckoutAttempt(ctx, db.InsertCheckoutAttemptParams{TenantID: row.TenantID, EventKind: "payment", EventKey: eventKey, CheckoutID: row.ID, RequestHash: hash}); err != nil {
 		return false, store.MapError(err)
 	}
 	if refund {
@@ -103,7 +105,7 @@ func (s *Service) applyPaymentFact(ctx context.Context, tx pgx.Tx, event payment
 	if !refund && current.FinalResult != nil {
 		result = current.FinalResult
 	}
-	err = q.CompleteCheckoutAttempt(ctx, db.CompleteCheckoutAttemptParams{TenantID: row.TenantID, EventKind: "payment", EventKey: event.EventID, Result: result})
+	err = q.CompleteCheckoutAttempt(ctx, db.CompleteCheckoutAttemptParams{TenantID: row.TenantID, EventKind: "payment", EventKey: eventKey, Result: result})
 	return err == nil, store.MapError(err)
 }
 
@@ -120,7 +122,7 @@ func (s *Service) applyTerminalFact(ctx context.Context, tx pgx.Tx, q *db.Querie
 		phase, terminal, target = "confirming", "paid", orders.Paid
 	}
 	if row.Phase == "ready" {
-		row.Phase, row.ClaimKind, row.ClaimKey = phase, store.Text("payment"), store.Text(event.EventID)
+		row.Phase, row.ClaimKind, row.ClaimKey = phase, store.Text("payment"), store.Text(idempotency.DerivedKey("checkout.payment", event.EventID))
 		var err error
 		row, err = update(ctx, q, row)
 		if err != nil {
@@ -131,7 +133,7 @@ func (s *Service) applyTerminalFact(ctx context.Context, tx pgx.Tx, q *db.Querie
 		// overwrite a durable competing confirmation with a failure fact.
 		return contract.ErrConflict
 	}
-	changed, err := s.config.Orders.Transition(ctx, tx, row.TenantID.String(), orders.TransitionInput{OrderID: row.OrderID.String(), Target: target, EventKey: "checkout:" + row.ID.String() + ":" + terminal})
+	changed, err := s.config.Orders.Transition(ctx, tx, row.TenantID.String(), orders.TransitionInput{OrderID: row.OrderID.String(), Target: target, EventKey: idempotency.DerivedKey("checkout.order-transition.v1", row.ID.String(), terminal)})
 	if err != nil {
 		return err
 	}
@@ -139,7 +141,7 @@ func (s *Service) applyTerminalFact(ctx context.Context, tx pgx.Tx, q *db.Querie
 		return contract.ErrConflict
 	}
 	if paid {
-		posting, err := factJournal(ctx, q, row, row.ClaimKey.String)
+		posting, err := factJournal(ctx, q, row, event.EventID)
 		if err != nil {
 			return err
 		}
@@ -156,7 +158,9 @@ func (s *Service) applyTerminalFact(ctx context.Context, tx pgx.Tx, q *db.Querie
 	return err
 }
 
-func factJournal(ctx context.Context, q *db.Queries, row db.AppCheckoutSession, eventKey string) (ledger.Transaction, error) {
+// Capture paths share the trusted payment fact's EventID, never its derived
+// storage ClaimKey. Refunds supply their separate refund-scoped event identity.
+func factJournal(ctx context.Context, q *db.Queries, row db.AppCheckoutSession, eventID string) (ledger.Transaction, error) {
 	rows, err := q.GetCheckoutLedgerAccounts(ctx, row.TenantID)
 	if err != nil {
 		return ledger.Transaction{}, store.MapError(err)
@@ -165,7 +169,7 @@ func factJournal(ctx context.Context, q *db.Queries, row db.AppCheckoutSession, 
 	for _, account := range rows {
 		accounts[account.Code] = account
 	}
-	return journal(row, eventKey, accounts)
+	return journal(row, eventID, accounts)
 }
 
 func (s *Service) applyRefundFact(ctx context.Context, tx pgx.Tx, q *db.Queries, row db.AppCheckoutSession, event payment.VerifiedEvent) error {

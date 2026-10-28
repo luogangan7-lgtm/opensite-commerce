@@ -202,7 +202,9 @@ jobs:
           ./scripts/check_pg_upgrade.sh
       - name: Privacy column registry and persisted canary coverage
         if: matrix.lane == 'pg'
-        run: python3 scripts/privacy_registry.py --database --fixture
+        run: |
+          python3 scripts/privacy_registry.py --database --fixture
+          python3 tests/test_merchant_scrub_pg.py
       - name: Data-rights erasure over every registry canary
         if: matrix.lane == 'pg'
         run: python3 scripts/check_data_rights_canaries.py

@@ -114,7 +114,7 @@ func TestDecodeJSONRejectsUnknownNestedDTOFields(t *testing.T) {
 			Name string `json:"name"`
 		} `json:"child"`
 	}
-	r := httptest.NewRequest(http.MethodPost, "/decode", strings.NewReader(`{"child":{"name":"ok","extra":true}}`))
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"child":{"name":"ok","extra":true}}`))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	err := httpapi.DecodeJSON(w, r, &dto)
@@ -155,7 +155,7 @@ func TestDecodeJSONDuplicateObjectMembers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dto := jsonDTO{Name: "initial", Meta: json.RawMessage(`{"initial":true}`)}
-			r := httptest.NewRequest(http.MethodPost, "/decode", strings.NewReader(tt.body))
+			r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(tt.body))
 			r.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			err := httpapi.DecodeJSON(w, r, &dto)
@@ -182,7 +182,7 @@ func TestDecodeJSONDuplicateBeforeCustomUnmarshal(t *testing.T) {
 		Meta jsonCustomPayload `json:"meta"`
 	}
 	dto.Name, dto.Meta.Calls = "initial", 7
-	r := httptest.NewRequest(http.MethodPost, "/decode", strings.NewReader(`{"name":"updated","meta":{"secret":1,"secret":2}}`))
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"name":"updated","meta":{"secret":1,"secret":2}}`))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	err := httpapi.DecodeJSON(w, r, &dto)
@@ -217,13 +217,13 @@ func assertDuplicateJSONProblem(t *testing.T, w *httptest.ResponseRecorder, r *h
 		t.Fatal(err)
 	}
 	if problem.Type != "about:blank" || problem.Title != "Bad Request" || problem.Status != 400 ||
-		problem.Detail != "Body must be one valid JSON object within the JSON limits" || problem.Instance != "/decode" {
+		problem.Detail != "Body must be one valid JSON object within the JSON limits" || problem.Instance != "/api/v1/auth/login" {
 		t.Fatalf("unexpected public problem: %+v", problem)
 	}
 }
 
 func TestDecodeJSONBodyReadFailure(t *testing.T) {
-	r := httptest.NewRequest(http.MethodPost, "/decode", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
 	r.Header.Set("Content-Type", "application/json")
 	r.Body = io.NopCloser(jsonFailingReader{})
 	w := httptest.NewRecorder()
@@ -245,7 +245,7 @@ func decodeJSONRequest(t *testing.T, contentType, body string, limit int64) (int
 	router := httpapi.New(nil, nil)
 	var dto jsonDTO
 	err := router.Register(httpapi.RouteSpec{
-		OperationID: "decode", Method: http.MethodPost, Pattern: "/decode", Access: httpapi.Public, MaxBodySize: limit,
+		OperationID: "decode", Method: http.MethodPost, Pattern: "/api/v1/auth/login", Access: httpapi.Public, MaxBodySize: limit,
 	}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := httpapi.DecodeJSON(w, r, &dto); err != nil {
 			httpapi.WriteProblem(w, r, err)
@@ -256,7 +256,7 @@ func decodeJSONRequest(t *testing.T, contentType, body string, limit int64) (int
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	r := httptest.NewRequest(http.MethodPost, "/decode", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(body))
 	if contentType != "" {
 		r.Header.Set("Content-Type", contentType)
 	}

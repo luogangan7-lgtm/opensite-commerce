@@ -7,37 +7,38 @@
     "tenants": {
       "subject": {"tenant_key": null, "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "id": {"classification": "operational"},
-        "name": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "settlement_currency": {"classification": "financial_non_contact"}
+        "id": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep tenants.id only as an opaque witness uuid witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "tenants.id"}, "value_type": "uuid", "retained_kind": "witness"}},
+        "name": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "row_id_placeholder", "reason": "Erase original tenants.name using the exact declared replacement; preserve only the financial/FK witness row.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "tenants.id"}, "value": "erased:{id}"}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep tenants.status only as an opaque control enum witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "tenants.id"}, "value_type": "enum", "retained_kind": "control", "values": ["active", "suspended", "deleted"]}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep tenants.created_at only as an opaque control timestamp witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "tenants.id"}, "value_type": "timestamp", "retained_kind": "control"}},
+        "settlement_currency": {"classification": "financial_non_contact", "merchant_deletion": {"action": "retain", "strategy": "unchanged", "reason": "Keep tenants.settlement_currency only as an opaque financial currency witness; preserve financial conservation, recovery or minimal erasure receipt, never contact text.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "tenants.id"}, "value_type": "currency", "retained_kind": "financial"}}
       }
     },
     "tenant_memberships": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "user_id": {"classification": "operational"},
-        "role": {"classification": "operational"},
-        "status": {"classification": "operational"},
-        "created_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tenant_memberships.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "tenant_memberships.tenant_id"}}},
+        "user_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tenant_memberships.user_id with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "tenant_memberships.tenant_id"}}},
+        "role": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tenant_memberships.role with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "tenant_memberships.tenant_id"}}},
+        "status": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tenant_memberships.status with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "tenant_memberships.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned tenant_memberships.created_at with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "tenant_memberships.tenant_id"}}}
       }
     },
     "api_keys": {
       "subject": {"tenant_key": "tenant_id", "null_subject_policy": "No personal/contact values by current module contract; identifiers are operational relationships, not email-based person ownership."},
       "columns": {
-        "tenant_id": {"classification": "operational"},
-        "id": {"classification": "operational"},
-        "issued_by": {"classification": "operational"},
-        "key_prefix": {"classification": "operational"},
-        "key_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude"},
-        "scopes": {"classification": "operational"},
-        "expires_at": {"classification": "operational"},
-        "revoked_at": {"classification": "operational"},
-        "created_at": {"classification": "operational"},
-        "last_used_at": {"classification": "operational"}
+        "tenant_id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned api_keys.tenant_id with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "api_keys.tenant_id"}}},
+        "id": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned api_keys.id with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "api_keys.tenant_id"}}},
+        "issued_by": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned api_keys.issued_by with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "api_keys.tenant_id"}}},
+        "key_prefix": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned api_keys.key_prefix with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "api_keys.tenant_id"}}},
+        "key_hash": {"classification": "secret_hash", "structure": "Sha256Digest", "export": "exclude", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned api_keys.key_hash with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "api_keys.tenant_id"}}},
+        "scopes": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned api_keys.scopes with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "api_keys.tenant_id"}}},
+        "expires_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned api_keys.expires_at with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "api_keys.tenant_id"}}},
+        "revoked_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned api_keys.revoked_at with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "api_keys.tenant_id"}}},
+        "created_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned api_keys.created_at with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "api_keys.tenant_id"}}},
+        "last_used_at": {"classification": "operational", "merchant_deletion": {"action": "erase", "strategy": "delete_row", "reason": "Remove tenant-owned api_keys.last_used_at with its row, including all merchant/guest/derived copies.", "handler": "tenant.erase", "ownership": {"kind": "tenant_column", "path": "api_keys.tenant_id"}}}
       }
     }
-  }
+  },
+  "merchant_deletion": {"version": 1, "handlers": {"tenant.erase": {"depends_on": ["datarights.erase"], "tables": ["api_keys", "tenant_memberships", "tenants"], "lock_order": "tenant_fence -> artifact_uuid -> module", "clock": "database", "transaction": "one_item_and_checkpoint"}}, "artifacts": {}}
 }

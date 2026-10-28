@@ -383,7 +383,7 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	p := newPaymentFactFixture(t)
 	forbidCommands := p.f.provider.before
 	p.f.provider.before = nil
-	r := payment.CreatePaymentIntent{TenantID: p.f.tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}, IdempotencyKey: "capture-for-return"}
+	r := payment.CreatePaymentIntent{TenantID: p.f.tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}, IdempotencyKey: "6c8e37e2-d219-535b-b167-469ee1a08d6e"}
 	if _, err := p.f.provider.Capture(p.f.ctx, payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: p.start.Payment.ProviderRef}); err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +395,7 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 			t.Fatalf("RETURNS_FACT_COMMAND_RED: commands=%d captures=%d/%d cancels=%d/%d", p.providerCommands.Load(), p.f.provider.captures.Load(), captures, p.f.provider.cancels.Load(), cancels)
 		}
 	}
-	p.receive(t, "capture-for-return", payment.StatusCaptured, p.start.AmountMinor)
+	p.receive(t, "6c8e37e2-d219-535b-b167-469ee1a08d6e", payment.StatusCaptured, p.start.AmountMinor)
 	assertNoCommands()
 	var line string
 	var version int64
@@ -417,13 +417,13 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	var receipt returnscontract.Return
 	err = p.f.run(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
-		receipt, err = s.Request(ctx, tx, p.f.tenant, returnscontract.RequestInput{OrderID: r.OrderID, ExpectedVersion: version, IdempotencyKey: "single-rma", Kind: returnscontract.UnshippedCancel, Reason: "refund authority regression", Lines: []returnscontract.Line{{OrderLineID: line, Quantity: 1}}})
+		receipt, err = s.Request(ctx, tx, p.f.tenant, returnscontract.RequestInput{OrderID: r.OrderID, ExpectedVersion: version, IdempotencyKey: "2a160ce1-0945-56fa-9a1c-e6cf3fa9e138", Kind: returnscontract.UnshippedCancel, Reason: "refund authority regression", Lines: []returnscontract.Line{{OrderLineID: line, Quantity: 1}}})
 		return err
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := returnscontract.RefundInput{ReturnID: receipt.ID, ExpectedVersion: receipt.OrderVersion, IdempotencyKey: "single-money"}
+	input := returnscontract.RefundInput{ReturnID: receipt.ID, ExpectedVersion: receipt.OrderVersion, IdempotencyKey: "12371f83-a2ab-516f-a964-05e4d59b8d17"}
 	crash := errors.New("abort after provider success before commit")
 	p.f.provider.before = nil // Only the explicit Returns command may issue the refund.
 	if _, err := s.(returnscontract.RefundCompleter).RefundWithCompletion(p.f.ctx, p.f.tenant, input, func(context.Context, pgx.Tx, returnscontract.Return) error { return crash }); !errors.Is(err, crash) {
@@ -533,11 +533,11 @@ func TestMixedRefundComponents(t *testing.T) {
 			})
 			forbidCommands := p.f.provider.before
 			p.f.provider.before = nil
-			r := payment.CreatePaymentIntent{TenantID: p.f.tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}, IdempotencyKey: "mixed-capture"}
+			r := payment.CreatePaymentIntent{TenantID: p.f.tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}, IdempotencyKey: "e2bc5c7f-57e0-56ab-9082-be802d049af8"}
 			if _, err := p.f.provider.Capture(p.f.ctx, payment.PaymentOperation{CreatePaymentIntent: r, ProviderRef: p.start.Payment.ProviderRef}); err != nil {
 				t.Fatal(err)
 			}
-			p.receive(t, "mixed-capture", payment.StatusCaptured, r.Amount.Amount)
+			p.receive(t, "e2bc5c7f-57e0-56ab-9082-be802d049af8", payment.StatusCaptured, r.Amount.Amount)
 			var line string
 			var accounts returnscontract.RefundAccounts
 			if err := p.f.runner.InTenant(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
@@ -565,12 +565,12 @@ func TestMixedRefundComponents(t *testing.T) {
 							return err
 						}
 						var err error
-						receipt, err = s.Request(ctx, tx, p.f.tenant, returnscontract.RequestInput{OrderID: r.OrderID, ExpectedVersion: version, IdempotencyKey: key, Kind: returnscontract.UnshippedCancel, Reason: "mixed allocation", Lines: []returnscontract.Line{{OrderLineID: line, Quantity: 1}}})
+						receipt, err = s.Request(ctx, tx, p.f.tenant, returnscontract.RequestInput{OrderID: r.OrderID, ExpectedVersion: version, IdempotencyKey: fixtureCallerKey(key), Kind: returnscontract.UnshippedCancel, Reason: "mixed allocation", Lines: []returnscontract.Line{{OrderLineID: line, Quantity: 1}}})
 						return err
 					}); err != nil {
 						t.Fatal(err)
 					}
-					completed, err := s.Refund(p.f.ctx, p.f.tenant, returnscontract.RefundInput{ReturnID: receipt.ID, ExpectedVersion: receipt.OrderVersion, IdempotencyKey: key + "-refund"})
+					completed, err := s.Refund(p.f.ctx, p.f.tenant, returnscontract.RefundInput{ReturnID: receipt.ID, ExpectedVersion: receipt.OrderVersion, IdempotencyKey: fixtureCallerKey(key + "-refund")})
 					if err != nil {
 						t.Fatalf("MIXED_COMPONENT_RED: %v", err)
 					}

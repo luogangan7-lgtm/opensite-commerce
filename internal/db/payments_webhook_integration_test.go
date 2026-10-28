@@ -305,6 +305,72 @@ func TestPaymentsPGAuthorizedDoesNotPayAndAccountScopedEventIdentity(t *testing.
 	}
 }
 
+func TestPaymentsPGWebhookAndFinishShareLedgerIdentity(t *testing.T) {
+	for _, webhookFirst := range []bool{true, false} {
+		name := "finish-first"
+		if webhookFirst {
+			name = "webhook-first"
+		}
+		t.Run(name, func(t *testing.T) {
+			p := newPaymentFactFixture(t)
+			id := "capture:" + uuid.NewString()
+			var fact payment.VerifiedEvent
+			// Admit the signed delivery without applying it, so both public paths
+			// receive exactly the same account-mapped, trusted payment fact.
+			p.module = p.newModule(t, func(_ context.Context, _ pgx.Tx, event payment.VerifiedEvent) (bool, error) {
+				fact = event
+				return false, nil
+			})
+			if got := p.receive(t, id, payment.StatusCaptured, p.start.AmountMinor); got.Status != "pending" || fact.Validate() != nil {
+				t.Fatalf("staged payment fact: receipt=%+v fact=%+v", got, fact)
+			}
+			p.module = p.newModule(t, nil)
+			p.f.provider.before = nil
+			encoded, err := json.Marshal(fact.EventID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			hash := sha256.Sum256(encoded)
+			wantEvent := "checkout:" + hex.EncodeToString(hash[:])
+			webhook := func() {
+				if got := p.receive(t, id, payment.StatusCaptured, p.start.AmountMinor); got.Status != "processed" {
+					t.Fatalf("capture pending: %+v", got)
+				}
+			}
+			finish := func() {
+				if got, err := p.f.service.Confirm(checkoutRequestContext(p.f.ctx), fact); err != nil || got.State != "paid" {
+					t.Fatalf("finish: result=%+v err=%v", got, err)
+				}
+			}
+			steps := []func(){finish, webhook, finish, webhook}
+			if webhookFirst {
+				steps = []func(){webhook, finish, webhook, finish}
+			}
+			for i, step := range steps {
+				step()
+				var count, identities int64
+				var event string
+				err := p.f.runner.InTenant(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+					if _, err := tx.Exec(ctx, "SET LOCAL ROLE app_runtime"); err != nil {
+						return err
+					}
+					return tx.QueryRow(ctx, "SELECT count(*),count(DISTINCT event),coalesce(min(event),'') FROM app.ledger_transactions WHERE tenant_id=$1 AND source_type='order' AND source_id=$2::text", p.f.tenant, p.start.OrderID).Scan(&count, &identities, &event)
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || identities != 1 || event != wantEvent {
+					t.Errorf("step %d: journals=%d identities=%d event=%q want=%q", i, count, identities, event, wantEvent)
+				}
+				w := p.f.witness(t, p.start.OrderID)
+				if w.state != "paid" || w.phase != "paid" || w.journals != 1 || w.entries != 6 || w.debits != 540 || w.credits != 540 || w.cash != p.start.AmountMinor || w.receivable != 0 || w.onHand != 8 || w.reserved != 0 || w.paidEvents != 1 || w.cancelEvents != 0 {
+					t.Fatalf("step %d changed payment effects: %+v", i, w)
+				}
+			}
+		})
+	}
+}
+
 func TestPaymentsPGCapturedReplayConflictAndLateFailure(t *testing.T) {
 	p := newPaymentFactFixture(t)
 	id := "capture:" + uuid.NewString()

@@ -11,6 +11,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
 	qc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"testing"
 )
 
@@ -58,7 +59,7 @@ func TestQuoteCheckoutUsesImmutableOrderNamespaceAndAdoptionOnly(t *testing.T) {
 		if err != nil || out.State != "pending_payment" || out.ProviderRef == "" {
 			t.Fatalf("adoption: %+v %v", out, err)
 		}
-		if p.key != "quotes.orders.v1:"+order || p.key == receipt.IdempotencyKey || p.order != order {
+		if p.key != idempotency.DerivedKey("quotes.checkout.v1", order) || p.key == receipt.IdempotencyKey || p.order != order {
 			t.Fatal("checkout shares raw cart/quote key")
 		}
 	}
