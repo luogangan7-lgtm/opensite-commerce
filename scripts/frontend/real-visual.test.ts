@@ -70,3 +70,13 @@ test('VISUAL-REAL provenance identifies injected faults and unreachable boundary
   expect(realBackendEvidence('mobile/real-213-completion-error.png').fault).toContain('503');
   expect(realBackendEvidence('mobile/real-213-completion-long-order.png').boundary).toContain('maximum legal UUID');
 });
+
+// These reviewed sources are part of the real-data boundary. Any change requires
+// re-review before updating the digest, including alternate response constructors.
+test('VISUAL-REAL proxy and launcher match the reviewed no-DTO sources', () => {
+  const approved: Record<string, string> = {
+    'scripts/frontend/real-proxy.ts': '76076331f022df650544b3a465952ef9b19cd78101a6e3c861b073d338b67189',
+    'scripts/frontend/start-real-backend.py': 'f28929e06059ce0f540dee2c2c5e827f07b95ed43592994d9f3fbfe688c0e28e',
+  };
+  for (const [path, digest] of Object.entries(approved)) expect(sha256(path), path).toBe(digest);
+});
