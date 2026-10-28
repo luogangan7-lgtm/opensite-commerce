@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "desktop/admin-notifications-failed.png",
   "scope": "admin",
-  "sourceFingerprint": "2a4ec2edf8facee6472e5118bc941054d7ac77f8f9cfbdf0fe9f8814d4357c64",
+  "sourceFingerprint": "02820e15602503f624a8f8298bfb3cd1fb3db6e4efa01c78948202b4f30a16f0",
   "pngSha256": "d7f589b4c74f945b1bae4697426cdc54a7827bf1c8e438dfa1ff1f863c8a5466",
   "scopeSnapshots": [
     "desktop/admin-content-conflict.png",
@@ -96,8 +96,8 @@
     "mobile/admin-publication-long.png",
     "mobile/admin-publication-saving.png"
   ],
-  "sourceSha": "4118dfac18f69057a7b0d9635096744212e7e538",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40661628991",
+  "sourceSha": "28c1adbbc04591a58792071770f363999c6786b5",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40690971220",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
