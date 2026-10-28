@@ -141,7 +141,7 @@ func (s *Service) applyTerminalFact(ctx context.Context, tx pgx.Tx, q *db.Querie
 		return contract.ErrConflict
 	}
 	if paid {
-		posting, err := factJournal(ctx, q, row, event.EventID)
+		posting, err := factJournal(ctx, q, row, row.ClaimKey.String)
 		if err != nil {
 			return err
 		}
