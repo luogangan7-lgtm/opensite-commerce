@@ -160,6 +160,9 @@ of the implementing owner cards.
 
 ### Caller-key migration notes (pre-launch only)
 
+When present, `caller_key` must be a JSON boolean (`true` or `false`); strings,
+numbers, null and containers fail at registry load. Omission remains allowed.
+
 The UUID CHECK columns in the pending migration accept only canonical lowercase
 UUIDs. Surviving rows retain these random/derived identifiers unchanged as
 `opaque_ref`: they contain no personal data and must never be rewritten to
@@ -237,7 +240,11 @@ its immutable trigger remains authoritative. Catalog option keys use stable
 `erased:{id}` replacements, preserving multiple variants and their financial FKs.
 
 Artifact inventory uses `scripts/privacywriters` and Go AST/type information to
-identify `os` and `(*os.Root)` Create/CreateTemp/WriteFile/OpenFile calls. Each
+identify `os` and `(*os.Root)` Create/CreateTemp/WriteFile/OpenFile/Rename calls
+across all first-party Go package roots, including `cmd/`, `internal/`, the module
+root and other package directories. Inactive build files and nested modules
+receive the conservative source scan; VCS metadata and installed `node_modules/`
+and `vendor/` dependencies are excluded. Each
 writer needs its artifact comment group immediately before that call's line;
 a file-level marker cannot authorize another call. Multiple calls on that line
 cannot share a marker. OpenFile wrappers retain the prior conservative inventory
