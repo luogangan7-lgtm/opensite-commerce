@@ -25,7 +25,7 @@ BEGIN
   r:=app.inventory_reserve(current_setting('test.c20b_sku')::uuid,1,'checkout',owner,'1a4a610c-1355-5627-bc48-4a6a52219a8f',900);
  ELSE
   EXECUTE 'SELECT * FROM app.inventory_reserve_non_order($1,1,''checkout'',$2,$3,900,$4)'
-   INTO r USING current_setting('test.c20b_sku')::uuid,owner,'c20b-replay',bearer;
+   INTO r USING current_setting('test.c20b_sku')::uuid,owner,'1a4a610c-1355-5627-bc48-4a6a52219a8f',bearer;
  END IF;
  SELECT * INTO STRICT seen FROM app.inventory_reservations WHERE id=r.id;
  IF NOT EXISTS(SELECT FROM app.inventory_movements WHERE reservation_id=r.id
@@ -66,7 +66,7 @@ BEGIN
  -- A replay of reserve with observed identifiers cannot mint another bearer.
  BEGIN
   EXECUTE 'SELECT * FROM app.inventory_reserve_non_order($1,1,$2,$3,$4,900,$5)'
-   USING seen.sku_id,seen.owner_type,seen.owner_id,'c20b-replay',other;
+   USING seen.sku_id,seen.owner_type,seen.owner_id,'1a4a610c-1355-5627-bc48-4a6a52219a8f',other;
   RAISE EXCEPTION 'C20B_GATE reserve replay replaced holder';
  EXCEPTION WHEN invalid_parameter_value THEN
   IF SQLERRM<>'INVENTORY_IDEMPOTENCY_KEY_REUSED' THEN RAISE; END IF;

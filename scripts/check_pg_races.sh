@@ -1890,10 +1890,10 @@ quote_conversion_count() {
 }
 for mode in duplicate different_key two_quotes_one_key; do
  read -r QT QC QB QS QQ QQ2 <<<"$(quote_conversion_fixture)"
- gate=100; second_quote=$QQ; second_key=race-key; marker=ok
- if [[ $mode == different_key ]]; then gate=101; second_key=other-key; marker=QUOTE_CONVERSION_ALREADY_CONVERTED; fi
+ gate=100; second_quote=$QQ; second_key=3b86f942-cb7c-5c60-830f-6aa888010b1e; marker=ok
+ if [[ $mode == different_key ]]; then gate=101; second_key=e138b438-607f-5312-bfd5-71e5b050e4be; marker=QUOTE_CONVERSION_ALREADY_CONVERTED; fi
  if [[ $mode == two_quotes_one_key ]]; then gate=103; second_quote=$QQ2; marker=QUOTE_CONVERSION_KEY_REUSED; fi
- first=$(quote_conversion_call "$QQ" race-key); second=$(quote_conversion_call "$second_quote" "$second_key")
+ first=$(quote_conversion_call "$QQ" 3b86f942-cb7c-5c60-830f-6aa888010b1e); second=$(quote_conversion_call "$second_quote" "$second_key")
  gate_close "$gate"
  tx conversion_first app_runtime "$QT" "$first $(park "$gate")" &
  await conversion_first advisory
@@ -1914,7 +1914,7 @@ sql <<<"ALTER TABLE app.quotes DISABLE TRIGGER quote_guard; UPDATE app.quotes SE
 gate_close 102
 tx conversion_expiry_holder app_runtime "$QT" "SELECT app.quote_conversion_lock('$QT','$QQ','$QC','$QB'); $(park 102)" &
 await conversion_expiry_holder advisory
-tx conversion_expiry_waiter app_runtime "$QT" "$(quote_conversion_call "$QQ" race-key)" &
+tx conversion_expiry_waiter app_runtime "$QT" "$(quote_conversion_call "$QQ" 3b86f942-cb7c-5c60-830f-6aa888010b1e)" &
 await conversion_expiry_waiter "${ROWLOCK[@]}"
 expiry_seen=false
 for _ in $(seq 1 240); do
