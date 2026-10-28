@@ -70,3 +70,16 @@ test('VISUAL-REAL provenance identifies injected faults and unreachable boundary
   expect(realBackendEvidence('mobile/real-213-completion-error.png').fault).toContain('503');
   expect(realBackendEvidence('mobile/real-213-completion-long-order.png').boundary).toContain('maximum legal UUID');
 });
+
+// #230 inventory is independent of implementation so an omitted state fails CI.
+test('VISUAL-230 requires real staff order evidence for both viewports', () => {
+  const states = ['list', 'detail', 'long-list', 'long-detail', 'empty', 'pagination',
+    'list-loading', 'detail-loading', 'list-503', 'detail-503', 'unauthenticated', 'cross-tenant', 'version-error'];
+  const inventory = (REAL_VISUAL_STATES as unknown as Record<number, readonly string[]>)[230] ?? [];
+  expect(inventory).toEqual(states);
+  for (const viewport of ['desktop', 'mobile']) for (const state of states) {
+    const snapshot = `${viewport}/real-230-${state}.png`;
+    expect(existsSync(`${BASELINES}/${snapshot}`), `Missing ${snapshot}`).toBe(true);
+    expect(existsSync(`${BASELINES}/${snapshot}.provenance.json`), `Missing provenance for ${snapshot}`).toBe(true);
+  }
+});
