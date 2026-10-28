@@ -49,14 +49,14 @@ def main():
         children.append(proc)
         return proc
 
-    def wait(url):
+    def wait(url, status=200):
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             if any(proc.poll() is not None for proc in children):
                 raise RuntimeError('Real visual child exited before readiness')
             try:
                 with urllib.request.urlopen(url, timeout=2) as response:
-                    if response.status == 200:
+                    if response.status == status:
                         return
             except OSError:
                 pass
@@ -68,7 +68,7 @@ def main():
 
     signal.signal(signal.SIGTERM, interrupted)
     # Serialize cluster role installation against the existing published-read fixture.
-    wait('http://127.0.0.1:4175/healthz')
+    wait('http://127.0.0.1:4175/healthz', 204)
     query(f'CREATE DATABASE {database};')
     pg['PGDATABASE'] = database
     try:
@@ -94,6 +94,7 @@ def main():
                    OPENSITE_CHECKOUT_RULE_METADATA=json.dumps({'Profiles': {purchase.TENANT: 'c2400014-0000-4000-8000-000000000001'},
                      'SKUs': {purchase.TENANT: {f'c2400008-0000-4000-8000-{n:012d}': {'TaxCategory': 'standard', 'WeightG': 100} for n in (1, 2)}}}))
         env.update({f'OPENSITE_{kind}_DB_PASSWORD': password for kind, password in passwords.items()})
+        env['OSC_PUBLIC_DATABASE_URL'] = f"host={source.hostname} dbname={database} user=opensite_domain_login password={passwords['DOMAIN']} sslmode=disable"
         # Offline owner bootstrap uses its own temporary capability, never the runtime login.
         boot_password = secrets.token_hex(32)
         query(f"CREATE ROLE visual_bootstrap LOGIN PASSWORD '{boot_password}'; GRANT app_admin_bootstrap TO visual_bootstrap; GRANT CONNECT ON DATABASE {database} TO visual_bootstrap;")
@@ -103,7 +104,7 @@ def main():
         query(f'REVOKE CONNECT ON DATABASE {database} FROM visual_bootstrap; DROP ROLE visual_bootstrap;')
         run(['go', 'build', '-tags', 'pgx', '-o', str(owned / 'api'), './cmd/api'], env)
         spawn([str(owned / 'api')], env)
-        wait('http://127.0.0.1:4180/healthz')
+        wait('http://127.0.0.1:4180/healthz', 204)
         purchase.publish(query, {}, 'http://127.0.0.1:4180')
         query(f"SELECT set_config('app.tenant_id','{purchase.TENANT}',false); SELECT app.inventory_adjust('{purchase.SKU}',1000,'Visual CI stock','c4490001-0000-4000-8000-000000000001','inbound');")
         runtime = {'pg': pg, 'cookieKey': secrets.token_urlsafe(32), 'control': secrets.token_urlsafe(32)}
