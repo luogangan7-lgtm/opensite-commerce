@@ -8,23 +8,25 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { latestSuccessfulAttempt, listRunArtifacts, listRunJobs, requireAttemptArtifact, selectLatestAttempt, successfulAttempts } from './rerun-attempts';
+import type { RunJob } from './rerun-attempts';
 
-type Job = { name: string; run_attempt: number | string; status: string; conclusion: string };
+type Job = RunJob;
 type Case = { name: string; jobs?: Job[]; job_pages?: Job[][]; evidence_attempts: number[]; expected: { attempt?: number; error?: string } };
 type Vectors = { job_name: string; cases: Case[] };
 const vectors = JSON.parse(readFileSync(new URL('../../tests/fixtures/rerun-attempts.json', import.meta.url), 'utf8')) as Vectors;
 
-test('shared vectors: the latest successful attempt needs its own evidence', () => {
-  for (const item of vectors.cases) {
+for (const item of vectors.cases) {
+  test(`shared vectors: ${item.name}`, () => {
     const jobs = item.jobs ?? (item.job_pages ?? []).flat();
     const expected = item.expected;
     if (expected.error) {
       expect(() => selectLatestAttempt(successfulAttempts(jobs, vectors.job_name), item.evidence_attempts)).toThrow(expected.error);
     } else {
       expect(selectLatestAttempt(successfulAttempts(jobs, vectors.job_name), item.evidence_attempts)).toBe(expected.attempt!);
+      expect(latestSuccessfulAttempt(jobs, vectors.job_name)).toBe(expected.attempt!);
     }
-  }
-});
+  });
+}
 
 test('run jobs are listed with filter=all across every page, not only the latest execution', async () => {
   const requested: string[] = [];
