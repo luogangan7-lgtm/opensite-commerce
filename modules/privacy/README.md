@@ -129,8 +129,11 @@ The current source inventory has four kinds: media originals, upload staging,
 customer export JSON and export temporary files. Explicit `privacy-artifact`
 annotations sit at the two filesystem writer implementations. The gate scans
 production `internal/**/*.go` filesystem-create/OpenFile calls, rejects
-unannotated writer files, and reconciles artifact IDs/source paths in both
-directions. A future producer/kind must extend that inventory and declaration;
+unannotated writer calls, and reconciles artifact IDs/source paths in both
+directions. OS writers must be called directly: aliases, method values and
+callback/return references fail closed even if annotated. Typed dot-imported
+calls are inventoried; unresolved dot imports of OS fail closed. A future
+producer/kind must extend that inventory and declaration;
 these checks are source reconciliation, not runtime file erasure evidence.
 No variants or merchant archives exist yet: their owner cards must add actual
 producers and policies together. Media's **current** originals/staging paths

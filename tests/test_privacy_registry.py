@@ -756,6 +756,32 @@ func future(r *os.Root) { r.WriteFile("unregistered", nil, 0600) }
             with self.assertRaisesRegex(ValueError, "MERCHANT_ARTIFACT_WRITER_ESCAPE"):
                 self.gate.artifact_catalog(root)
 
+    def test_direct_writer_calls_and_business_method_values_remain_distinct(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "go.mod").write_text("module privacyprobe\ngo 1.27.2\n")
+            (root / "internal").mkdir()
+            (root / "internal/probe.go").write_text('''package probe
+import . "os"
+type business struct{}
+func (business) Create(string) {}
+func write(b business) {
+ put := b.Create
+ put("business")
+ // privacy-artifact: orders.archive
+ (WriteFile)("private", nil, 0600)
+}
+''')
+            self.assertEqual(self.gate.artifact_catalog(root), {"orders.archive": "internal/probe.go"})
+            (root / "internal/probe.go").write_text('''package probe
+import fs "os"
+func write() {
+ // privacy-artifact: orders.archive
+ (fs.WriteFile)("private", nil, 0600)
+}
+''')
+            self.assertEqual(self.gate.artifact_catalog(root), {"orders.archive": "internal/probe.go"})
+
     def test_credential_or_personal_hash_cannot_claim_financial_retention(self):
         registry = self.gate.load_registry(ROOT)
         handlers = self.load(ROOT)["handlers"]
