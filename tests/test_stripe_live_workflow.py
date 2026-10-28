@@ -117,6 +117,50 @@ def validate(document, workflows):
 
 
 class LiveWorkflowGate(unittest.TestCase):
+    def test_environment_belongs_to_exactly_one_live_job(self):
+        original = yaml.safe_load(LIVE.read_text())
+        for name in ('stripe-live', 'STRIPE-LIVE', 'Stripe-Live'):
+            for environment in (name, {'name': name}):
+                for filename in ('another.yml', 'another.yaml'):
+                    with self.subTest(environment=environment, filename=filename):
+                        other = yaml.safe_dump({'jobs': {'live': {'environment': environment, 'steps': [{'run': 'true'}]}}})
+                        with self.assertRaisesRegex(AssertionError, 'LIVE_ENVIRONMENT_OWNERSHIP'):
+                            validate(original, {LIVE.name: LIVE.read_text(), filename: other})
+                bad = copy.deepcopy(original)
+                bad['jobs']['another'] = {'environment': environment, 'steps': [{'run': 'true'}]}
+                with self.subTest(environment=environment, filename=LIVE.name):
+                    with self.assertRaisesRegex(AssertionError, 'LIVE_ENVIRONMENT_OWNERSHIP'):
+                        validate(bad, {LIVE.name: yaml.safe_dump(bad)})
+
+    def test_live_workflow_bytes_are_pinned(self):
+        source = LIVE.read_text()
+        for old, new in (
+            ('ref: ${{ github.sha }}', 'ref: other-branch'),
+            ('persist-credentials: false', 'persist-credentials: true'),
+            ('persist-credentials: false', 'persist-credentials: false\n          repository: other/repository'),
+            ('./internal/db', './internal/modules/payments'),
+            ('run: python3 scripts/stripe_live_ci.py', 'run: echo unsafe'),
+            ('name: stripe-live-smoke', 'name: stripe-live-smoke # byte mutation'),
+        ):
+            with self.subTest(mutation=new):
+                self.assertIn(old, source)
+                body = source.replace(old, new, 1)
+                with self.assertRaisesRegex(AssertionError, 'LIVE_CONTENT_LOCK'):
+                    validate(yaml.safe_load(body), {LIVE.name: body})
+
+    def test_other_environment_cannot_read_live_environment_secrets(self):
+        original = yaml.safe_load(LIVE.read_text())
+        for environment in (None, 'stripe-test', {'name': 'stripe-test'}):
+            with self.subTest(environment=environment):
+                other = {'jobs': {'probe': {'env': {
+                    'DOT': '${{ SECRETS.STRIPE_API }}',
+                    'BRACKET': "${{ Secrets['STRIPE_API'] }}",
+                    'CONTEXT': '${{ toJSON(secrets) }}',
+                }, 'steps': [{'run': 'true'}]}}}
+                if environment is not None:
+                    other['jobs']['probe']['environment'] = environment
+                validate(original, {LIVE.name: LIVE.read_text(), 'other.yml': yaml.safe_dump(other)})
+
     def test_secret_ownership_is_case_insensitive(self):
         original = yaml.safe_load(LIVE.read_text())
         for secret in OWNED_SECRETS:
