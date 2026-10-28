@@ -1,0 +1,74 @@
+# Responsibility: prove the committed session admission test rejects regressions.
+# Dependencies: pinned Go and identity HTTP fixture; called by identity PR CI.
+# Invariants: baseline passes; removed/reduced admission fails at its exact assertion.
+name: identity-admission-probes
+on:
+  pull_request:
+    paths:
+      - 'internal/modules/identity/**'
+      - '.github/workflows/identity-admission-probes.yml'
+  push:
+    branches: [codex/fix-203-probes]
+permissions:
+  contents: read
+jobs:
+  session-admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - name: Baseline and two causal admission mutations
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import os
+          import subprocess
+
+          head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          print(f'Exact candidate head: {head}', flush=True)
+          command = ['go', 'test', '-race', '-count=1', '-v', '-timeout=20s',
+                     '-run', '^TestH4ASessionConcurrencyAndDeadline$',
+                     './internal/modules/identity/internal/httpapi']
+          path = Path('internal/modules/identity/internal/login/service.go')
+          source = path.read_text()
+          admission = '''\tselect {
+          \tcase s.sessionSlots <- struct{}{}:
+          \tdefault:
+          \t\tobservability.ObserveAuthentication(ctx, "session_admission", "denied", started)
+          \t\treturn Actor{}, Session{}, ErrRateLimited
+          \t}
+          '''
+          release = '\tdefer func() { <-s.sessionSlots }()\n'
+          capacity = 'sessionSlots: make(chan struct{}, 2)'
+          assert source.count(admission) == source.count(release) == source.count(capacity) == 1, 'mutation anchor drift'
+          mutations = {
+              'baseline': (source, None),
+              'removed': (source.replace(admission, '').replace(release, ''), 'H4A_ADMISSION_BOUND'),
+              'reduced': (source.replace(capacity, 'sessionSlots: make(chan struct{}, 1)'), 'H4A_ADMISSION_READINESS'),
+          }
+          try:
+              for name, (candidate, marker) in mutations.items():
+                  path.write_text(candidate)
+                  result = subprocess.run(command, text=True, stdout=subprocess.PIPE,
+                                          stderr=subprocess.STDOUT, timeout=180)
+                  Path(os.environ['RUNNER_TEMP'], f'identity-admission-{name}.log').write_text(result.stdout)
+                  print(f'=== {name} at {head} ===\n{result.stdout}', flush=True)
+                  if marker is None:
+                      assert result.returncode == 0, 'baseline failed'
+                  else:
+                      assert result.returncode != 0, f'{name} mutation escaped'
+                      assert marker in result.stdout, f'{name} missed exact assertion'
+                      assert '--- FAIL: TestH4ASessionConcurrencyAndDeadline' in result.stdout
+                      assert 'panic: test timed out' not in result.stdout
+                      assert 'DATA RACE' not in result.stdout
+                      print(f'CAUSAL_RED {name}: {marker}', flush=True)
+          finally:
+              path.write_text(source)
+          PYTHON
