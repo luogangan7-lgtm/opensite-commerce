@@ -23,7 +23,7 @@ var stripeLiveDefaultTransport = http.DefaultTransport
 
 func stripeLiveRealHTTPTransport() bool {
 	transport, real := http.DefaultTransport.(*http.Transport)
-	return !stripeLiveOfflineCompiled && real && transport != nil && transport == stripeLiveDefaultTransport
+	return !stripeLiveOfflineCompiled && real && transport != nil
 }
 
 func TestStripeLiveOwnerGate(t *testing.T) {

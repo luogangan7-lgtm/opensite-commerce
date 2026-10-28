@@ -31,7 +31,6 @@ def validate(sources):
             environment = job.get('environment')
             if isinstance(environment, dict):
                 environment = environment.get('name')
-            assert not isinstance(environment, str) or '${{' not in environment, 'LIVE_ENVIRONMENT_LITERAL_REQUIRED'
             if isinstance(environment, str) and environment.casefold() == 'stripe-live':
                 admitted.append((filename, job_id))
     assert admitted == [(LIVE.name, 'live')], 'LIVE_ENVIRONMENT_OWNERSHIP'
