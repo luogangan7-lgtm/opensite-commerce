@@ -273,6 +273,51 @@ paths:
         - {$ref: '#/components/parameters/CSRFTokenIfCookie'}
         - {$ref: '#/components/parameters/IfMatch'}
       responses: *StaffPriceListResponses
+  /api/v1/t/{tenant_id}/merchant-deletion:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+    post:
+      tags: [Tenant]
+      operationId: requestMerchantDeletion
+      x-opensite-status: planned
+      x-opensite-access: AdminSession
+      x-required-scope: tenant:delete
+      description: Owner-only contract reservation. Activation requires MDEL-26 and sender approval; API keys are denied.
+      security: [{adminSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CSRFToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [step_up_proof]
+              properties:
+                step_up_proof: {type: string, format: uuid}
+      responses:
+        '202':
+          description: Deletion metadata only; no capability or personal data.
+          headers:
+            Cache-Control: {schema: {type: string, const: no-store}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MerchantDeletionMetadata'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        default: {$ref: '#/components/responses/Problem'}
   /api/v1/t/{tenant_id}/api-keys:
     post:
       tags: [Identity]
@@ -4818,6 +4863,32 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    MerchantDeletionMetadata:
+      type: object
+      additionalProperties: false
+      required: [request_id, state, phase, epoch, requested_at, execute_after, attempt, next_retry_at, categories]
+      properties:
+        request_id: {type: string, format: uuid}
+        state: {type: string, enum: [active, cooling_off, executing, failed, deleted]}
+        phase: {type: string, enum: [none, preconditions, executing, completed]}
+        epoch: {type: integer, format: int64, minimum: 0, maximum: 9223372036854775807}
+        requested_at: {type: string, format: date-time, maxLength: 40}
+        execute_after: {type: string, format: date-time, maxLength: 40}
+        attempt: {type: integer, format: int32, minimum: 0, maximum: 2147483647}
+        next_retry_at: {type: [string, 'null'], format: date-time, maxLength: 40}
+        categories:
+          type: object
+          additionalProperties: false
+          maxProperties: 8
+          properties:
+            paid_unfulfilled: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            fulfillment_return: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            payment_refund: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            checkout_capture: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            refund_reconciliation: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            pending_payout: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            unsettled_provider_balance: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
+            legal_hold: {type: integer, format: int64, minimum: 0, maximum: 999999999999999999}
     RefundCasePage:
       type: object
       additionalProperties: false
@@ -5433,11 +5504,11 @@ components:
       properties:
         scopes:
           type: array
-          maxItems: 17
+          maxItems: 18
           uniqueItems: true
           items:
             type: string
-            enum: [apikeys:write, catalog:read, catalog:write, cms:publish, cms:write, media:write, notifications:write, orders:read, quotes:read, quotes:write, organization.create, site.create, fulfillment:write, returns:write, customers:privacy, catalog:import, catalog:export]
+            enum: [apikeys:write, catalog:read, catalog:write, cms:publish, cms:write, media:write, notifications:write, orders:read, quotes:read, quotes:write, organization.create, site.create, fulfillment:write, returns:write, customers:privacy, catalog:import, catalog:export, tenant:delete]
         expires_at:
           type: string
           format: date-time

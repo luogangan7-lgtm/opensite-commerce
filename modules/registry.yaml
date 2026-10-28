@@ -74,7 +74,10 @@
       "owns_tables": [
         "tenants",
         "tenant_memberships",
-        "api_keys"
+        "api_keys",
+        "tenant_lifecycles",
+        "tenant_lifecycle_receipts",
+        "tenant_lifecycle_events"
       ],
       "operations": [
         {
@@ -88,6 +91,10 @@
         {
           "operation_id": "revokeAPIKey",
           "status": "implemented"
+        },
+        {
+          "operation_id": "requestMerchantDeletion",
+          "status": "planned"
         }
       ],
       "dependencies": [
@@ -96,10 +103,14 @@
       "tests": [
         "internal/tenanttx/tenanttx_test.go",
         "tests/db_isolation.sql",
-        "tests/db_connection_reuse.sql"
+        "tests/db_connection_reuse.sql",
+        "tests/db_tenant_lifecycle.sql",
+        "internal/modules/tenant/contract/lifecycle_scope_test.go",
+        "internal/modules/tenant/contract/obligations_test.go"
       ],
       "scopes": [
-        "apikeys:write"
+        "apikeys:write",
+        "tenant:delete"
       ],
       "note": "Tenant owns membership and API key storage and management HTTP; identity consumes its authorization port through the public identity contract injected by bootstrap. Key management requires an admin session; one-time secrets are never retained for response replay."
     },
@@ -1903,6 +1914,18 @@
     {"file":"migrations/pending/c19d-ledger_refund_compensation_boundary.sql","owner":"ledger","touches_tables":["ledger_accounts","ledger_transactions","ledger_entries","payment_refund_reversals"]},
     {"file":"migrations/pending/c19d-identity_refund_compensation_identity.sql","owner":"payments","touches_tables":["payment_refund_attempts","payment_refund_reversals"]},
     {"file":"migrations/pending/c19c1-money_return_refund_identity.sql","owner":"payments","touches_tables":["payment_return_refunds","checkout_sessions","returns","return_lines"]},
-    {"file":"migrations/pending/mdel00-caller-keys_caller_key_constraints.sql","owner":"datarights","touches_tables":["idempotency_records","inventory_reservations","orders","shipments","returns","payment_return_refunds","payment_refund_attempts","checkout_sessions","checkout_attempts","notification_redrive_requests","quote_conversions","data_rights_erasures"]}
+    {"file":"migrations/pending/mdel00-caller-keys_caller_key_constraints.sql","owner":"datarights","touches_tables":["idempotency_records","inventory_reservations","orders","shipments","returns","payment_return_refunds","payment_refund_attempts","checkout_sessions","checkout_attempts","notification_redrive_requests","quote_conversions","data_rights_erasures"]},
+    {
+      "file": "migrations/pending/mdel01-lifecycle_tenant_lifecycle.sql",
+      "owner": "tenant",
+      "touches_tables": [
+        "tenants",
+        "tenant_memberships",
+        "api_keys",
+        "tenant_lifecycles",
+        "tenant_lifecycle_receipts",
+        "tenant_lifecycle_events"
+      ]
+    }
   ]
 }

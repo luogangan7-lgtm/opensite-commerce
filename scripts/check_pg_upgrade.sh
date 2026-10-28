@@ -180,10 +180,11 @@ RECOVERY_DB=""
 PRIVACY_HARDENING_DB=""
 AUDIT_DB=""
 CALLER_KEYS_DB=""
+LIFECYCLE_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB" "$CALLER_KEYS_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB" "$CALLER_KEYS_DB" "$LIFECYCLE_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1384,6 +1385,45 @@ SQL
  fi
  admin -c "DROP DATABASE $CALLER_KEYS_DB" >/dev/null; CALLER_KEYS_DB=""
 done
+
+# MDEL-01: a populated predecessor database and role grants survive unchanged.
+# The migration's suffix is stable when integration assigns its formal number.
+lifecycle_files=(migrations/[0-9][0-9][0-9]_tenant_lifecycle.sql)
+[[ ${#lifecycle_files[@]} == 1 ]] || { bad 'exactly one lifecycle migration required'; exit 1; }
+LIFECYCLE_DB=upgrade_lifecycle_$$
+admin -c "CREATE DATABASE $LIFECYCLE_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f == "${lifecycle_files[0]}" ]] && break
+ apply_forward "$LIFECYCLE_DB" "$f"
+done
+db "$LIFECYCLE_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name,status) VALUES('mdel01-upgrade-active','active'),('mdel01-upgrade-suspended','suspended');
+CREATE TABLE public.mdel01_scope_before AS
+ SELECT role,app.auth_role_scopes(role) scopes FROM unnest(ARRAY['owner','admin','catalog_editor','content_editor','viewer','unknown','*','']) role;
+SQL
+lifecycle_before=$(db "$LIFECYCLE_DB" -c 'SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM app.tenants t;')
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${lifecycle_files[0]} ]] && continue
+ apply_forward "$LIFECYCLE_DB" "$f"
+done
+lifecycle_after=$(db "$LIFECYCLE_DB" -c 'SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM app.tenants t;')
+[[ -n $lifecycle_before && $lifecycle_before == "$lifecycle_after" ]] || bad 'MDEL01_UPGRADE_CHANGED_TENANTS'
+db "$LIFECYCLE_DB" <<'SQL' >/dev/null
+DO $gate$ BEGIN
+ IF EXISTS(SELECT FROM public.mdel01_scope_before WHERE NOT scopes <@ app.auth_role_scopes(role)) THEN
+  RAISE EXCEPTION 'MDEL01_SCOPE_REGRESSION'; END IF;
+ IF EXISTS(SELECT FROM public.mdel01_scope_before WHERE ('tenant:delete'=ANY(app.auth_role_scopes(role))) IS DISTINCT FROM (role='owner')) THEN
+  RAISE EXCEPTION 'MDEL01_SCOPE_NOT_OWNER_ONLY'; END IF;
+ IF EXISTS(SELECT FROM app.tenants t LEFT JOIN app.tenant_lifecycles l ON l.tenant_id=t.id AND l.id=t.id
+  WHERE l.tenant_id IS NULL OR l.state<>CASE WHEN t.status='deleted' THEN 'deleted' ELSE 'active' END OR l.epoch<>0) THEN
+  RAISE EXCEPTION 'MDEL01_UPGRADE_BACKFILL'; END IF;
+END $gate$;
+DROP TABLE public.mdel01_scope_before;
+SQL
+db "$LIFECYCLE_DB" -f tests/db_tenant_lifecycle.sql >/dev/null
+db "$LIFECYCLE_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $LIFECYCLE_DB" >/dev/null; LIFECYCLE_DB=""
+pass 'MDEL01 populated upgrade preserves business rows and every prior role scope'
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1

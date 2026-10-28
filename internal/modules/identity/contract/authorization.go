@@ -51,7 +51,9 @@ type TransactionAuthorizer interface {
 // no authority; SQL capability checks mirror this same fixed mapping.
 func RoleScopes(role string) []string {
 	switch role {
-	case "owner", "admin":
+	case "owner":
+		return append(RoleScopes("admin"), "tenant:delete")
+	case "admin":
 		return []string{"organization.create", "site.create", "catalog:read", "catalog:write", "media:write", "cms:write", "cms:publish", "quotes:read", "quotes:write", "notifications:write", "orders:read", "apikeys:write", "fulfillment:write", "returns:write", "customers:privacy", "catalog:import", "catalog:export"}
 	case "catalog_editor":
 		return []string{"catalog:read", "catalog:write", "media:write", "catalog:import", "catalog:export"}
