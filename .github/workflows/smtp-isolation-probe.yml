@@ -1,0 +1,14 @@
+# Temporary static fault probe: manual only and never dispatched.
+name: SMTP isolation static fault probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  never-run:
+    if: false
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          PROBE_ALIAS: ${{ secrets['SMTP_TEST_AUTH_CODE'] }}
+        run: 'true'
