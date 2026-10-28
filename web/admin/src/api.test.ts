@@ -4,6 +4,7 @@ import { AdminAPI, APIError, CatalogAPI } from './api';
 
 const tenant = '11111111-1111-4111-8111-111111111111';
 const product = '22222222-2222-4222-8222-222222222222';
+const requestKey = 'abcdef01-2345-6789-abcd-ef0123456789';
 const session = { user_id: tenant, session_id: product, expires_at: '2099-01-01T00:00:00Z', csrf_token: 'session-csrf' };
 const json = (value: unknown, status = 200) => Response.json(value, { status });
 function harness(responses: Response[]) {
@@ -116,15 +117,27 @@ describe('cookie admin API', () => {
   test('catalog PATCH and archives send quoted version, CSRF and idempotency; no status pseudo PATCH', async () => {
     const h = harness([json(session), json({ id: product, version: 2 }), new Response(null, { status: 204 })]);
     const api = new AdminAPI({ fetch: h.fetcher }); await api.session(); const catalog = new CatalogAPI(api, tenant);
-    await catalog.updateProduct(product, { product_code: 'CODE' }, 1, { idempotencyKey: 'update-key' });
-    await catalog.archiveProduct(product, 2, { idempotencyKey: 'archive-key' });
+    await catalog.updateProduct(product, { product_code: 'CODE' }, 1, { idempotencyKey: requestKey });
+    await catalog.archiveProduct(product, 2, { idempotencyKey: product });
     expect(h.calls[1].url).toBe(`/api/v1/t/${tenant}/products/${product}`);
     expect(h.calls[1].init.method).toBe('PATCH'); expect(h.calls[2].init.method).toBe('DELETE');
     expect(new Headers(h.calls[1].init.headers).get('If-Match')).toBe('"1"');
     expect(new Headers(h.calls[1].init.headers).get('X-CSRF-Token')).toBe('session-csrf');
-    expect(new Headers(h.calls[1].init.headers).get('Idempotency-Key')).toBe('update-key');
+    expect(new Headers(h.calls[1].init.headers).get('Idempotency-Key')).toBe(requestKey);
+    expect(new Headers(h.calls[2].init.headers).get('Idempotency-Key')).toBe(product);
     await expect(catalog.updateProduct(product, { product_code: 'A' }, Number.MAX_SAFE_INTEGER + 1)).rejects.toThrow();
     expect(h.calls).toHaveLength(3);
+  });
+  test('mutation keys must be canonical lowercase UUIDs before fetch; automatic keys satisfy the contract', async () => {
+    const h = harness([json(session), json({ id: product })]);
+    const api = new AdminAPI({ fetch: h.fetcher }); await api.session();
+    const catalog = new CatalogAPI(api, tenant);
+    for (const key of ['', 'alice@example.test', 'legacy-key', requestKey.toUpperCase(), requestKey.replaceAll('-', ''), `{${requestKey}}`, `${requestKey}.reserve`, `${requestKey},${requestKey}`, `${requestKey.slice(0, -1)}g`, ` ${requestKey}`, `${requestKey}\n`, `${requestKey}\r`]) {
+      await expect(catalog.createProduct({ product_code: 'CODE' }, { idempotencyKey: key })).rejects.toMatchObject({ status: 400, code: 'invalid_idempotency_key' });
+    }
+    expect(h.calls).toHaveLength(1);
+    await catalog.createProduct({ product_code: 'CODE' });
+    expect(new Headers(h.calls[1].init.headers).get('Idempotency-Key')).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
   test('catalog list cursor is query-encoded and invalid tenant IDs never reach fetch', async () => {
     const h = harness([json({ items: [] })]);
@@ -167,7 +180,7 @@ describe('cookie admin API', () => {
     const h = harness([json(session), json(reserved, 201), new Response(null, { status: 204 }), json(stored, 202)]);
     const api = new AdminAPI({ fetch: h.fetcher }); await api.session();
     const file = new File(['abc'], 'photo.png', { type: 'image/png' });
-    expect(await new CatalogAPI(api, tenant).uploadMedia(file, { idempotencyKey: 'upload-key' })).toEqual(stored);
+    expect(await new CatalogAPI(api, tenant).uploadMedia(file, { idempotencyKey: requestKey })).toEqual(stored);
     expect(JSON.parse(String(h.calls[1].init.body))).toEqual({ filename: 'photo.png', size_bytes: 3, sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad', declared_mime: 'image/png' });
     expect(h.calls.map(c => c.init.method)).toEqual(['GET', 'POST', 'PUT', 'POST']);
     expect(h.calls[2].url).toBe(`/api/v1/t/${tenant}/media/uploads/${product}/content`);
@@ -188,11 +201,23 @@ describe('review follow-ups', () => {
     const h = harness([json(session), json(reserved, 201), new Response(null, { status: 204 }), json({}, 503), json(reserved, 201), new Response(null, { status: 204 }), json(stored, 202)]);
     const api = new AdminAPI({ fetch: h.fetcher }); await api.session();
     const catalog = new CatalogAPI(api, tenant), file = new File(['abc'], 'photo.avif', { type: '' });
-    await expect(catalog.uploadMedia(file, { idempotencyKey: 'k1' })).rejects.toMatchObject({ status: 503 });
-    expect(await catalog.uploadMedia(file, { idempotencyKey: 'k1' })).toEqual(stored);
+    await expect(catalog.uploadMedia(file, { idempotencyKey: requestKey })).rejects.toMatchObject({ status: 503 });
+    expect(await catalog.uploadMedia(file, { idempotencyKey: requestKey })).toEqual(stored);
     const keys = h.calls.slice(1).map(c => new Headers(c.init.headers).get('Idempotency-Key'));
-    expect(keys).toEqual(['k1.reserve', 'k1.content', 'k1.complete', 'k1.reserve', 'k1.content', 'k1.complete']);
+    expect(keys).toHaveLength(6);
+    expect(new Set(keys.slice(0, 3)).size).toBe(3);
+    for (const key of keys) expect(key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(keys.slice(3)).toEqual(keys.slice(0, 3));
     expect(JSON.parse(String(h.calls[1].init.body))).not.toHaveProperty('declared_mime');
+  });
+  test('upload rejects a noncanonical base rather than disguising it as derived UUIDs', async () => {
+    const h = harness([json(session)]), api = new AdminAPI({ fetch: h.fetcher });
+    await api.session();
+    const catalog = new CatalogAPI(api, tenant), file = new File(['abc'], 'photo.png', { type: 'image/png' });
+    for (const key of ['alice@example.test', 'legacy-key', requestKey.toUpperCase(), `${requestKey}\n`]) {
+      await expect(catalog.uploadMedia(file, { idempotencyKey: key })).rejects.toMatchObject({ status: 400, code: 'invalid_idempotency_key' });
+    }
+    expect(h.calls).toHaveLength(1);
   });
   test('uppercase UUIDs are canonicalized to lowercase paths', async () => {
     const h = harness([json({ items: [] })]);

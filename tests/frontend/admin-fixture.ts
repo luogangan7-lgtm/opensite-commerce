@@ -17,7 +17,7 @@ export async function fixture(page:Page,options:{authenticated?:boolean;loginSta
   if(path==='/api/v1/auth/login'&&method==='POST'){expect(r.headers().origin).toBe(url.origin);expect(r.headers().cookie).toContain('__Host-osc_login_csrf=');expect(r.headers()['x-csrf-token']).toBe(challenge);if(options.loginStatus)return problem(route,options.loginStatus);authenticated=true;return json(route,{user_id:tenant,session_id:variantId,expires_at:expires,csrf_token:csrf},201,{'Set-Cookie':`__Host-osc_admin_session=${crypto.randomUUID()}; Secure; HttpOnly; SameSite=Lax; Path=/`});}
   if(path==='/api/v1/auth/session'){if(!authenticated)return problem(route,401);return json(route,{user_id:tenant,session_id:variantId,expires_at:expires,csrf_token:csrf});}
   if(!authenticated)return problem(route,401);
-  if(method!=='GET'){expect(r.headers().origin).toBe(url.origin);expect(r.headers()['x-csrf-token']).toBe(csrf);if(path!=='/api/v1/auth/logout')expect(r.headers()['idempotency-key']).toBeTruthy();writes.push(method+' '+path);}
+  if(method!=='GET'){expect(r.headers().origin).toBe(url.origin);expect(r.headers()['x-csrf-token']).toBe(csrf);if(path!=='/api/v1/auth/logout')expect(r.headers()['idempotency-key']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);writes.push(method+' '+path);}
   if(path==='/api/v1/auth/logout'){authenticated=false;return route.fulfill({status:204,headers:{'Set-Cookie':'__Host-osc_admin_session=; Secure; HttpOnly; Path=/; Max-Age=0'}});}
   if(!path.startsWith(`/api/v1/t/${tenant}/`))return problem(route,404);
   const base=`/api/v1/t/${tenant}`;

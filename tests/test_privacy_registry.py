@@ -585,14 +585,23 @@ func write(tx Tx, r Request) {
                 self.opaque_gate(root, registry)
 
     def test_opaque_reference_provenance_checks_contract_lookup_not_only_guard_text(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            registry = self.opaque_fixture(root)
-            path = root / "internal/platform/httpapi/router.go"
-            path.write_text(path.read_text().replace(
-                "requiresKey, err := requiresIdempotencyKey(spec)", "requiresKey, err := false, error(nil)"))
-            with self.assertRaisesRegex(ValueError, "MERCHANT_OPAQUE_PROVENANCE"):
-                self.opaque_gate(root, registry)
+        mutations = {
+            "forged_lookup": ("requiresKey, err := requiresIdempotencyKey(spec)", "requiresKey, err := false, error(nil)"),
+            "overwritten_bit": ("if err != nil { return err }", "if err != nil { return err }; requiresKey = false"),
+            "missing_operation_parameters": ("op.Parameters...", "item.Parameters..."),
+            "ignored_contract_error": ("if err != nil { return false, err }", "if err != nil { return false, nil }"),
+            "spoofed_validator_import": (
+                "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency",
+                "example.invalid/copy/idempotency"),
+        }
+        for name, (original, replacement) in mutations.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                registry = self.opaque_fixture(root)
+                path = root / "internal/platform/httpapi/router.go"
+                path.write_text(path.read_text().replace(original, replacement))
+                with self.assertRaisesRegex(ValueError, "MERCHANT_OPAQUE_PROVENANCE"):
+                    self.opaque_gate(root, registry)
 
     def fixture(self, root):
         body = document()

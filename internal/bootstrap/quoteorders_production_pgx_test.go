@@ -231,7 +231,7 @@ func TestQuoteOrdersPGProductionCompositionAdmissionAndConfirm(t *testing.T) {
 	if sessionResponse.Code != 200 || json.Unmarshal(sessionResponse.Body.Bytes(), &session) != nil || session.CSRF == "" {
 		t.Fatalf("real session challenge: %d", sessionResponse.Code)
 	}
-	const key = "production-composition-shared-raw-key"
+	const key = "450ff667-ca12-5d6a-9b13-c923034d98bb"
 	post := func(quoteID, csrf, requestOrigin, body string, sessionCookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", origin+"/api/v1/t/"+f.tenant+"/quotes/"+quoteID+"/orders", strings.NewReader(body)).WithContext(quoteObserved(f.ctx))
 		r.Header.Set("Content-Type", "application/json")

@@ -460,7 +460,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	}
 	req.Header.Set("Authorization", "Bearer "+os.Getenv("STRIPE_TEST_SECRET_KEY"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Idempotency-Key", "sandbox-over-refund-"+f.tenant)
+	req.Header.Set("Idempotency-Key", uuid.NewString())
 	client := &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := client.Do(req)
 	if err != nil {

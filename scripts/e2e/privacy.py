@@ -61,7 +61,7 @@ def prepare(url, psql, tenant, credentials=None, enabled=True):
 
 def request(witness, path, expected, method='GET'):
     headers = {'Authorization': 'Bearer ' + witness['bearer'],
-               'Idempotency-Key': 'privacy-ci-' + str(uuid.uuid4())}
+               'Idempotency-Key': str(uuid.uuid4())}
     req = urllib.request.Request(witness['url'] + path, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=10) as response:

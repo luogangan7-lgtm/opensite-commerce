@@ -7,9 +7,11 @@ from untrusted JSON. The key is scoped by the complete existing primary key:
 `(tenant_id, actor_kind, actor_id, operation, idempotency_key)`.
 
 `ValidateKey` accepts exactly one header value across case-insensitive header
-names. It preserves the key and requires 1..128 ASCII bytes in `0x21..0x7e`
-(printable, no spaces). Missing, empty, duplicate or invalid keys are HTTP400
-`invalid_idempotency_key`.
+names. It requires UUID syntax (8-4-4-4-12 hexadecimal digits) and normalizes both
+the returned key and the admitted header to lowercase before generated decoding.
+Missing, empty, duplicate, noncanonical or personal-text keys are HTTP400
+`invalid_idempotency_key`. The router derives required admission from the
+OpenAPI header declarations before any authentication or business writes.
 
 `FingerprintRequest` validates method, route template and URL and calls
 `url.ParseQuery` so malformed percent escapes/semicolons fail HTTP400

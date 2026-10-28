@@ -60,9 +60,24 @@ test('backend problem code is visible without returning upstream private detail'
   expect(context.enabled).toBe(true);
   await handlePurchaseRequest(request('cart',context.csrf,{sku_id:sku,quantity:1}),jar.jar,'cart');
   failure=true;
-  const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/checkout`,{method:'POST',headers:{Host:'shop.example.test',Origin:site,'X-CSRF-Token':context.csrf,'Content-Type':'application/json','Idempotency-Key':'c09d-retry-same-key'},body:JSON.stringify({shipping_address:{country:'US',address1:'1 Test Way',city:'New York',postal_code:'10001'},buyer_contact:{email:'buyer@example.test'},accepted_total:{amount_minor:'160',currency:'USD'}})}),jar.jar,'checkout');
+  const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/checkout`,{method:'POST',headers:{Host:'shop.example.test',Origin:site,'X-CSRF-Token':context.csrf,'Content-Type':'application/json','Idempotency-Key':'c09d0001-0000-4000-8000-000000000001'},body:JSON.stringify({shipping_address:{country:'US',address1:'1 Test Way',city:'New York',postal_code:'10001'},buyer_contact:{email:'buyer@example.test'},accepted_total:{amount_minor:'160',currency:'USD'}})}),jar.jar,'checkout');
   expect(response.status).toBe(409);expect(response.headers.get('content-type')).toContain('application/problem+json');
   const text=await response.text();expect(JSON.parse(text).code).toBe('stock_unavailable');expect(text).not.toContain('private');
+  expect(calls.at(-1)!.headers.get('Idempotency-Key')).toBe('c09d0001-0000-4000-8000-000000000001');
+});
+test('checkout rejects missing, noncanonical and repeated idempotency keys before forwarding a write',async()=>{
+  const jar=cookies(),context=await readPurchaseContext(request('context'),jar.jar);
+  await handlePurchaseRequest(request('cart',context.csrf,{sku_id:sku,quantity:1}),jar.jar,'cart');
+  const canonical='abcdef01-2345-6789-abcd-ef0123456789';
+  const before=calls.filter(call=>call.method!=='GET').length;
+  for(const key of [undefined,'','alice@example.test','legacy-key',canonical.toUpperCase(),canonical.replaceAll('-',''),`{${canonical}}`,`${canonical}.reserve`,`${canonical.slice(0,-1)}g`,`${canonical}, ${canonical}`]){
+    const headers=new Headers({Host:'shop.example.test',Origin:site,'X-CSRF-Token':context.csrf,'Content-Type':'application/json'});
+    if(key!==undefined)headers.set('Idempotency-Key',key);
+    const response=await handlePurchaseRequest(new Request(`${site}/purchase/api/checkout`,{method:'POST',headers,body:'{}'}),jar.jar,'checkout');
+    expect(response.status).toBe(400);expect(response.headers.get('Content-Type')).toBe('application/problem+json');
+    expect(await response.json()).toEqual({type:'about:blank',status:400,code:'invalid_idempotency_key'});
+  }
+  expect(calls.filter(call=>call.method!=='GET')).toHaveLength(before);
 });
 test('cookie storage failures return an unavailable context instead of breaking SSR',async()=>{
   const jar={get(){throw new Error('cookie storage blocked');},set(){throw new Error('cookie storage blocked');}} as unknown as AstroCookies;

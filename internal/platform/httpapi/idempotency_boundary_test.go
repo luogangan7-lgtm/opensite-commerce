@@ -90,3 +90,31 @@ func TestEveryIdempotencyHeaderDeclaresUUID(t *testing.T) {
 		}
 	}
 }
+
+func TestUUIDBoundaryNormalizesBeforeAnyHandler(t *testing.T) {
+	const lower = "abcdefab-cdef-4bcd-8fab-cdefabcdefab"
+	const pattern = "/api/v1/t/{tenant_id}/checkout"
+	router := httpapi.New(uuidBoundaryAuth{}, nil)
+	called := 0
+	if err := router.Register(httpapi.RouteSpec{OperationID: "createCheckout", Method: "POST", Pattern: pattern, Access: httpapi.Storefront}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called++
+		if got := r.Header.Get("Idempotency-Key"); got != lower {
+			t.Errorf("handler received noncanonical key %q", got)
+		}
+		w.WriteHeader(204)
+	})); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{strings.ToUpper(lower), lower} {
+		request := httptest.NewRequest("POST", "/api/v1/t/11111111-1111-4111-8111-111111111111/checkout", nil)
+		request.Header.Set("Idempotency-Key", key)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != 204 {
+			t.Fatalf("canonical UUID rejected: %d %s", response.Code, response.Body.String())
+		}
+	}
+	if called != 2 {
+		t.Fatalf("handler calls=%d", called)
+	}
+}

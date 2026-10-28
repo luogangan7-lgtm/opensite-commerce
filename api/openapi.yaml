@@ -3193,7 +3193,7 @@ paths:
         exact storefront Origin, session-bound CSRF and active company membership;
         without it this endpoint returns 401. Tenant/company mismatch returns 404. Identity,
         amount, price, currency and snapshot fields are never accepted from the client.
-        Requires one visible ASCII Idempotency-Key of 1 to 128 bytes, without whitespace.
+        Requires one UUID Idempotency-Key in 8-4-4-4-12 hexadecimal form; uppercase is normalized to lowercase.
         Retrying the same key returns the original conversion; competing different keys
         return 409, and reusing a key for a different quote returns 422. Conversion does not
         claim payment success. Customer authentication and real checkout remain separate gates.
@@ -4522,8 +4522,8 @@ components:
       name: Idempotency-Key
       in: header
       required: true
-      description: Tenant-scoped notification redrive key; the same notification and key replay the stored receipt.
-      schema: {type: string, minLength: 1, maxLength: 128, pattern: '^[!-~]+$'}
+      description: Tenant-scoped UUID redrive key, normalized to lowercase; the same notification and key replay the stored receipt. Non-UUID input returns 400 invalid_idempotency_key before persistence.
+      schema: {type: string, format: uuid, minLength: 36, maxLength: 36, x-go-type: string}
     CartId:
       name: cart_id
       in: path
@@ -4673,7 +4673,9 @@ components:
         is still in progress returns 409 (Problem code `idempotency_in_progress`); same key + different request
         (path, query or body) returns 422 (Problem code `idempotency_key_reused`). Every operation taking this header
         declares 409 and 422.
-      schema: {type: string, minLength: 1, maxLength: 128}
+        Must be a UUID in 8-4-4-4-12 hexadecimal form, normalized to lowercase before any write.
+        Non-UUID input returns 400 with Problem code `invalid_idempotency_key`.
+      schema: {type: string, format: uuid, minLength: 36, maxLength: 36, x-go-type: string}
     VariantId:
       name: variant_id
       in: path

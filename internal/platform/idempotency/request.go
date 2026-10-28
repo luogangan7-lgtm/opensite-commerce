@@ -16,8 +16,9 @@ import (
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 )
 
-// ValidateKey preserves the key verbatim and refuses duplicate field lines,
-// whitespace, controls, non-ASCII and lengths outside the existing OAS 1..128.
+// ValidateKey accepts one UUID in 8-4-4-4-12 hexadecimal form. Successful
+// admission canonicalizes the header as well as the result so generated DTOs,
+// durable leases and financial copies all receive the same lowercase identity.
 func ValidateKey(header http.Header) (string, error) {
 	var values []string
 	for name, list := range header {
@@ -26,16 +27,29 @@ func ValidateKey(header http.Header) (string, error) {
 		}
 	}
 	if len(values) != 1 || !validKey(values[0]) {
-		return "", apperrors.New(400, "invalid_idempotency_key", "One printable ASCII Idempotency-Key of 1..128 bytes without spaces is required")
+		return "", apperrors.New(400, "invalid_idempotency_key", "One UUID Idempotency-Key in 8-4-4-4-12 hexadecimal form is required")
 	}
-	return values[0], nil
+	key := strings.ToLower(values[0])
+	for name := range header {
+		if strings.EqualFold(name, "Idempotency-Key") {
+			delete(header, name)
+		}
+	}
+	header.Set("Idempotency-Key", key)
+	return key, nil
 }
 func validKey(key string) bool {
-	if len(key) < 1 || len(key) > 128 {
+	if len(key) != 36 {
 		return false
 	}
 	for i := range len(key) {
-		if key[i] < 0x21 || key[i] > 0x7e {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if key[i] != '-' {
+				return false
+			}
+			continue
+		}
+		if !(key[i] >= '0' && key[i] <= '9' || key[i] >= 'a' && key[i] <= 'f' || key[i] >= 'A' && key[i] <= 'F') {
 			return false
 		}
 	}

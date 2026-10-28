@@ -151,7 +151,7 @@ func BeginCommand(ctx context.Context, config CommandConfig, operation string) (
 }
 
 // Key separates permanent domain receipts by the same complete C-04 scope.
-// The wire key is retained verbatim in C-04; this derived key stays <=128 bytes.
+// The admitted lowercase UUID is retained in C-04; this derived key stays <=128 bytes.
 func (s *CommandSession) Key() string {
 	encoded, _ := json.Marshal(s.request.scope)
 	hash := sha256.Sum256(encoded)

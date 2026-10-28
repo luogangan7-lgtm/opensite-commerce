@@ -146,17 +146,17 @@ func TestHTTPAdmission(t *testing.T) {
 		mutate                   func(*http.Request)
 		want, calls              int
 	}{
-		{name: "default deny", body: shipmentBody, version: `"2"`, key: "one", want: 401},
-		{name: "scope denied", body: shipmentBody, version: `"2"`, key: "one", auth: httpAuth{true}, want: 403},
-		{name: "missing version", body: shipmentBody, key: "one", auth: httpAuth{}, want: 428},
-		{name: "weak version", body: shipmentBody, version: `W/"2"`, key: "one", auth: httpAuth{}, want: 400},
+		{name: "default deny", body: shipmentBody, version: `"2"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", want: 401},
+		{name: "scope denied", body: shipmentBody, version: `"2"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{true}, want: 403},
+		{name: "missing version", body: shipmentBody, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, want: 428},
+		{name: "weak version", body: shipmentBody, version: `W/"2"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, want: 400},
 		{name: "missing key", body: shipmentBody, version: `"2"`, auth: httpAuth{}, want: 400},
-		{name: "duplicate version", body: shipmentBody, version: `"2"`, key: "one", auth: httpAuth{}, mutate: func(r *http.Request) { r.Header.Add("If-Match", `"2"`) }, want: 400},
-		{name: "duplicate key", body: shipmentBody, version: `"2"`, key: "one", auth: httpAuth{}, mutate: func(r *http.Request) { r.Header.Add("Idempotency-Key", "one") }, want: 400},
-		{name: "unknown query", body: shipmentBody, version: `"2"`, key: "one", auth: httpAuth{}, mutate: func(r *http.Request) { r.URL.RawQuery = "other=1" }, want: 400},
-		{name: "unknown body proof", body: `{"carrier":"manual","tracking_number":"T1","paid":true,"lines":[]}`, version: `"2"`, key: "one", auth: httpAuth{}, want: 400},
-		{name: "foreign tenant", body: shipmentBody, version: `"2"`, key: "one", auth: httpAuth{}, mutate: func(r *http.Request) { r.URL.Path = strings.ReplaceAll(r.URL.Path, httpTenant, httpOrder) }, want: 404},
-		{name: "valid command", body: shipmentBody, version: `"2"`, key: "one", auth: httpAuth{}, want: 201, calls: 1},
+		{name: "duplicate version", body: shipmentBody, version: `"2"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, mutate: func(r *http.Request) { r.Header.Add("If-Match", `"2"`) }, want: 400},
+		{name: "duplicate key", body: shipmentBody, version: `"2"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, mutate: func(r *http.Request) { r.Header.Add("Idempotency-Key", "b47bb372-4ddf-5f46-bdb1-f20e176b3941") }, want: 400},
+		{name: "unknown query", body: shipmentBody, version: `"2"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, mutate: func(r *http.Request) { r.URL.RawQuery = "other=1" }, want: 400},
+		{name: "unknown body proof", body: `{"carrier":"manual","tracking_number":"T1","paid":true,"lines":[]}`, version: `"2"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, want: 400},
+		{name: "foreign tenant", body: shipmentBody, version: `"2"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, mutate: func(r *http.Request) { r.URL.Path = strings.ReplaceAll(r.URL.Path, httpTenant, httpOrder) }, want: 404},
+		{name: "valid command", body: shipmentBody, version: `"2"`, key: "b47bb372-4ddf-5f46-bdb1-f20e176b3941", auth: httpAuth{}, want: 201, calls: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			service := &httpService{}
@@ -191,7 +191,7 @@ func TestHTTPDirectAndRunnerAuthorization(t *testing.T) {
 		t.Fatalf("direct handler bypass: %v calls=%d", err, service.calls)
 	}
 	w := httptest.NewRecorder()
-	httpRouter(t, s, httpAuth{}).ServeHTTP(w, shipmentRequest(shipmentBody, `"2"`, "one"))
+	httpRouter(t, s, httpAuth{}).ServeHTTP(w, shipmentRequest(shipmentBody, `"2"`, "b47bb372-4ddf-5f46-bdb1-f20e176b3941"))
 	if w.Code != 401 || service.calls != 0 {
 		t.Fatalf("callback lost stamp: %d calls=%d", w.Code, service.calls)
 	}
@@ -205,7 +205,7 @@ func TestHTTPDomainErrorsAreSanitized(t *testing.T) {
 			service := &httpService{err: tc.err}
 			s := NewHTTP(HTTPConfig{Idempotency: claimConfig(t, &httpClaims{}), Service: service, Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }})
 			w := httptest.NewRecorder()
-			httpRouter(t, s, httpAuth{}).ServeHTTP(w, shipmentRequest(shipmentBody, `"2"`, "one"))
+			httpRouter(t, s, httpAuth{}).ServeHTTP(w, shipmentRequest(shipmentBody, `"2"`, "b47bb372-4ddf-5f46-bdb1-f20e176b3941"))
 			if w.Code != tc.want || strings.Contains(w.Body.String(), "PRIVATE") {
 				t.Fatalf("unsafe error status=%d want=%d %s", w.Code, tc.want, w.Body.String())
 			}
@@ -223,28 +223,28 @@ func TestHTTPCommandReplayAndActor(t *testing.T) {
 	}})
 	handler := httpRouter(t, s, httpAuth{})
 	first := httptest.NewRecorder()
-	handler.ServeHTTP(first, shipmentRequest(shipmentBody, `"2"`, "same"))
+	handler.ServeHTTP(first, shipmentRequest(shipmentBody, `"2"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if first.Code != 201 || claims.claims != 1 || claims.completions != 1 || runs != 2 || service.calls != 1 {
 		t.Fatalf("protocol not used: status=%d claims=%d completions=%d runs=%d calls=%d", first.Code, claims.claims, claims.completions, runs, service.calls)
 	}
 	replay := httptest.NewRecorder()
-	handler.ServeHTTP(replay, shipmentRequest(shipmentBody, `"2"`, "same"))
+	handler.ServeHTTP(replay, shipmentRequest(shipmentBody, `"2"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if replay.Code != first.Code || !bytes.Equal(replay.Body.Bytes(), first.Body.Bytes()) || replay.Header().Get("Content-Type") != first.Header().Get("Content-Type") || service.calls != 1 || claims.completions != 1 {
 		t.Fatalf("response drift or duplicate command: %d %s", replay.Code, replay.Body.String())
 	}
 	changed := httptest.NewRecorder()
-	handler.ServeHTTP(changed, shipmentRequest(strings.ReplaceAll(shipmentBody, "T1", "T2"), `"2"`, "same"))
+	handler.ServeHTTP(changed, shipmentRequest(strings.ReplaceAll(shipmentBody, "T1", "T2"), `"2"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if changed.Code != 422 || service.calls != 1 {
 		t.Fatalf("different body bypass: %d calls=%d", changed.Code, service.calls)
 	}
 	oldKey := service.input.IdempotencyKey
 	otherActor := httptest.NewRecorder()
-	httpRouter(t, s, alternateActorAuth{}).ServeHTTP(otherActor, shipmentRequest(shipmentBody, `"2"`, "same"))
+	httpRouter(t, s, alternateActorAuth{}).ServeHTTP(otherActor, shipmentRequest(shipmentBody, `"2"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if otherActor.Code != 201 || service.calls != 2 || service.input.IdempotencyKey == oldKey {
 		t.Fatalf("actor scopes collapsed: %d calls=%d", otherActor.Code, service.calls)
 	}
 	missing := httptest.NewRecorder()
-	httpRouter(t, s, legacyHTTPAuth{httpAuth{}}).ServeHTTP(missing, shipmentRequest(shipmentBody, `"2"`, "same"))
+	httpRouter(t, s, legacyHTTPAuth{httpAuth{}}).ServeHTTP(missing, shipmentRequest(shipmentBody, `"2"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if missing.Code != 401 || service.calls != 2 {
 		t.Fatalf("missing actor bypass: %d calls=%d", missing.Code, service.calls)
 	}
@@ -264,12 +264,12 @@ func TestHTTPActiveClaimAndFailedCompletion(t *testing.T) {
 			s := NewHTTP(HTTPConfig{Service: service, Idempotency: claimConfig(t, claims), Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }})
 			handler := httpRouter(t, s, httpAuth{})
 			first := httptest.NewRecorder()
-			handler.ServeHTTP(first, shipmentRequest(shipmentBody, `"2"`, "same"))
+			handler.ServeHTTP(first, shipmentRequest(shipmentBody, `"2"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 			if first.Code != tc.first || claims.completions != 0 || strings.Contains(first.Body.String(), "PRIVATE") {
 				t.Fatalf("failed completion emitted result: %d %s", first.Code, first.Body.String())
 			}
 			second := httptest.NewRecorder()
-			handler.ServeHTTP(second, shipmentRequest(shipmentBody, `"2"`, "same"))
+			handler.ServeHTTP(second, shipmentRequest(shipmentBody, `"2"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 			if second.Code != 409 || !strings.Contains(second.Body.String(), "idempotency_in_progress") || service.calls != 1 {
 				t.Fatalf("active claim ran command: %d calls=%d %s", second.Code, service.calls, second.Body.String())
 			}
@@ -296,7 +296,7 @@ func TestHTTPBusinessTransactionMustRetainActor(t *testing.T) {
 		return fn(ctx, nil)
 	}})
 	w := httptest.NewRecorder()
-	httpRouter(t, s, httpAuth{}).ServeHTTP(w, shipmentRequest(shipmentBody, `"2"`, "same"))
+	httpRouter(t, s, httpAuth{}).ServeHTTP(w, shipmentRequest(shipmentBody, `"2"`, "b1bfce98-1539-5b12-ac2f-920705702dfc"))
 	if w.Code != 404 || service.calls != 0 || claims.completions != 0 {
 		t.Fatalf("business tx lost actor: status=%d calls=%d completions=%d", w.Code, service.calls, claims.completions)
 	}

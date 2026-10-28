@@ -104,7 +104,7 @@ func TestFulfillmentHTTPPartialShipmentCancellationRefundAndReplay(t *testing.T)
 	}
 	shipmentPath := fmt.Sprintf("/api/v1/t/%s/orders/%s/shipments", f.tenant, f.order.ID)
 	shipmentBody := []byte(fmt.Sprintf(`{"carrier":"manual","tracking_number":"HTTP-1","lines":[{"order_line_id":%q,"quantity":1}]}`, f.line))
-	wireKey := "shared-wire-key"
+	wireKey := "d5287bc5-5649-5093-b02f-c01277d56d30"
 	post(denied, shipmentPath, wireKey, f.order.Version, shipmentBody, http.StatusUnauthorized)
 	first := post(a, shipmentPath, wireKey, f.order.Version, shipmentBody, http.StatusCreated)
 	var shipmentA, shipmentB httpapi.ShipmentRecord
@@ -135,7 +135,7 @@ func TestFulfillmentHTTPPartialShipmentCancellationRefundAndReplay(t *testing.T)
 		t.Fatalf("unshipped cancellation must restore two units: return=%+v stock=%d", cancelled, f.stock(t))
 	}
 	refundPath := fmt.Sprintf("/api/v1/t/%s/returns/%s/refund", f.tenant, cancelled.Id)
-	refundKey := "refund-wire-key"
+	refundKey := "4d896c92-f59b-5627-b3cf-9d4819e01279"
 	refundedBytes := post(a, refundPath, refundKey, cancelled.OrderVersion, []byte(`{}`), http.StatusOK)
 	var refunded httpapi.ReturnRecord
 	if err := json.Unmarshal(refundedBytes, &refunded); err != nil {

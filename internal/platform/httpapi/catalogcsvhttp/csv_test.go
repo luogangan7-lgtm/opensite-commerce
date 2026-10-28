@@ -105,7 +105,7 @@ func TestCSVUnknownLengthRequestTooLarge(t *testing.T) {
 			req := httptest.NewRequest("POST", "/api/v1/t/"+tenant+"/catalog/csv/"+operation, strings.NewReader(strings.Repeat("x", contract.CSVMaxBytes+1)))
 			req.ContentLength = -1
 			req.Header.Set("Content-Type", "application/octet-stream")
-			req.Header.Set("Idempotency-Key", "csv-size-test")
+			req.Header.Set("Idempotency-Key", "cc22c4dc-def9-5fbf-bc08-2547e264277b")
 			rr := httptest.NewRecorder()
 			router.ServeHTTP(rr, req)
 			if rr.Code != 413 || !strings.Contains(rr.Body.String(), `"code":"request_too_large"`) {

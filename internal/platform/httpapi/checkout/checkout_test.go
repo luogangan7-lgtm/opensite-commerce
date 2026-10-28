@@ -111,7 +111,7 @@ func request(r http.Handler, path, content string, headers map[string]string) *h
 	q.Header.Set("Content-Type", "application/json")
 	q.Header.Set("Origin", origin)
 	q.Header.Set("X-CSRF-Token", "fixture-session-csrf")
-	q.Header.Set("Idempotency-Key", "fixture-command-1")
+	q.Header.Set("Idempotency-Key", "e959493a-3901-5a9a-a411-903e21a0e0ea")
 	for k, v := range headers {
 		if v == "" {
 			q.Header.Del(k)
@@ -332,7 +332,7 @@ func TestCheckoutActorAndStrictAdmission(t *testing.T) {
 				}
 				return
 			}
-			if w.Code != 201 || s.starts != 1 || s.actor.Kind() != "guest" || s.input.IdempotencyKey != "fixture-command-1" || s.input.BuyerContact.Email != "guest@example.invalid" || s.input.ShippingAddress.Country != "US" {
+			if w.Code != 201 || s.starts != 1 || s.actor.Kind() != "guest" || s.input.IdempotencyKey != "e959493a-3901-5a9a-a411-903e21a0e0ea" || s.input.BuyerContact.Email != "guest@example.invalid" || s.input.ShippingAddress.Country != "US" {
 				t.Fatalf("request failed %d %s input=%+v", w.Code, w.Body.String(), s.input)
 			}
 			var result httpapi.CheckoutResult
@@ -587,7 +587,7 @@ func TestDuplicateSecurityHeadersRejected(t *testing.T) {
 		q.Header.Set("Content-Type", "application/json")
 		q.Header.Set("Origin", origin)
 		q.Header.Set("X-CSRF-Token", "fixture-session-csrf")
-		q.Header.Set("Idempotency-Key", "fixture-command-1")
+		q.Header.Set("Idempotency-Key", "e959493a-3901-5a9a-a411-903e21a0e0ea")
 		q.Header.Add(header, q.Header.Get(header))
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, q)

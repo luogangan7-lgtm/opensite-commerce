@@ -116,6 +116,7 @@ func TestCheckoutPGHTTPConsentConflict(t *testing.T) {
 	for _, accepted := range []string{`{"amount_minor":159,"currency":"USD"}`, `{"amount_minor":160,"currency":"EUR"}`} {
 		f := newCheckoutPGFixture(t, 5, 1)
 		in := f.input()
+		in.IdempotencyKey = uuid.NewString()
 		raw, _ := json.Marshal(in)
 		var fields map[string]json.RawMessage
 		_ = json.Unmarshal(raw, &fields)
@@ -234,6 +235,7 @@ func TestCheckoutPGHTTPConsentInvalid(t *testing.T) {
 		t.Run(accepted, func(t *testing.T) {
 			f := newCheckoutPGFixture(t, 5, 1)
 			in := f.input()
+			in.IdempotencyKey = uuid.NewString()
 			raw, _ := json.Marshal(in)
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(raw, &fields)

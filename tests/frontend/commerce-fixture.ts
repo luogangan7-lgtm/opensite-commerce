@@ -105,8 +105,9 @@ export const commerceFixtureServer = createServer(async (req, res) => {
       return reply(res, 200, totals(cart));
     }
     if (path === `${prefix}/checkout` && method === 'POST') {
-      const input = await body(req); const key = req.headers['idempotency-key'];
-      if (typeof key !== 'string' || !/^[!-~]{1,128}$/.test(key)) return reject(res, 400, 'idempotency_key_required');
+      const key = req.headers['idempotency-key'];
+      if (typeof key !== 'string' || key.length !== 36 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(key)) return reject(res, 400, 'invalid_idempotency_key');
+      const input = await body(req);
       const fingerprint = JSON.stringify(input); const previous = session.idempotency.get(key);
       if (previous) return previous.fingerprint === fingerprint ? reply(res, 200, previous.result) : reject(res, 422, 'idempotency_conflict');
       if (input.cart_id !== cart.id || !checkoutAddress(input.shipping_address) || !cart.lines.length) return reject(res, 422, 'checkout_invalid');

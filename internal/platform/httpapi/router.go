@@ -13,7 +13,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
 )
 
@@ -99,6 +101,10 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 	if handler == nil {
 		return fmt.Errorf("route %q: nil handler", spec.OperationID)
 	}
+	requiresKey, err := requiresIdempotencyKey(spec)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, exists := s.operations[spec.OperationID]; exists {
@@ -110,6 +116,14 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 		}
 	}()
 	s.mux.Handle(spec.Method+" "+spec.Pattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The contract, rather than a handler-maintained allowlist, selects every
+		// key ingress. Reject caller text before auth refreshes or domain IO.
+		if requiresKey {
+			if _, err := idempotency.ValidateKey(r.Header); err != nil {
+				WriteProblem(w, r, err)
+				return
+			}
+		}
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, authorizedTenantKey{}, "")
 		ctx = context.WithValue(ctx, authorizedActorKey{}, Actor{})
@@ -179,6 +193,31 @@ func (s *Router) Register(spec RouteSpec, handler http.Handler) (err error) {
 	}))
 	s.operations[spec.OperationID] = spec
 	return nil
+}
+
+// Unknown test-only routes have no contract key. All production operations use
+// the resolved embedded contract, including path-level inherited parameters.
+func requiresIdempotencyKey(spec RouteSpec) (bool, error) {
+	doc, err := GetSwagger()
+	if err != nil {
+		return false, fmt.Errorf("load idempotency admission contract: %w", err)
+	}
+	item := doc.Paths.Value(spec.Pattern)
+	if item == nil {
+		return false, nil
+	}
+	op := item.GetOperation(spec.Method)
+	if op == nil {
+		return false, nil
+	}
+	for _, parameters := range []openapi3.Parameters{item.Parameters, op.Parameters} {
+		for _, parameter := range parameters {
+			if parameter.Value != nil && parameter.Value.In == "header" && strings.EqualFold(parameter.Value.Name, "Idempotency-Key") {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 // RouteSpecs exposes a copy of successfully registered routes for contract gates.

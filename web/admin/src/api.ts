@@ -31,7 +31,7 @@ const hints: Record<number, string> = {
   413: 'The upload is too large.', 415: 'This file type is not supported.', 422: 'Check the submitted values.',
   428: 'Reload the resource before saving.', 429: 'Too many requests. Wait and try again.', 503: 'The service is temporarily unavailable. Try again later.',
 };
-const knownCodes = new Set(['version_conflict', 'resource_archived', 'duplicate_code', 'idempotency_in_progress', 'idempotency_key_reused', 'invalid_catalog', 'invalid_media', 'precondition_required']);
+const knownCodes = new Set(['version_conflict', 'resource_archived', 'duplicate_code', 'idempotency_in_progress', 'idempotency_key_reused', 'invalid_idempotency_key', 'invalid_catalog', 'invalid_media', 'precondition_required']);
 export class APIError extends Error {
   readonly userHint: string;
   constructor(readonly status: number, readonly code = `http_${status}`, hint = hints[status] ?? 'The request failed. Try again later.') {
@@ -73,7 +73,7 @@ export class AdminAPI {
       headers.set('X-CSRF-Token', this.csrfToken);
       if (!options.anonymous && path !== '/api/v1/auth/logout') {
         const key = options.idempotencyKey ?? crypto.randomUUID();
-        if (!key || key.length > 128 || /[^\x21-\x7e]/.test(key)) throw new APIError(400, 'invalid_idempotency_key');
+        if (key.length !== 36 || !validateUUID(key) || key !== key.toLowerCase()) throw new APIError(400, 'invalid_idempotency_key');
         headers.set('Idempotency-Key', key);
       }
     }
@@ -218,18 +218,25 @@ export class CatalogAPI {
   async archiveVariant(productId: string, variantId: string, version: number, options: MutationOptions = {}): Promise<void> { return this.client.request(this.variantPath(productId, variantId), 'DELETE', undefined, { ...options, version }); }
   async uploadMedia(file: File, options: MutationOptions = {}): Promise<UploadSession> {
     const issue = validateMediaFile(file); if (issue) throw new APIError(422, 'invalid_media', issue);
+    const base = options.idempotencyKey ?? crypto.randomUUID();
+    if (base.length !== 36 || !validateUUID(base) || base !== base.toLowerCase()) throw new APIError(400, 'invalid_idempotency_key');
     options.signal?.throwIfAborted();
     const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))].map(byte => byte.toString(16).padStart(2, '0')).join('');
     options.signal?.throwIfAborted();
-    // One logical upload = one base key; each step derives a stable key so a retry replays instead of duplicating.
-    const base = options.idempotencyKey ?? crypto.randomUUID(), step = (name: string) => ({ ...options, idempotencyKey: `${base}.${name}` });
+    // UUIDv8 keys derived from one canonical base preserve each step's identity across retries.
+    const step = async (name: string): Promise<MutationOptions> => {
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${base}.${name}`))).slice(0, 16);
+      digest[6] = (digest[6] & 0x0f) | 0x80; digest[8] = (digest[8] & 0x3f) | 0x80;
+      const hex = [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('');
+      return { ...options, idempotencyKey: `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` };
+    };
     // Blank browser MIME: omit declared_mime; the server sniffs the magic bytes.
-    const reserved = await this.client.request<UploadSession>(`${this.base}/media/uploads`, 'POST', { filename: file.name, size_bytes: file.size, sha256: hash, ...(file.type ? { declared_mime: file.type } : {}) }, step('reserve'));
+    const reserved = await this.client.request<UploadSession>(`${this.base}/media/uploads`, 'POST', { filename: file.name, size_bytes: file.size, sha256: hash, ...(file.type ? { declared_mime: file.type } : {}) }, await step('reserve'));
     const upload = `${this.base}/media/uploads/${id(reserved.id)}`;
-    await this.client.request<void>(`${upload}/content`, 'PUT', file, { ...step('content'), raw: true });
+    await this.client.request<void>(`${upload}/content`, 'PUT', file, { ...await step('content'), raw: true });
     // Current complete operation persists synchronously; there is no GET status
     // operation. Surface its declared status rather than synthesizing a poll API.
-    return this.client.request(`${upload}/complete`, 'POST', undefined, step('complete'));
+    return this.client.request(`${upload}/complete`, 'POST', undefined, await step('complete'));
   }
   linkProductMedia(productId: string, body: LinkProductMedia, options: MutationOptions = {}): Promise<ProductMedia> { id(body.media_id); return this.client.request(`${this.productPath(productId)}/media`, 'POST', body, options); }
   deleteMedia(mediaId: string, options: MutationOptions = {}): Promise<void> { return this.client.request(`${this.base}/media/${id(mediaId)}`, 'DELETE', undefined, options); }

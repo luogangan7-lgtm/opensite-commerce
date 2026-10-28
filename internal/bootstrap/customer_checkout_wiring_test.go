@@ -208,7 +208,7 @@ func checkoutWiringCSRF(t *testing.T, handler http.Handler, cookie *http.Cookie,
 func checkoutWiringRequest(tenant, csrf string, cookie *http.Cookie) *http.Request {
 	r := httptest.NewRequest(http.MethodPost, checkoutWiringOrigin+"/api/v1/t/"+tenant+"/checkout", strings.NewReader(checkoutWiringBody))
 	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Idempotency-Key", "customer-checkout-fixture-1")
+	r.Header.Set("Idempotency-Key", "3da81975-3ff1-5ebc-ba1a-ee9e12760c82")
 	r.Header.Set("Origin", checkoutWiringOrigin)
 	r.Header.Set("X-CSRF-Token", csrf)
 	if cookie != nil {
