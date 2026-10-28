@@ -5,6 +5,7 @@ Astro holds HTTP capabilities only. Playwright owns this process and its childre
 """
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import signal
@@ -40,11 +41,12 @@ def main():
     owned.mkdir(parents=True, exist_ok=True)
 
     def query(sql):
-        result = subprocess.run(['psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1'], input=sql,
+        result = subprocess.run(['psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate'], input=sql,
                                 text=True, capture_output=True, env={**os.environ, **pg}, timeout=60)
         if result.returncode:
             # SQL can contain generated passwords. Never include statement/DSN in diagnostics.
-            raise RuntimeError('Real visual seed/query failed')
+            code = re.search(r'ERROR:\s+([A-Z0-9]{5})\b', result.stderr)
+            raise RuntimeError('Real visual seed/query failed SQLSTATE=' + (code.group(1) if code else 'unknown'))
         return result.stdout
 
     def run(command, env):
@@ -90,6 +92,7 @@ def main():
             rma_seed = text.replace('c090', 'c230').replace('c240', 'c231')
             rma_seed = rma_seed.replace("'localhost'", "'visual-rma.localhost.test'")
             rma_seed = rma_seed.replace("'127.0.0.1'", "'localhost'").replace('.c09.test', '.rma230.test')
+            rma_seed = rma_seed.replace("'c09d-e2e'", "'visual-rma230-e2e'")
             query(rma_seed)
         passwords = {kind: secrets.token_hex(32) for kind in LOGIN_ROLES}
         names = ','.join("'" + login + "'" for login, _ in LOGIN_ROLES.values())
@@ -179,7 +182,7 @@ def main():
         wait('https://localhost:4352/login', context=ssl.create_default_context(cafile=str(certificate)))
         spawn(['bash', 'scripts/start_storefront_ssr.sh'], {**frontend, 'PORT': '4351',
               'OSC_READ_API_ORIGIN': 'http://127.0.0.1:4185', 'OSC_COMMERCE_API_ORIGIN': 'http://127.0.0.1:4185',
-              'OSC_COMMERCE_SITE': 'https://localhost:4351'})
+              'OSC_COMMERCE_SITE': 'https://localhost:4351', 'OPENSITE_FAKE_ACCOUNT_ID': 'visual-rma230-e2e'})
         wait('https://localhost:4351/products/canvas-tote', context=ssl.create_default_context(cafile=str(certificate)))
         print('VISUAL-REAL: restricted Go + PostgreSQL 18.6 + transparent proxy + Astro ready', flush=True)
         while all(proc.poll() is None for proc in children):
