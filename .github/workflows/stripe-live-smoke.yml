@@ -1,0 +1,54 @@
+name: stripe-live-smoke
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: stripe-live
+  cancel-in-progress: false
+jobs:
+  live:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment: stripe-live
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite_live
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite_live"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GOTOOLCHAIN: local
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite_live?sslmode=disable
+      OPENSITE_DISPOSABLE_PG: stripe-live
+      OPENSITE_REQUIRE_PGX_FIXTURES: '1'
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - name: Prepare isolated database and compile before exposing any secret
+        run: |
+          ./scripts/ci_apt_install.sh postgresql-client
+          python3 scripts/pending_migrations.py ci-normalize
+          ./scripts/migrate_river.sh
+          ./scripts/migrate.sh
+          go mod download
+          go test -c -tags pgx,stripe_live -o "$RUNNER_TEMP/stripe-live.test" ./internal/db
+      - name: Owner-approved A permission probe with allowlisted public receipt
+        timeout-minutes: 3
+        env:
+          STRIPE_API: ${{ secrets.STRIPE_API }}
+          STRIPE_SMOKE_ACCOUNT: ${{ secrets.STRIPE_SMOKE_ACCOUNT }}
+          STRIPE_SMOKE_PHASE: A
+          STRIPE_SMOKE_RUN_ID: ${{ github.run_id }}
+        run: python3 scripts/stripe_live_ci.py

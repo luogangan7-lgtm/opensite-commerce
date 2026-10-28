@@ -1,9 +1,8 @@
 /**
  * Owns re-run attempt selection for the golden artifact verifier.
- * Invariant: for one run and one lane (job name), the latest attempt GitHub
- * reports as a successful job is the only authoritative evidence. Its exact
- * per-attempt artifact must exist; a missing newer artifact fails closed and an
- * older attempt is never substituted.
+ * Invariant: require the original attempt of the latest successful execution.
+ * Partial re-runs can copy jobs with new ids/run_attempt but unchanged execution
+ * timestamps. A real re-execution needs its own artifact, never a stale one.
  * Depends on: fetch performed by the caller (no imports beyond the runtime).
  * Called by: scripts/frontend/verify-baseline-artifact.ts and
  * rerun-attempts.test.ts. scripts/rerun_attempts.py implements the identical
@@ -13,6 +12,9 @@
  */
 
 export type RunJob = {
+  id?: unknown;
+  started_at?: unknown;
+  completed_at?: unknown;
   name?: unknown;
   status?: unknown;
   conclusion?: unknown;
@@ -37,17 +39,32 @@ export function attemptNumber(value: unknown): number {
   return Number(text);
 }
 
-/** Ascending attempts where `jobName` completed successfully. */
+/** Original attempts of successful executions; identical to Python's rule. */
 export function successfulAttempts(jobs: readonly RunJob[], jobName: string): number[] {
-  const attempts = new Set<number>();
+  const executions = new Map<string, number>();
   for (const job of jobs) {
     if (job?.name !== jobName) continue;
     // A malformed attempt on a matching job is a broken listing, not a reason
     // to skip the lane, so it fails closed here.
     const attempt = attemptNumber(job.run_attempt);
-    if (job.status === 'completed' && job.conclusion === 'success') attempts.add(attempt);
+    if (job.status === 'completed' && job.conclusion === 'success') {
+      const started = job.started_at, completed = job.completed_at;
+      const timestamp = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
+      let identity: unknown[];
+      if (typeof started === 'string' && typeof completed === 'string'
+          && timestamp.test(started) && timestamp.test(completed) && started < completed) {
+        identity = ['execution', started, completed];
+      } else if (/^[1-9][0-9]*$/.test(String(job.id ?? ''))) {
+        identity = ['job', String(job.id), typeof started === 'string' ? started : null,
+          typeof completed === 'string' ? completed : null];
+      } else {
+        identity = ['attempt', attempt];
+      }
+      const key = JSON.stringify(identity);
+      executions.set(key, Math.min(executions.get(key) ?? attempt, attempt));
+    }
   }
-  return [...attempts].sort((left, right) => left - right);
+  return [...new Set(executions.values())].sort((left, right) => left - right);
 }
 
 /** The latest successful attempt, which must itself have evidence. */

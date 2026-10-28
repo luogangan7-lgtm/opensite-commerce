@@ -246,6 +246,30 @@ func TestFixtureRolesLifecyclePostgres(t *testing.T) {
 		}
 		stop() // Both role cleanup and session close must survive owner cancellation.
 	})
+	// pgx.Close sends Terminate and closes the socket; PostgreSQL may still be
+	// releasing the backend's session lock after the Go cleanups have returned.
+	// Observe server completion before the unchanged leak assertion; do not retry
+	// role cleanup or ignore any role/object/lock leak once that backend is gone.
+	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		var active bool
+		if err := observer.InMaintenance(cleanup, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, "SELECT EXISTS(SELECT FROM pg_stat_activity WHERE pid=$1)", pid).Scan(&active)
+		}); err != nil {
+			t.Fatal("role fixture cleanup observation failed", err)
+		}
+		if !active {
+			break
+		}
+		select {
+		case <-cleanup.Done():
+			t.Fatal("role fixture backend did not finish cleanup", cleanup.Err())
+		case <-tick.C:
+		}
+	}
 	var leaked bool
 	if err := observer.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `SELECT EXISTS(SELECT FROM pg_roles WHERE rolname IN ($1,$2))
