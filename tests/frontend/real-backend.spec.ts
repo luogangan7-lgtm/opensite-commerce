@@ -347,21 +347,22 @@ async function historySnapshot(page: Page, state: typeof REAL_VISUAL_STATES[250]
 // Use the existing Orders executor with every trigger/FK/RLS/check active. The
 // large number is a legal historical snapshot; no trigger suspension or DTO mock.
 function historyOrders(customer: { id: string; email: string }, project: string, batch: number, count = 1, long = false, guest = false, variant?: 'normal' | 'multiline') {
-  const key = `visual-250-${project}-${batch}`, number = variant ? (variant === 'normal' ? 701234n : 705678n) + BigInt(project === 'mobile' ? 100 : 0) : 9007199254741000n + BigInt(project === 'mobile' ? 1000 : 0) + BigInt(batch * 100);
+  const orderIds = Array.from({ length: count }, () => randomUUID());
+  const number = variant ? (variant === 'normal' ? 701234n : 705678n) + BigInt(project === 'mobile' ? 100 : 0) : 9007199254741000n + BigInt(project === 'mobile' ? 1000 : 0) + BigInt(batch * 100);
   const code = long ? 'S'.repeat(255) : 'C24-CANVAS-TOTE';
   const stamp = variant === 'normal' ? '2026-01-02T11:00:00Z' : variant === 'multiline' ? '2026-01-02T10:00:00Z' : '2026-01-02T12:00:00Z';
   sql(`BEGIN; SELECT set_config('app.tenant_id','${tenant}',true);
     DO $seed$ DECLARE r app.inventory_reservations; r2 app.inventory_reservations; oid uuid; n integer; amount bigint; BEGIN
       FOR n IN 0..${count - 1} LOOP
-        oid:=gen_random_uuid(); amount:=CASE WHEN ${long} AND n=0 THEN 9223372036854775807 ELSE 3140 END;
-        r:=app.inventory_reserve('${sku}',1,'order',oid,'${key}-'||n,3600);
+        oid:=(ARRAY[${orderIds.map(id => `'${id}'::uuid`).join(',')}])[n+1]; amount:=CASE WHEN ${long} AND n=0 THEN 9223372036854775807 ELSE 3140 END;
+        r:=app.inventory_reserve('${sku}',1,'order',oid,gen_random_uuid()::text,3600);
         IF ${variant === 'multiline'} THEN
-          r2:=app.inventory_reserve('${sku}',1,'order',oid,'${key}-extra-'||n,3600);
+          r2:=app.inventory_reserve('${sku}',1,'order',oid,gen_random_uuid()::text,3600);
         END IF;
         SET LOCAL ROLE app_orders_executor;
         INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,customer_id,guest_contact,
           currency,items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor,created_at)
-        VALUES('${tenant}',oid,${number}::bigint+n,'${key}-'||n,sha256(('${key}-'||n)::bytea),
+        VALUES('${tenant}',oid,${number}::bigint+n,gen_random_uuid()::text,sha256(oid::text::bytea),
           ${guest ? 'NULL' : `'${customer.id}'::uuid`},${guest ? `jsonb_build_object('email','${customer.email}')` : 'NULL'},
           'USD',amount,0,0,'{}',amount,'${stamp}'::timestamptz-n*interval '1 second');
         INSERT INTO app.order_lines(tenant_id,id,order_id,sku_id,sku,quantity,unit_price_minor,line_net_minor,
@@ -379,7 +380,7 @@ function historyOrders(customer: { id: string; email: string }, project: string,
     END $seed$; COMMIT;`);
   if (guest) sql(`BEGIN; SELECT set_config('app.tenant_id','${tenant}',true); SELECT app.customer_claim_guest_orders('${customer.id}'); COMMIT;`);
   const rows = JSON.parse(sql(`SELECT jsonb_agg(jsonb_build_object('id',id,'number',order_number::text)
-    ORDER BY created_at DESC,id DESC) FROM app.orders WHERE tenant_id='${tenant}' AND creation_key LIKE '${key}-%';`)) as { id: string; number: string }[];
+    ORDER BY created_at DESC,id DESC) FROM app.orders WHERE tenant_id='${tenant}' AND id = ANY(ARRAY[${orderIds.map(id => `'${id}'::uuid`).join(',')}]);`)) as { id: string; number: string }[];
   expect(rows).toHaveLength(count);
   return { rows, code };
 }
