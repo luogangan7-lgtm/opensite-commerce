@@ -17,6 +17,14 @@ test('VISUAL-REAL requires every issue state in desktop and mobile', () => {
   }
 });
 
+test('VISUAL-250 distinct history states have distinct PNG bytes', () => {
+  for (const viewport of ['desktop', 'mobile']) {
+    const states = ['history-list', 'history-long-order', 'history-detail', 'history-long-sku', 'history-multiline'];
+    const hashes = states.map(state => sha256(`${BASELINES}/${viewport}/real-250-${state}.png`));
+    expect(new Set(hashes).size, `${viewport} history state images must be distinct`).toBe(states.length);
+  }
+});
+
 test('VISUAL-REAL browser lane cannot intercept business routes', () => {
   const source = readFileSync('tests/frontend/real-backend.spec.ts', 'utf8');
   expect(source).not.toMatch(/\.route\s*\(|\.routeFromHAR\s*\(|admin-fixture|commerce-fixture/);
