@@ -33,6 +33,9 @@ p { margin-block:var(--space-0) var(--space-4); }
 .admin-page .os-table,.admin-page dl { font-variant-numeric:tabular-nums; }
 /* Keep codes and exact amounts intact; the shared, keyboard-focusable region contains table scrolling. */
 .admin-page .os-table th,.admin-page .os-table td { white-space:nowrap; overflow-wrap:normal; }
+/* Exact notification metadata wraps inside one visible cell, using the table's
+ * inline container and incumbent spacing; retain every character at normal size. */
+.admin-page .admin-notification-text { display:block; inline-size:max-content; max-inline-size:min(var(--layout-column-min),calc(100cqi - var(--space-8))); white-space:normal; overflow-wrap:anywhere; }
 .admin-page dd { margin-inline-start:var(--space-0); margin-block-end:var(--space-4); overflow-wrap:anywhere; }
 .admin-page dt { font-weight:var(--font-weight-semibold); }
 
