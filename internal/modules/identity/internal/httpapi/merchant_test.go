@@ -66,7 +66,7 @@ func merchantFixture(t *testing.T) (*c02cFixture, *merchantRepo) {
 }
 
 func TestMerchantStepUpTransport(t *testing.T) {
-	for _, name := range []string{"owner", "admin", "key", "customer", "csrf", "origin", "stale", "cross-tenant", "password", "cooldown"} {
+	for _, name := range []string{"owner", "admin", "key", "customer", "csrf", "origin", "stale", "cross-tenant", "password", "cooldown", "action", "empty-password"} {
 		t.Run(name, func(t *testing.T) {
 			f, repo := merchantFixture(t)
 			r := httptest.NewRequest("POST", "/api/v1/t/"+c02cTenant+"/merchant-deletion/step-up", strings.NewReader(`{"action":"request","password":"correct-password"}`))
@@ -106,6 +106,12 @@ func TestMerchantStepUpTransport(t *testing.T) {
 			case "cooldown":
 				f.sessions.accountCooldown = time.Now().Add(time.Hour)
 				expected = 429
+			case "action":
+				r.Body = io.NopCloser(strings.NewReader(`{"action":"execute","password":"correct-password"}`))
+				expected = 422
+			case "empty-password":
+				r.Body = io.NopCloser(strings.NewReader(`{"action":"request","password":""}`))
+				expected = 422
 			}
 			router := platform.New(f.handler, slog.New(slog.NewTextHandler(io.Discard, nil)))
 			route := f.handler.MerchantStepUpRoute()
@@ -176,5 +182,14 @@ func TestMerchantTerminalReceiptIsExactRouteOnly(t *testing.T) {
 				t.Fatal("MDEL02_RECEIPT_SCOPE_ESCAPED")
 			}
 		})
+	}
+}
+
+func TestMerchantRoutesRemainDormant(t *testing.T) {
+	f := c02cAuthFixture(t)
+	for _, route := range f.handler.Routes() {
+		if strings.Contains(route.Spec.Pattern, "merchant-deletion") {
+			t.Fatal("MDEL02_PREMATURE_ROUTE_ACTIVATION")
+		}
 	}
 }

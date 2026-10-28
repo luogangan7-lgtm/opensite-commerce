@@ -143,6 +143,18 @@ BEGIN
  EXECUTE replace(def,body,regexp_replace(body,'\mBEGIN\M',
   'BEGIN IF NOT app.auth_merchant_scope(p_tenant,p_kind,p_scope) THEN RETURN false; END IF;'));
 END $wrap$;
+-- Keep Tenant's existing invalid-destructive-cancel conflict classification.
+-- Identity now fences interactive authority in that phase, so reject the
+-- impossible transition before owner revalidation. This opens no authority:
+-- the primitive stays ungranted and request/normal-cancel checks are unchanged.
+DO $phase_guard$
+DECLARE def text; body text;
+BEGIN
+ SELECT pg_get_functiondef(p.oid),p.prosrc INTO STRICT def,body FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' AND p.proname='tenant_lifecycle_transition';
+ EXECUTE replace(def,body,replace(body,'now_db:=clock_timestamp();',
+  'now_db:=clock_timestamp(); IF p_operation=''cancel'' AND l.phase=''executing'' THEN RAISE EXCEPTION ''tenant deletion cancellation closed'' USING ERRCODE=''55000''; END IF;'));
+END $phase_guard$;
 DO $owners$
 DECLARE f record;
 BEGIN

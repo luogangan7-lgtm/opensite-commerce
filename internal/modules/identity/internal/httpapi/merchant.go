@@ -6,6 +6,8 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
@@ -54,6 +56,10 @@ func (h *Handler) merchantStepUp(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := platform.DecodeJSON(w, r, &input); err != nil {
 		writeError(w, r, err)
+		return
+	}
+	if len(input.Password) == 0 || len(input.Password) > 1024 || !utf8.ValidString(input.Password) || strings.ContainsAny(input.Password, "\r\n\x00") || input.Action != "request" && input.Action != "cancel" {
+		writeError(w, r, apperrors.New(422, "validation_failed", "Step-up input is invalid"))
 		return
 	}
 	actor, ok := login.ActorFromContext(r.Context())
