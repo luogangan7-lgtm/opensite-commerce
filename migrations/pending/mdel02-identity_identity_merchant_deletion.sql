@@ -41,6 +41,7 @@ GRANT SELECT,INSERT,DELETE ON app.identity_merchant_proofs TO app_identity_merch
 GRANT SELECT(id,status,password_hash),UPDATE(id) ON app.users TO app_identity_merchant_executor;
 GRANT SELECT(id,user_id,created_at,last_seen_at,expires_at,revoked_at),UPDATE(id) ON app.auth_sessions TO app_identity_merchant_executor;
 GRANT SELECT(tenant_id,user_id,role,status) ON app.tenant_memberships TO app_identity_merchant_executor;
+GRANT SELECT(id,status) ON app.tenants TO app_identity_merchant_executor;
 CREATE POLICY identity_merchant_membership_read ON app.tenant_memberships FOR SELECT TO app_identity_merchant_executor
  USING(tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid);
 GRANT SELECT ON app.tenant_lifecycles,app.tenant_lifecycle_events,app.tenant_lifecycle_receipts TO app_identity_merchant_executor;
@@ -101,8 +102,9 @@ BEGIN
  DELETE FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant AND id=proof.id;
 END $fn$;
 
--- Minimal boolean authority for the receipt-only route. Membership is purposely
--- absent after detachment; no general tenant scope or business data is granted.
+-- Minimal boolean authority for the deletion-metadata GET. Current owners may
+-- inspect execution; after detachment only the frozen requester has terminal
+-- receipt authority. No general tenant scope or business data is granted.
 CREATE FUNCTION app.auth_merchant_receipt(p_tenant uuid,p_request uuid,p_user uuid,p_session uuid) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $fn$
 DECLARE at_db timestamptz; sess record;
@@ -115,6 +117,14 @@ BEGIN
  IF NOT FOUND OR sess.revoked_at IS NOT NULL OR NOT isfinite(sess.expires_at) OR sess.expires_at<=at_db
   OR NOT isfinite(sess.created_at) OR NOT isfinite(sess.last_seen_at) OR sess.created_at>at_db OR sess.last_seen_at>at_db
   OR sess.last_seen_at<sess.created_at OR sess.expires_at<=sess.created_at THEN RETURN false; END IF;
+ -- Current owners retain only deletion-status metadata while execution has
+ -- fenced ordinary tenant authority. Suspension still denies interactive use.
+ IF EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id
+  JOIN app.tenant_memberships m ON m.tenant_id=l.tenant_id AND m.user_id=p_user
+  WHERE l.tenant_id=p_tenant AND l.id=p_tenant AND l.request_id=p_request
+  AND l.state IN('cooling_off','executing','failed') AND t.status='active' AND m.role='owner' AND m.status='active') THEN
+  RETURN true;
+ END IF;
  RETURN EXISTS(SELECT FROM app.tenant_lifecycle_events e JOIN app.tenant_lifecycle_receipts r
   ON r.tenant_id=e.tenant_id AND r.request_id=e.request_id AND r.operation='request'
   WHERE e.tenant_id=p_tenant AND e.request_id=p_request AND e.state IN('canceled','deleted') AND r.actor_id=p_user);

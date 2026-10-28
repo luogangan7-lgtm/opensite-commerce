@@ -108,7 +108,15 @@ BEGIN
  n:=app.auth_erase_merchant_proofs(t,req,e);
  IF n=0 OR EXISTS(SELECT FROM app.identity_merchant_proofs WHERE tenant_id=t) THEN RAISE EXCEPTION 'MDEL02_DERIVED_PROOF_SCRUB'; END IF;
  IF app.auth_erase_merchant_proofs(t,req,e)<>0 THEN RAISE EXCEPTION 'MDEL02_SCRUB_NOT_IDEMPOTENT'; END IF;
- IF app.auth_merchant_receipt(t,req,u,s) THEN RAISE EXCEPTION 'MDEL02_NONTERMINAL_RECEIPT'; END IF;
+ IF NOT app.auth_merchant_receipt(t,req,u,s) THEN RAISE EXCEPTION 'MDEL02_EXECUTING_OWNER_STATUS'; END IF;
+ IF app.auth_merchant_receipt(t,req,current_setting('test.mdel02.admin')::uuid,current_setting('test.mdel02.admin_sess')::uuid)
+  OR app.auth_merchant_receipt(t,uuidv7(),u,s) THEN RAISE EXCEPTION 'MDEL02_EXECUTING_STATUS_BINDING'; END IF;
+ DELETE FROM app.tenant_memberships WHERE tenant_id=t AND user_id=u;
+ IF app.auth_merchant_receipt(t,req,u,s) THEN RAISE EXCEPTION 'MDEL02_DETACHED_NONTERMINAL_STATUS'; END IF;
+ INSERT INTO app.tenant_memberships(tenant_id,user_id,role) VALUES(t,u,'owner');
+ UPDATE app.tenants SET status='suspended' WHERE id=t;
+ IF app.auth_merchant_receipt(t,req,u,s) THEN RAISE EXCEPTION 'MDEL02_SUSPENDED_OWNER_STATUS'; END IF;
+ UPDATE app.tenants SET status='active' WHERE id=t;
  PERFORM app.tenant_lifecycle_checkpoint(t,req,e,true);
  -- Detachment does not revoke a global session or another tenant's authority.
  DELETE FROM app.tenant_memberships WHERE tenant_id=t;

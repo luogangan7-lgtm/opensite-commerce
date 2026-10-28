@@ -1715,6 +1715,7 @@ BEGIN
    expected:=t.relname='identity_merchant_proofs' AND privilege IN('SELECT','INSERT','DELETE')
     OR t.relname IN('tenant_lifecycles','tenant_lifecycle_events','tenant_lifecycle_receipts') AND privilege='SELECT';
    allowed:=CASE
+    WHEN t.relname='tenants' AND privilege='SELECT' THEN ARRAY['id','status']
     WHEN t.relname='users' AND privilege='SELECT' THEN ARRAY['id','status','password_hash']
     WHEN t.relname='auth_sessions' AND privilege='SELECT' THEN ARRAY['id','user_id','created_at','last_seen_at','expires_at','revoked_at']
     WHEN t.relname='tenant_memberships' AND privilege='SELECT' THEN ARRAY['tenant_id','user_id','role','status']
