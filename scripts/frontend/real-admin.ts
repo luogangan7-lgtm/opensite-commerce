@@ -5,8 +5,12 @@
 import { resolve, sep } from 'node:path';
 if (process.env.GITHUB_ACTIONS !== 'true') throw new Error('Real admin requires CI');
 const root = resolve('web/admin/dist');
+const port = Number(process.env.VISUAL_ADMIN_PORT ?? '4350');
+const upstream = process.env.VISUAL_ADMIN_UPSTREAM ?? 'http://127.0.0.1:4181';
+if (![4350, 4352].includes(port) || !['http://127.0.0.1:4181', 'http://127.0.0.1:4185'].includes(upstream))
+  throw new Error('Real admin requires an owned loopback lane');
 let nextAdmission = 0;
-Bun.serve({ hostname: '127.0.0.1', port: 4350, idleTimeout: 30,
+Bun.serve({ hostname: '127.0.0.1', port, idleTimeout: 30,
   tls: { cert: Bun.file('.work/visual-real/localhost.pem'), key: Bun.file('.work/visual-real/localhost-key.pem') },
   async fetch(request) {
     const url = new URL(request.url);
@@ -17,7 +21,7 @@ Bun.serve({ hostname: '127.0.0.1', port: 4350, idleTimeout: 30,
       if (wait) await Bun.sleep(wait);
       const headers = new Headers(request.headers);
       headers.set('Origin', 'https://admin.visual.test');
-      return fetch(`http://127.0.0.1:4181${url.pathname}${url.search}`, {
+      return fetch(`${upstream}${url.pathname}${url.search}`, {
         method: request.method, headers, redirect: 'manual', signal: AbortSignal.timeout(25_000),
         ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body: await request.arrayBuffer() }),
       });

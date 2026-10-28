@@ -825,15 +825,15 @@ function staffOrders(count = 1, long = false, multiline = false) {
   return { tenant: target, ids, number: String(number), code,
     path: `/t/${target}/orders`, api: `/api/v1/t/${target}/orders` };
 }
-async function staffLogin(page: Page, path: string) {
-  await page.goto(staffSite + path);
+async function staffLogin(page: Page, path: string, origin = staffSite) {
+  await page.goto(origin + path);
   await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
   await page.getByLabel('Email', { exact: true }).fill('visual-owner@example.test');
   await page.getByLabel('Password', { exact: true }).fill(runtime().staffPassword);
   const signedIn = page.waitForResponse(r => new URL(r.url()).pathname === '/api/v1/auth/login' && r.request().method() === 'POST');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   expect((await signedIn).status()).toBe(201);
-  await expect(page).toHaveURL(staffSite + path);
+  await expect(page).toHaveURL(origin + path);
 }
 async function staffSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][number], masks: Locator[] = []) {
   await page.evaluate(async () => { await document.fonts.ready; });
@@ -1049,7 +1049,9 @@ async function domainSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][
 
 test('VISUAL-REAL #230 real two-unit purchase and five staff domain states', async ({ page }, info) => {
   test.setTimeout(300_000);
-  // Same quantity-two journey as tests/e2e/rma.spec.ts, on the trusted REAL visual stack.
+  const site = 'https://localhost:4351', staffSite = 'https://localhost:4352';
+  const tenant = 'c2300001-0000-4000-8000-000000000001';
+  // Same quantity-two journey as tests/e2e/rma.spec.ts, on its isolated REAL tenant.
   await page.goto(`${site}/products/canvas-tote`);
   await page.getByRole('button', { name: 'Add to cart', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Item added to cart.');
@@ -1086,7 +1088,7 @@ test('VISUAL-REAL #230 real two-unit purchase and five staff domain states', asy
   const completionID = page.locator('[data-completion-ready] dd').filter({ hasText: checkout.order_id });
   await expect(completionID).toHaveText(checkout.order_id);
   await staffSnapshot(page, 'rma-completion', [await runtimeMask(page, completionID)]);
-  await staffLogin(page, `/t/${tenant}${orderPath}`);
+  await staffLogin(page, `/t/${tenant}${orderPath}`, staffSite);
   await expect(page.getByRole('cell', { name: 'C24-CANVAS-TOTE', exact: true })).toBeVisible();
   const session = await (await page.request.get(`${staffSite}/api/v1/auth/session`)).json();
   const read = async () => {
@@ -1094,8 +1096,8 @@ test('VISUAL-REAL #230 real two-unit purchase and five staff domain states', asy
     expect(response.status()).toBe(200);
     return response.json();
   };
-  const write = (path: string, data: unknown, version: number, key = crypto.randomUUID(), tenant: string = tenant) =>
-    page.request.post(`${staffSite}/api/v1/t/${tenant}${path}`, { data, headers: {
+  const write = (path: string, data: unknown, version: number, key = crypto.randomUUID(), targetTenant: string = tenant) =>
+    page.request.post(`${staffSite}/api/v1/t/${targetTenant}${path}`, { data, headers: {
       Origin: staffSite, 'X-CSRF-Token': session.csrf_token,
       'Idempotency-Key': key, 'If-Match': `"${version}"`,
     } });
