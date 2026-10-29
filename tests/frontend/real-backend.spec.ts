@@ -786,22 +786,26 @@ test.describe('VISUAL-REAL #235', () => {
 // #230 uses a fresh tenant per data fixture: other visual suites cannot change
 // its list, pagination cursor or empty state. Historical dates are never masked.
 const staffSite = 'https://127.0.0.1:4350';
-function staffOrders(count = 1, long = false, multiline = false) {
+function staffOrders(count = 1, long = false) {
   const target = randomUUID(), product = randomUUID(), variant = randomUUID();
+  const secondVariant = randomUUID();
   const ids = Array.from({ length: count }, () => randomUUID());
   const number = long ? 9007199254740991 : 723001;
-  const code = multiline ? 'Canvas tote with reinforced shoulder straps and a roomy everyday compartment for books groceries and weekend travel essentials in natural cotton canvas' : long ? 'LONG-SKU-'.repeat(28) + 'END' : 'STAFF-CANVAS-TOTE';
+  const code = long ? 'LONG-SKU-'.repeat(28) + 'END' : 'STAFF-CANVAS-TOTE';
   sql(`BEGIN; INSERT INTO app.tenants(id,name,settlement_currency) VALUES('${target}','Visual staff fixture','USD');
     INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
       SELECT '${target}',id,'owner' FROM app.users WHERE email='visual-owner@example.test';
     SELECT set_config('app.tenant_id','${target}',true);
     INSERT INTO app.products(tenant_id,id,product_code,lifecycle_status) VALUES('${target}','${product}','staff-visual','ready');
     INSERT INTO app.product_variants(tenant_id,id,product_id,sku,option_key,lifecycle_status)
-      VALUES('${target}','${variant}','${product}','STAFF-CANVAS-TOTE','default','ready');
+      VALUES('${target}','${variant}','${product}','${code}','default','ready');
     SELECT app.inventory_adjust('${variant}',1000,'Visual staff stock',gen_random_uuid(),'inbound');
+    ${long ? `INSERT INTO app.product_variants(tenant_id,id,product_id,sku,option_key,lifecycle_status)
+      VALUES('${target}','${secondVariant}','${product}','SECOND-LINE','second','ready');
+      SELECT app.inventory_adjust('${secondVariant}',1,'Visual second stock',gen_random_uuid(),'inbound');` : ''}
     ${ids.map((id, index) => `DO $staff$ DECLARE r app.inventory_reservations; r2 app.inventory_reservations; BEGIN
       r:=app.inventory_reserve('${variant}',1,'order','${id}',gen_random_uuid()::text,3600);
-      IF ${long} THEN r2:=app.inventory_reserve('${variant}',1,'order','${id}',gen_random_uuid()::text,3600); END IF;
+      IF ${long} THEN r2:=app.inventory_reserve('${secondVariant}',1,'order','${id}',gen_random_uuid()::text,3600); END IF;
       SET LOCAL ROLE app_orders_executor;
       INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,
         items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor,created_at)
@@ -816,14 +820,33 @@ function staffOrders(count = 1, long = false, multiline = false) {
       IF ${long} THEN
         INSERT INTO app.order_lines(tenant_id,id,order_id,sku_id,sku,quantity,unit_price_minor,line_net_minor,
           line_tax_minor,line_total_minor,reservation_id,tax_snapshot)
-        VALUES('${target}','ffffffff-ffff-4fff-bfff-ffffffffffff','${id}','${variant}','SECOND-LINE',1,0,0,0,0,r2.id,'{}');
+        VALUES('${target}','ffffffff-ffff-4fff-bfff-ffffffffffff','${id}','${secondVariant}','SECOND-LINE',1,0,0,0,0,r2.id,'{}');
       END IF;
       UPDATE app.orders SET sealed=true,updated_at=created_at WHERE tenant_id='${target}' AND id='${id}';
       RESET ROLE;
     END $staff$;`).join('\n')}
     COMMIT;`);
-  return { tenant: target, ids, number: String(number), code,
+  return { tenant: target, product, variant, ids, number: String(number), code,
     path: `/t/${target}/orders`, api: `/api/v1/t/${target}/orders` };
+}
+// Orders' existing real seed command owns reservation validation, snapshots,
+// number allocation, sealing and outbox. Catalog API cannot create legacy spaced
+// SKU text and Orders has no title snapshot; seed that catalog boundary only.
+function domainMultilineOrder() {
+  const fixture = staffOrders(0), id = randomUUID();
+  const code = 'Canvas tote with reinforced shoulder straps and a roomy everyday compartment for books groceries and weekend travel essentials in natural cotton canvas';
+  sql(`BEGIN; SELECT set_config('app.tenant_id','${fixture.tenant}',true);
+    UPDATE app.product_variants SET sku='${code}' WHERE tenant_id='${fixture.tenant}' AND id='${fixture.variant}';
+    DO $domain$ DECLARE r app.inventory_reservations; BEGIN
+      r:=app.inventory_reserve('${fixture.variant}',1,'order','${id}',gen_random_uuid()::text,3600);
+      PERFORM app.orders_create('${id}',gen_random_uuid()::text,sha256('${id}'::bytea),NULL,
+        '{"email":"staff-visual@example.test"}','USD',0,'{}',
+        (SELECT jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'sku_id',v.id,'sku',v.sku,
+          'quantity',1,'unit_price_minor',3140,'line_net_minor',3140,'line_tax_minor',0,
+          'line_total_minor',3140,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb))
+         FROM app.product_variants v WHERE v.tenant_id='${fixture.tenant}' AND v.id='${fixture.variant}'),'[]');
+    END $domain$; COMMIT;`);
+  return { ...fixture, ids: [id], number: '1', code };
 }
 async function staffLogin(page: Page, path: string, origin = staffSite) {
   await page.goto(origin + path);
@@ -994,8 +1017,14 @@ test.describe('VISUAL-REAL #230', () => {
 
 test.describe('VISUAL-REAL #230 round5', () => {
   test('real multiline order text wraps completely inside the visible line cell', async ({ page }) => {
-    const fixture = staffOrders(1, false, true);
+    const fixture = domainMultilineOrder();
     await staffLogin(page, `${fixture.path}/${fixture.ids[0]}`);
+    const response = await page.request.get(`${staffSite}${fixture.api}/${fixture.ids[0]}`);
+    expect(response.status()).toBe(200);
+    const order = await response.json(), snapshot = order.lines[0];
+    expect(snapshot.sku_code).toBe(sql(`SELECT sku FROM app.product_variants WHERE tenant_id='${fixture.tenant}' AND id='${fixture.variant}';`));
+    expect(snapshot).toMatchObject({ title: null, quantity: 1, line_total_minor: '3140' });
+    expect(sql(`SELECT count(*) FROM app.outbox_events WHERE tenant_id='${fixture.tenant}' AND dedup_key='created:${fixture.ids[0]}';`)).toBe('1');
     const cell = page.getByRole('cell', { name: fixture.code, exact: true });
     await expect(cell).toBeVisible();
     expect(await cell.innerText()).toBe(fixture.code);
@@ -1010,14 +1039,23 @@ test.describe('VISUAL-REAL #230 round5', () => {
     expect(geometry.lines, 'multi-word line item must genuinely wrap').toBeGreaterThan(1);
     expect(geometry.visible, 'all wrapped text stays visible without horizontal clipping').toBe(true);
     expect(geometry.clipped).toBe(false);
-    await staffSnapshot(page, 'multiline');
+    const times = page.getByRole('main').locator('time');
+    await expect(times).toHaveCount(2);
+    for (const [index, stamp] of [order.created_at, order.updated_at].entries()) {
+      await expect(times.nth(index)).toHaveAttribute('datetime', stamp);
+      await expect(times.nth(index)).toHaveText(stamp);
+    }
+    const metadata = times.first().locator('..');
+    await expect(metadata).toHaveText(`Created ${order.created_at} · Updated ${order.updated_at}`);
+    await staffSnapshot(page, 'multiline', [await runtimeMask(page, metadata, metadata)]);
   });
 });
 
 // Masks own only a verified runtime metadata field or UUID cell; status/version/money stay compared.
-async function runtimeMask(page: Page, target: Locator) {
+async function runtimeMask(page: Page, target: Locator, field: Locator) {
   const box = await target.boundingBox();
-  if (!box) throw new Error('Missing runtime mask geometry');
+  const fieldBounds = await field.boundingBox();
+  if (!box || !fieldBounds) throw new Error('Missing runtime mask geometry');
   const protectedBoxes: Box[] = [];
   for (const locator of [page.getByRole('heading'), page.locator('.os-badge').locator('..'), page.locator('.admin-stack dd'),
     page.locator('[data-completion-ready] dd').filter({ hasNotText: /^[0-9a-f-]{36}$/ })]) {
@@ -1025,12 +1063,32 @@ async function runtimeMask(page: Page, target: Locator) {
       const bounds = await element.boundingBox(); if (bounds) protectedBoxes.push(bounds);
     }
   }
-  assertDateMaskBounds(box, box, protectedBoxes);
+  assertDateMaskBounds(box, fieldBounds, protectedBoxes);
   return target;
+}
+// This candidate extends only one pixel beyond its independently measured field.
+// It need not touch money/status: containment itself must reject it.
+async function assertOversizedRuntimeMaskRejected(page: Page, field: Locator) {
+  const bounds = await field.boundingBox();
+  if (!bounds) throw new Error('Missing runtime field geometry');
+  await page.evaluate(box => {
+    const probe = document.createElement('div');
+    probe.dataset.visualMaskProbe = '';
+    Object.assign(probe.style, { position: 'fixed', left: `${box.x}px`, top: `${box.y}px`,
+      width: `${box.width + 1}px`, height: `${box.height}px`, pointerEvents: 'none' });
+    document.body.append(probe);
+  }, bounds);
+  try {
+    await expect(runtimeMask(page, page.locator('[data-visual-mask-probe]'), field))
+      .rejects.toThrow('Date mask extends outside time element');
+    console.info('VISUAL-230 expected RED: oversized runtime mask rejected against independent field bounds');
+  } finally {
+    await page.locator('[data-visual-mask-probe]').evaluate(node => node.remove());
+  }
 }
 // Exercise different legal glyph widths/precisions in CI, then restore the real API text.
 // A broad mask is separately rejected against the protected status/money geometry.
-async function assertStableRuntimeMask(page: Page, masks: Locator[], values: Locator, variants: string[][]) {
+async function assertStableRuntimeMask(page: Page, masks: Locator[], field: Locator, values: Locator, variants: string[][]) {
   await page.evaluate(async () => { await document.fonts.ready; });
   const original = await values.allTextContents();
   const maskColor = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
@@ -1040,7 +1098,7 @@ async function assertStableRuntimeMask(page: Page, masks: Locator[], values: Loc
     for (const variant of variants) {
       expect(variant).toHaveLength(original.length);
       for (const [index, text] of variant.entries()) await values.nth(index).evaluate((node, value) => { node.textContent = value; }, text);
-      for (const mask of masks) await runtimeMask(page, mask);
+      for (const mask of masks) await runtimeMask(page, mask, field);
       const after = await capture();
       if (!after.equals(before)) {
         await test.info().attach('runtime-mask-before', { body: before, contentType: 'image/png' });
@@ -1072,9 +1130,10 @@ async function domainSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][
   expect(await metadata.evaluate(node => node.tagName)).toBe('P');
   await expect(metadata.locator(':scope > *')).toHaveCount(2);
   await expect(metadata).toHaveText(`Created ${order.created_at} · Updated ${order.updated_at}`);
-  const masks = [await runtimeMask(page, metadata)];
+  const masks = [await runtimeMask(page, metadata, metadata)];
   if (state === 'paid') {
-    await expect(runtimeMask(page, page.getByRole('main'))).rejects.toThrow('Date mask overlaps status or amount');
+    await expect(runtimeMask(page, page.getByRole('main'), metadata)).rejects.toThrow('Date mask extends outside time element');
+    await assertOversizedRuntimeMaskRejected(page, metadata);
     await page.evaluate(async () => { await document.fonts.ready; });
     // Inject the former narrow-time mask: changing precision MUST expose its
     // unmasked Updated-label movement before the repaired field mask is tested.
@@ -1090,7 +1149,7 @@ async function domainSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][
     } finally {
       await times.first().evaluate((node, value) => { node.textContent = value; }, order.created_at);
     }
-    await assertStableRuntimeMask(page, masks, times, [
+    await assertStableRuntimeMask(page, masks, metadata, times, [
       ['2099-12-31T23:59:59.999999Z', '2099-12-31T23:59:59.999999Z'],
       ['2000-01-01T00:00:00Z', '2000-01-01T00:00:00Z'],
     ]);
@@ -1146,9 +1205,10 @@ test('VISUAL-REAL #230 real two-unit purchase and five staff domain states', asy
     element.style.clipPath = 'inset(0)'; return previous;
   });
   try {
-    const masks = [await runtimeMask(page, completionID)];
-    await expect(runtimeMask(page, page.getByRole('main'))).rejects.toThrow('Date mask overlaps status or amount');
-    await assertStableRuntimeMask(page, masks, completionID, [
+    const masks = [await runtimeMask(page, completionID, completionID)];
+    await expect(runtimeMask(page, page.getByRole('main'), completionID)).rejects.toThrow('Date mask extends outside time element');
+    await assertOversizedRuntimeMaskRejected(page, completionID);
+    await assertStableRuntimeMask(page, masks, completionID, completionID, [
       [checkout.order_id.slice(0, -1) + '0'], [checkout.order_id.slice(0, -1) + '8'],
     ]);
     await expect(completionID).toHaveText(checkout.order_id);

@@ -22,6 +22,11 @@ test('VISUAL-230 multiline fixture snapshots the actual catalog variant through 
   const multiline = source.slice(source.indexOf("test('real multiline order text"), source.indexOf('// Masks own only'));
   expect(multiline).toContain('domainMultilineOrder');
   expect(multiline).toContain('snapshot.sku_code');
+  const seed = source.slice(source.indexOf('function domainMultilineOrder'), source.indexOf('async function staffLogin'));
+  expect(seed).toContain('staffOrders(0)');
+  expect(seed).toContain('app.orders_create(');
+  expect(seed).toContain("'sku',v.sku");
+  expect(seed).not.toContain('INSERT INTO app.order_lines');
 });
 
 test('VISUAL-REAL requires every issue state in desktop and mobile', () => {

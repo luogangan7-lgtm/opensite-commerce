@@ -41,6 +41,9 @@ export function assertDistinctHistoryPngs(pngs: Record<string, string>) {
 
 export function realBackendEvidence(snapshot: string) {
   const staff = /^real-230-(.+)\.png$/.exec(snapshot.split('/').at(-1) ?? '')?.[1];
+  if (staff === 'multiline') return { application: 'Go', database: 'PostgreSQL 18.6', mode: 'test',
+    seed: 'legacy spaced catalog variant; real inventory_reserve and orders_create commands snapshot that variant SKU, seal order and emit order.created; real staff login/read',
+    fault: 'none', boundary: 'Catalog HTTP accepts only ASCII codes without spaces; Orders title is null; actual variant SKU equals immutable domain snapshot; verified DB-clock metadata field mask' };
   if (staff && ['paid', 'partially-fulfilled', 'fulfilled', 'partially-refunded', 'refunded', 'rma-cart', 'rma-checkout', 'rma-completion'].includes(staff)) return {
     application: 'Go', database: 'PostgreSQL 18.6', mode: 'test',
     seed: 'real published purchase quantity 2; signed test payment; Fulfillment shipment API and Returns receive/refund API; no SQL business writes',
