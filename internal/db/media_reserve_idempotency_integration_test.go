@@ -9,6 +9,7 @@ package db_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +23,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/media"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -34,7 +36,7 @@ func (a mediaReserveAuth) ResolveActor(context.Context, *http.Request, httpapi.R
 	return httpapi.Actor{Kind: "user", ID: a.actor}, nil
 }
 
-func mediaReserveRouter(t *testing.T, f *idemPGFixture, actor, label, root string) *httpapi.Router {
+func mediaReserveRouter(t *testing.T, f *idemPGFixture, actor, label, root string, stores ...idempotency.ResponseStore) *httpapi.Router {
 	t.Helper()
 	u, err := url.Parse(os.Getenv("C07_MEDIA_DATABASE_URL"))
 	if err != nil || u.User == nil || u.User.Username() != "c07_media" {
@@ -48,7 +50,11 @@ func mediaReserveRouter(t *testing.T, f *idemPGFixture, actor, label, root strin
 		t.Fatal(err)
 	}
 	t.Cleanup(runner.Close)
-	s := media.New(media.Config{Run: runner.Queries, Root: root})
+	config := media.Config{Run: runner.Queries, Root: root, Idempotency: httpapi.CommandConfig{Run: runner.RunAuthorizedTx}}
+	if len(stores) > 0 {
+		config.Idempotency.Store = stores[0]
+	}
+	s := media.New(config)
 	r := httpapi.New(mediaReserveAuth{actor}, nil)
 	for _, route := range s.Routes() {
 		if err := r.Register(route.Spec, route.Handler); err != nil {
@@ -67,6 +73,15 @@ func mediaReserveCall(ctx context.Context, r *httpapi.Router, tenant, key, query
 	return w
 }
 
+type unavailableMediaResponseStore struct{}
+
+func (unavailableMediaResponseStore) Put(context.Context, idempotency.Response) (string, error) {
+	return "", errors.New("injected response persistence failure")
+}
+func (unavailableMediaResponseStore) Get(context.Context, string) (idempotency.Response, error) {
+	return idempotency.Response{}, errors.New("injected response persistence failure")
+}
+
 func TestPGMediaReserveIdempotency(t *testing.T) {
 	f := idemFixture(t)
 	t.Cleanup(func() {
@@ -80,21 +95,29 @@ func TestPGMediaReserveIdempotency(t *testing.T) {
 	root := t.TempDir()
 	r := mediaReserveRouter(t, f, f.actor, "media_idem_serial", root)
 	body := `{"filename":"idem.png","size_bytes":1,"sha256":"` + strings.Repeat("a", 64) + `","declared_mime":"image/png"}`
-	count := func(t *testing.T, want int) {
+	reservationCount := func(t *testing.T) int {
 		t.Helper()
 		var n int
-		if err := f.admin.QueryRow(f.ctx, "SELECT count(*) FROM app.media_uploads WHERE tenant_id=$1", idemParseUUID(f.tenants[0])).Scan(&n); err != nil || n != want {
-			t.Fatalf("reservation count=%d want=%d err=%v", n, want, err)
+		if err := f.admin.QueryRow(f.ctx, "SELECT count(*) FROM app.media_uploads WHERE tenant_id=$1", idemParseUUID(f.tenants[0])).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	count := func(t *testing.T, want int) {
+		t.Helper()
+		if n := reservationCount(t); n != want {
+			t.Fatalf("reservation count=%d want=%d", n, want)
 		}
 	}
 	t.Run("exact_replay_and_restart", func(t *testing.T) {
+		before := reservationCount(t)
 		key := uuid.NewString()
 		first := mediaReserveCall(f.ctx, r, f.tenants[0], key, "?b=2&a=1", body)
 		second := mediaReserveCall(f.ctx, r, f.tenants[0], key, "?a=1&b=2", body)
 		if first.Code != 201 || second.Code != 201 || !bytes.Equal(first.Body.Bytes(), second.Body.Bytes()) || first.Header().Get("Content-Type") != second.Header().Get("Content-Type") {
 			t.Errorf("exact replay: first=%d %s second=%d %s", first.Code, first.Body, second.Code, second.Body)
 		}
-		count(t, 1)
+		count(t, before+1)
 		// A fresh service and local response store must use the durable receipt.
 		restarted := mediaReserveRouter(t, f, f.actor, "media_idem_restart", root)
 		again := mediaReserveCall(f.ctx, restarted, f.tenants[0], strings.ToUpper(key), "?a=1&b=2", body)
@@ -103,6 +126,7 @@ func TestPGMediaReserveIdempotency(t *testing.T) {
 		}
 	})
 	t.Run("changed_request_rejected", func(t *testing.T) {
+		before := reservationCount(t)
 		key := uuid.NewString()
 		first := mediaReserveCall(f.ctx, r, f.tenants[0], key, "", body)
 		if first.Code != 201 {
@@ -114,9 +138,10 @@ func TestPGMediaReserveIdempotency(t *testing.T) {
 				t.Errorf("changed request=%d %s", w.Code, w.Body)
 			}
 		}
-		count(t, 2)
+		count(t, before+1)
 	})
 	t.Run("scope_isolation", func(t *testing.T) {
+		before := reservationCount(t)
 		key := uuid.NewString()
 		otherActor := mediaReserveRouter(t, f, uuid.NewString(), "media_idem_actor", root)
 		for _, tc := range []struct {
@@ -128,9 +153,10 @@ func TestPGMediaReserveIdempotency(t *testing.T) {
 				t.Fatalf("scoped reserve=%d %s", w.Code, w.Body)
 			}
 		}
-		count(t, 4)
+		count(t, before+2)
 	})
 	t.Run("concurrent_same_key", func(t *testing.T) {
+		before := reservationCount(t)
 		// Only the first backend parks after inserting an uncommitted upload.
 		// The contender therefore runs while the original command is unfinished.
 		gate := int64(164)
@@ -183,6 +209,20 @@ func TestPGMediaReserveIdempotency(t *testing.T) {
 		if first.Code != 201 || again.Code != 201 || !bytes.Equal(first.Body.Bytes(), again.Body.Bytes()) {
 			t.Errorf("concurrent replay: first=%d %s retry=%d %s", first.Code, first.Body, again.Code, again.Body)
 		}
-		count(t, 5)
+		count(t, before+1)
+	})
+	t.Run("response_failure_rolls_back_upload", func(t *testing.T) {
+		before := reservationCount(t)
+		failed := mediaReserveRouter(t, f, f.actor, "media_idem_store_failure", root, unavailableMediaResponseStore{})
+		key := uuid.NewString()
+		w := mediaReserveCall(f.ctx, failed, f.tenants[0], key, "", body)
+		if w.Code != 503 {
+			t.Fatalf("response persistence failure=%d %s", w.Code, w.Body)
+		}
+		count(t, before)
+		var state string
+		if err := f.admin.QueryRow(f.ctx, "SELECT state FROM app.idempotency_records WHERE tenant_id=$1 AND idempotency_key=$2", idemParseUUID(f.tenants[0]), key).Scan(&state); err != nil || state != "in_progress" {
+			t.Fatalf("failed response must not complete: state=%s err=%v", state, err)
+		}
 	})
 }

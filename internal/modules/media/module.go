@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -17,26 +18,29 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/storage/local"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
 type Config struct {
-	Run  func(context.Context, string, func(*db.Queries) error) error
-	Root string
+	Run         func(context.Context, string, func(*db.Queries) error) error
+	Root        string
+	Idempotency httpapi.CommandConfig
 }
 type Service struct {
 	httpapi.StrictServerInterface
 	run     func(context.Context, string, func(*db.Queries) error) error
 	store   *local.Store
 	initErr error
+	reserve httpapi.CommandConfig
 }
 
 func New(c Config) *Service {
 	if c.Root == "" {
 		c.Root = os.Getenv("OPENSITE_MEDIA_ROOT")
 	}
-	s := &Service{run: c.Run}
+	s := &Service{run: c.Run, reserve: c.Idempotency}
 	if c.Root == "" {
 		s.initErr = errors.New("media root is required")
 	} else if s.store, s.initErr = local.New(c.Root, MaxBytes); s.initErr != nil {
@@ -44,6 +48,12 @@ func New(c Config) *Service {
 		// (bootstrap.New recovers this into a construction error) instead of
 		// serving healthy /healthz while every media call returns 503.
 		panic(fmt.Errorf("media root %q: %w", c.Root, s.initErr))
+	}
+	if s.initErr == nil && s.reserve.Store == nil {
+		s.reserve.Store, s.initErr = idempotency.NewLocalResponseStore(filepath.Join(c.Root, "command-responses"), 1<<20)
+		if s.initErr != nil {
+			panic(fmt.Errorf("media response storage: %w", s.initErr))
+		}
 	}
 	return s
 }
@@ -96,5 +106,11 @@ func (s *Service) Routes() []httpapi.Route {
 			specs[i].MaxBodySize = httpapi.DefaultMaxBodySize
 		}
 	}
-	return httpapi.StrictRoutes(s, specs)
+	routes := httpapi.StrictRoutes(s, specs)
+	for i := range routes {
+		if routes[i].Spec.OperationID == "createMediaUpload" {
+			routes[i].Handler = httpapi.CaptureCommand(routes[i].Spec, routes[i].Handler)
+		}
+	}
+	return routes
 }

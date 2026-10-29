@@ -227,6 +227,7 @@ func FromEnvironment(ctx context.Context, config Config) (Config, func(), error)
 		}
 		runners = append(runners, runner)
 		config.Media.Run = runner.RunAuthorized
+		config.Media.Idempotency.Run = runner.RunAuthorizedTx
 	}
 	// These pools verify separate deployment capabilities; the auth DSN is the one
 	// derived above and reused by staff login below. Domain consumers are pending.
