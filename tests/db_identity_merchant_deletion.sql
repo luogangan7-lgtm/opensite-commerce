@@ -219,7 +219,12 @@ SELECT set_config('app.tenant_id',:'empty_tenant',true);
 INSERT INTO app.identity_merchant_proofs(tenant_id,user_id,session_id,action,proof_digest,created_at,expires_at)
  SELECT :'empty_tenant',:'owner_id',:'sess','request',sha256('cascade'::bytea),at_db,at_db+interval '5 minutes'
  FROM (SELECT clock_timestamp() at_db) clock;
-DELETE FROM app.tenants WHERE id=:'empty_tenant';
+DO $remove_tenant$
+BEGIN
+ DELETE FROM app.tenants WHERE id=current_setting('app.tenant_id')::uuid;
+EXCEPTION WHEN foreign_key_violation THEN
+ RAISE EXCEPTION 'MDEL02_PROOF_TENANT_CASCADE';
+END $remove_tenant$;
 DO $cascade$
 BEGIN
  IF EXISTS(SELECT FROM app.identity_merchant_proofs WHERE tenant_id=current_setting('app.tenant_id')::uuid)

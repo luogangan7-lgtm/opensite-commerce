@@ -71,7 +71,7 @@ jobs:
       - name: Baseline and isolated assertion-specific mutations
         run: |
           python3 - <<'PYTHON'
-          import os, subprocess
+          import json, os, subprocess
           from pathlib import Path
           psql = ['psql', os.environ['DATABASE_URL'], '-X', '-At', '-v', 'ON_ERROR_STOP=1']
           def command(sql):
@@ -89,6 +89,7 @@ jobs:
           mutations = [
               ('auth_erase_merchant_proofs(uuid,uuid,bigint)', 'DELETE FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant;', 'DELETE FROM app.identity_merchant_proofs;', 'MDEL02_ERASE_TENANT_PREDICATE'),
               ('auth_merchant_scope(uuid,text,text)', "IF st='active' THEN RETURN true; END IF;", 'RETURN true;', 'MDEL02_COOLING_WRITE'),
+              ('auth_merchant_scope(uuid,text,text)', "IF st='cooling_off' OR (st='failed' AND ph IN('none','preconditions')) THEN", "IF (st='cooling_off' OR st='failed') AND ph IN('none','preconditions') THEN", 'MDEL02_COOLING_PHASE_SCOPE'),
               ('auth_erase_merchant_proofs(uuid,uuid,bigint)', 'DELETE FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant;', 'PERFORM 1;', 'MDEL02_DERIVED_PROOF_SCRUB'),
               ('auth_merchant_receipt(uuid,uuid,uuid,uuid)', 'IF EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id', 'IF false AND EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id', 'MDEL02_EXECUTING_OWNER_STATUS'),
           ]
@@ -107,5 +108,20 @@ jobs:
                   test(marker)
               finally:
                   command(source)
+          # Remove only the proof FK cascade, leaving the real parent/child
+          # schema in place. The empty-tenant witness must reject this defect.
+          constraint = json.loads(command("""
+              SELECT json_build_object(
+                'drop', format('ALTER TABLE app.identity_merchant_proofs DROP CONSTRAINT %I;', conname),
+                'add', format('ALTER TABLE app.identity_merchant_proofs ADD CONSTRAINT %I %s;', conname, pg_get_constraintdef(oid)))
+              FROM pg_constraint WHERE conrelid='app.identity_merchant_proofs'::regclass
+                AND confrelid='app.tenants'::regclass AND contype='f';
+          """))
+          assert constraint['add'].count('ON DELETE CASCADE') == 1, 'cascade mutation anchor drift'
+          try:
+              command(constraint['drop'] + constraint['add'].replace('ON DELETE CASCADE', 'ON DELETE NO ACTION'))
+              test('MDEL02_PROOF_TENANT_CASCADE')
+          finally:
+              command(constraint['drop'] + constraint['add'])
           test()
           PYTHON
