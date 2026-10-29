@@ -2,7 +2,7 @@
   "schema": 2,
   "snapshot": "mobile/real-213-checkout-retry.png",
   "scope": "real-backend",
-  "sourceFingerprint": "bae2e44b0d1fd043ddd8ef26b7b3557c7f70cb52a747a38642262461b3fb90a3",
+  "sourceFingerprint": "a220aa955f3f58348d3bc0f378856833491a87c3cdb17cc08d35e9a588e47b65",
   "pngSha256": "f1b52fbecf91ba1604012eabc00f65a00bee09596d4c49e67a7ebe99bf1a9c2d",
   "scopeSnapshots": [
     "desktop/real-213-checkout-ambiguous-failure.png",
@@ -162,8 +162,8 @@
     "mobile/real-250-history-pagination-loading.png",
     "mobile/real-250-history-pagination.png"
   ],
-  "sourceSha": "63383f06a05deee2ebfb9bdf41d1a99f610ecb64",
-  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40795178295",
+  "sourceSha": "ad573d75a4a2c83ed4851e0f26d597931592fda9",
+  "runUrl": "https://github.com/luogangan7-lgtm/opensite-commerce/actions/runs/40809586401",
   "image": "mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462",
   "playwright": "1.64.0",
   "font": "@fontsource/inter@5.3.0",
