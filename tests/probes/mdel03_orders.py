@@ -28,6 +28,30 @@ def test(marker=None):
 
 
 test()
+scrub = 'orders_erase_merchant(uuid,uuid,bigint)'
+# Isolated CI only: defeat FORCE RLS so it cannot conceal a missing WHERE.
+assert command("SELECT rolbypassrls FROM pg_roles WHERE rolname='app_orders_privacy_executor';").strip() == 'f'
+source = command("SELECT pg_get_functiondef('app." + scrub + "'::regprocedure);")
+try:
+    command('ALTER ROLE app_orders_privacy_executor BYPASSRLS;')
+    test()
+    for old, marker in [
+        ("UPDATE app.order_adjustments SET reason='[erased]' WHERE tenant_id=p_tenant;",
+         'MDEL03_ADJUSTMENTS_TENANT_PREDICATE'),
+        ('UPDATE app.order_lines SET sku=\'[erased]\',tax_snapshot=\'{"erased":true}\'::jsonb WHERE tenant_id=p_tenant;',
+         'MDEL03_LINES_TENANT_PREDICATE'),
+        ("shipping_snapshot=jsonb_build_object('erased',true,'amount_minor',shipping_minor,'currency',currency) WHERE tenant_id=p_tenant;",
+         'MDEL03_HEADERS_TENANT_PREDICATE'),
+    ]:
+        assert source.count(old) == 1, 'predicate mutation anchor drift'
+        try:
+            command(source.replace(old, old.replace(' WHERE tenant_id=p_tenant', '')))
+            test(marker)
+        finally:
+            command(source)
+finally:
+    command('ALTER ROLE app_orders_privacy_executor NOBYPASSRLS;')
+test()
 for function, old, new, marker in [
     ('orders_merchant_mutation_fence(boolean)',
      'PERFORM app.tenant_lifecycle_write_fence(t);',
@@ -47,4 +71,4 @@ for function, old, new, marker in [
     finally:
         command(source)
 test()
-print('PASS: MDEL03 three exact CAUSAL_RED assertions and restored baseline', flush=True)
+print('PASS: MDEL03 six exact CAUSAL_RED assertions and restored baseline', flush=True)

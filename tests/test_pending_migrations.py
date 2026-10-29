@@ -218,4 +218,19 @@ for pending in ({'aa_ok.sql': 'SELECT 1;\n', 'bb_bad.sql': '-- depends-on: nope\
             failed = subprocess.run(args, cwd=root, capture_output=True, text=True)
             assert failed.returncode == 2 and tree(root) == before, (pending, args, failed.stderr)
 
+# Malformed dependency declarations must fail before SQL or filesystem writes.
+for declaration in ('aa, zz', 'aa,zz', 'aa trailing-junk', '', 'nope'):
+    with tempfile.TemporaryDirectory() as temp:
+        root = repo(temp, {'aa_ok.sql': 'SELECT 1;\n', 'zz_ok.sql': 'SELECT 2;\n',
+                           'bb_bad.sql': '-- depends-on: ' + declaration + '\nSELECT 3;\n'})
+        before = tree(root)
+        for args in (['python3', 'scripts/pending_migrations.py', 'ci-normalize'],
+                     ['bash', 'scripts/land_migration.sh', 'aa']):
+            failed = subprocess.run(args, cwd=root, capture_output=True, text=True)
+            assert failed.returncode == 2 and tree(root) == before, (
+                'DEPENDENCY_DECLARATION_MUST_FAIL_CLOSED', declaration, args, failed.stderr)
+        failed, log = run(root, 'scripts/migrate.sh')
+        assert failed.returncode != 0 and not log and tree(root) == before, (
+            'DEPENDENCY_DECLARATION_REACHED_SQL', declaration, failed.stderr)
+
 print('PASS: pending migrations order/apply/land + production refusal (mock psql; NO SQL executed)')

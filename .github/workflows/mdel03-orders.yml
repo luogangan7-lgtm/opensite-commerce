@@ -9,6 +9,7 @@ on:
       - 'tests/db_orders_merchant_deletion.sql'
       - 'tests/fixtures/mdel03_orders.sql'
       - 'tests/probes/mdel03_orders.py'
+      - 'tests/probes/mdel03_prerequisites.py'
 permissions:
   contents: read
 jobs:
@@ -41,12 +42,15 @@ jobs:
           go-version: '1.27.2'
       - run: ./scripts/ci_apt_install.sh --no-install-recommends postgresql-client
       - name: Real PG baseline at exact head
+        id: baseline
         run: |
           git rev-parse HEAD
           ./scripts/migrate_river.sh
           ./scripts/migrate.sh
           psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_orders_merchant_deletion.sql
           psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_role_matrix.sql
+      - name: Every prefix prerequisite must exist
+        run: python3 tests/probes/mdel03_prerequisites.py
       - name: Isolated mutation assertions (temporary draft PR only)
-        if: startsWith(github.head_ref, 'codex/mdel-03-probes')
+        if: always() && steps.baseline.outcome == 'success' && startsWith(github.head_ref, 'codex/mdel-03-probes')
         run: python3 tests/probes/mdel03_orders.py

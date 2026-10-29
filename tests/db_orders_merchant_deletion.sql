@@ -15,7 +15,8 @@ SELECT set_config('test.mdel03.guest',:'guest',true),set_config('test.mdel03.reg
 DO $test$
 DECLARE f jsonb:=current_setting('test.mdel03.guest')::jsonb; b jsonb:=current_setting('test.mdel03.registered')::jsonb;
  t uuid:=(f->>'t')::uuid; o uuid:=(f->>'o')::uuid; l uuid:=(f->>'l')::uuid;
- req uuid:=uuidv7(); v bigint; before_o jsonb; before_l jsonb; before_a jsonb; other_before jsonb; n bigint;
+ req uuid:=uuidv7(); v bigint; before_o jsonb; before_l jsonb; before_a jsonb;
+ other_o jsonb; other_l jsonb; other_a jsonb; n bigint;
 BEGIN
  PERFORM set_config('app.tenant_id',t::text,true);
  IF (app.orders_merchant_obligations(t)->>'count')::bigint<>0 THEN RAISE EXCEPTION 'MDEL03_PENDING_NOT_PAID'; END IF;
@@ -43,7 +44,9 @@ BEGIN
  SELECT to_jsonb(x) INTO before_o FROM app.orders x WHERE tenant_id=t AND id=o;
  SELECT to_jsonb(x) INTO before_l FROM app.order_lines x WHERE tenant_id=t AND id=l;
  SELECT to_jsonb(x) INTO before_a FROM app.order_adjustments x WHERE tenant_id=t AND id=(f->>'a')::uuid;
- SELECT to_jsonb(x) INTO other_before FROM app.order_lines x WHERE tenant_id=(b->>'t')::uuid AND id=(b->>'l')::uuid;
+ SELECT to_jsonb(x) INTO other_o FROM app.orders x WHERE tenant_id=(b->>'t')::uuid AND id=(b->>'o')::uuid;
+ SELECT to_jsonb(x) INTO other_l FROM app.order_lines x WHERE tenant_id=(b->>'t')::uuid AND id=(b->>'l')::uuid;
+ SELECT to_jsonb(x) INTO other_a FROM app.order_adjustments x WHERE tenant_id=(b->>'t')::uuid AND id=(b->>'a')::uuid;
  BEGIN
   PERFORM app.orders_erase_merchant(t,req,7);
   RAISE EXCEPTION 'MDEL03_ACTIVE_SCRUB_DENIED';
@@ -55,6 +58,12 @@ BEGIN
   RAISE EXCEPTION 'MDEL03_STALE_EPOCH';
  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END;
  n:=app.orders_erase_merchant(t,req,7);
+ IF (SELECT to_jsonb(x) FROM app.order_adjustments x WHERE tenant_id=(b->>'t')::uuid AND id=(b->>'a')::uuid)
+  IS DISTINCT FROM other_a THEN RAISE EXCEPTION 'MDEL03_ADJUSTMENTS_TENANT_PREDICATE'; END IF;
+ IF (SELECT to_jsonb(x) FROM app.order_lines x WHERE tenant_id=(b->>'t')::uuid AND id=(b->>'l')::uuid)
+  IS DISTINCT FROM other_l THEN RAISE EXCEPTION 'MDEL03_LINES_TENANT_PREDICATE'; END IF;
+ IF (SELECT to_jsonb(x) FROM app.orders x WHERE tenant_id=(b->>'t')::uuid AND id=(b->>'o')::uuid)
+  IS DISTINCT FROM other_o THEN RAISE EXCEPTION 'MDEL03_HEADERS_TENANT_PREDICATE'; END IF;
  IF n<>3 THEN RAISE EXCEPTION 'MDEL03_COUNTS'; END IF;
  IF EXISTS(SELECT FROM app.orders x WHERE tenant_id=t AND (
   to_jsonb(x)-ARRAY['guest_contact','shipping_snapshot'] IS DISTINCT FROM before_o-ARRAY['guest_contact','shipping_snapshot']
@@ -66,8 +75,6 @@ BEGIN
   OR sku<>'[erased]' OR tax_snapshot<>'{"erased":true}'::jsonb)) THEN RAISE EXCEPTION 'MDEL03_DERIVED_SCRUB'; END IF;
  IF EXISTS(SELECT FROM app.order_adjustments x WHERE tenant_id=t AND (
   to_jsonb(x)-'reason' IS DISTINCT FROM before_a-'reason' OR reason<>'[erased]')) THEN RAISE EXCEPTION 'MDEL03_ADJUSTMENT_SCRUB'; END IF;
- IF (SELECT to_jsonb(x) FROM app.order_lines x WHERE tenant_id=(b->>'t')::uuid AND id=(b->>'l')::uuid)
-  IS DISTINCT FROM other_before THEN RAISE EXCEPTION 'MDEL03_ERASE_TENANT_PREDICATE'; END IF;
  IF app.orders_erase_merchant(t,req,7)<>3 THEN RAISE EXCEPTION 'MDEL03_REPLAY'; END IF;
  -- Registered orders keep SQL NULL guest_contact and their customer FK.
  t:=(b->>'t')::uuid; PERFORM set_config('app.tenant_id',t::text,true);
