@@ -144,3 +144,19 @@ test('VISUAL-REAL cleanup continues after a failed database drop', () => {
     'LauncherCleanup.test_drop_database_failure_still_attempts_each_role'], { encoding: 'utf8' });
   expect(result.status, result.stderr).toBe(0);
 });
+
+// Independent owner inventory: fixtures and old routed PNGs cannot satisfy #274.
+test('VISUAL-274 requires each real staff catalog state in both viewports', () => {
+  const states = ['edit', 'access-loading', 'empty', 'invalid-amount', 'invalid-json', 'upload-failure',
+    'price-conflict', 'content-conflict', 'listing-conflict', 'content-saving', 'long-title', 'long-slug',
+    'long-json', 'network-error', 'permission-denied', 'draft-retained', 'reload-saved', 'price-editor',
+    'published', 'published-media', 'attached-published', 'create', 'variant-saved', 'create-busy',
+    'product-busy', 'variant-busy', 'invalid-uuid', 'uuid-recovered', 'reserve-failure', 'reserve-retry',
+    'content-failure', 'content-retry', 'complete-failure', 'complete-retry', 'media-ready', 'empty-media', 'long-filename'];
+  expect((REAL_VISUAL_STATES as unknown as Record<number, readonly string[]>)[274] ?? []).toEqual(states);
+  for (const viewport of ['desktop', 'mobile']) for (const state of states) {
+    const path = `${BASELINES}/${viewport}/real-274-${state}.png`;
+    expect(existsSync(path), `Missing real #274 state ${path}`).toBe(true);
+    expect(existsSync(`${path}.provenance.json`)).toBe(true);
+  }
+});

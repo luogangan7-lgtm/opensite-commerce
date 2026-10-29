@@ -1317,3 +1317,23 @@ test('VISUAL-REAL #230 real two-unit purchase and five staff domain states', asy
   await domainSnapshot(page, 'refunded', order);
   await info.attach('rma-journey', { body: JSON.stringify({ first, second, received, refunded, remainingReceived, fullRefund, order }), contentType: 'application/json' });
 });
+
+// VISUAL-274 structural regression: the checker owns locator resolution and geometry.
+test('VISUAL-274 rejects oversized masks and aliases using independent DOM bounds', async ({ page }) => {
+  await page.goto(site + '/account');
+  await page.evaluate(() => {
+    const field = document.createElement('div'); field.dataset.maskField = '';
+    Object.assign(field.style, { position: 'fixed', left: '20px', top: '20px', width: '100px', height: '20px' });
+    const mask = document.createElement('span'); mask.dataset.maskCandidate = '';
+    Object.assign(mask.style, { display: 'block', width: '101px', height: '20px' });
+    field.append(mask); document.body.append(field);
+  });
+  const field = page.locator('[data-mask-field]'), mask = page.locator('[data-mask-candidate]');
+  // Cast only bridges the old box API for the tests-first commit; production repair removes it.
+  const check = assertDateMaskBounds as unknown as (mask: Locator, bounds: Locator, protectedBoxes: Box[]) => Promise<void>;
+  await expect(check(mask, field, [])).rejects.toThrow('Date mask extends outside time element');
+  await mask.evaluate(node => { (node as HTMLElement).style.width = '100px'; });
+  await check(mask, field, []);
+  await expect(check(field, field, [])).rejects.toThrow('Mask and bounds resolve to the same element');
+  await page.locator('[data-mask-field]').evaluate(node => node.remove());
+});
