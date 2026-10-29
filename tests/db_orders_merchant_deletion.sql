@@ -137,6 +137,7 @@ DECLARE f jsonb:=current_setting('test.mdel03.drain')::jsonb; t uuid:=(f->>'t'):
  income uuid:=uuidv7(); tax uuid:=uuidv7(); shipping uuid:=uuidv7(); cash uuid:=uuidv7(); v bigint;
  r jsonb; rid uuid; key_id text:=uuidv4()::text; frozen jsonb;
 BEGIN
+ UPDATE app.tenants SET settlement_currency='USD' WHERE id=t;
  INSERT INTO app.ledger_accounts(tenant_id,id,code,currency,account_type) VALUES
   (t,income,'mdel03-income','USD','revenue'),(t,tax,'mdel03-tax','USD','liability'),
   (t,shipping,'mdel03-shipping','USD','revenue'),(t,cash,'mdel03-cash','USD','asset');
