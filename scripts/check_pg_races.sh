@@ -2193,6 +2193,54 @@ for mode in owner terminal write; do
  echo "MDEL02_IDLE_POST_LOCK_$mode: checked configured DB deadline"
 done
 
+# MDEL-03 gates 164-166: the common lifecycle fence precedes Orders locks.
+# Both directions are ordered by advisory parking and pg_stat_activity only.
+mdel03_fixture() {
+ { cat tests/fixtures/mdel03_orders.sql
+   cat <<'SQL'
+SELECT pg_temp.mdel03_fixture() AS f \gset
+SELECT concat_ws(' ',(:'f'::jsonb->>'t'),(:'f'::jsonb->>'o'),(:'f'::jsonb->>'l'));
+SQL
+ } | sql | tail -1
+}
+read -r OT OO OL <<<"$(mdel03_fixture)"
+tx mdel03_paid app_runtime "$OT" "SELECT app.orders_transition('$OO','paid','mdel03-race-pay',0);"
+expect mdel03_paid ok
+OV=$(sql <<<"SELECT version FROM app.orders WHERE tenant_id='$OT' AND id='$OO';")
+gate_close 164
+tx mdel03_fulfill app_runtime "$OT" "SELECT app.fulfillment_create_shipment('$OO',$OV,'$(sql <<<"SELECT uuidv4();")','manual','race-tracking',jsonb_build_array(jsonb_build_object('order_line_id','$OL','quantity',2))); $(park 164)" &
+await mdel03_fulfill advisory
+tx mdel03_boundary postgres "$OT" "SELECT app.tenant_lifecycle_transition_fence('$OT'); SELECT 'MDEL03_BOUNDARY='||(app.orders_merchant_obligations('$OT')->>'count');" &
+await mdel03_boundary "${ROWLOCK[@]}"
+gate_open 164; wait
+expect mdel03_fulfill ok; expect mdel03_boundary ok
+result mdel03_boundary 'MDEL03_BOUNDARY=0'
+# A request/execution wins first: later fulfillment cannot recreate a leaf.
+read -r OT OO OL <<<"$(mdel03_fixture)"
+tx mdel03_paid2 app_runtime "$OT" "SELECT app.orders_transition('$OO','paid','mdel03-race-pay2',0);"
+expect mdel03_paid2 ok
+OV=$(sql <<<"SELECT version FROM app.orders WHERE tenant_id='$OT' AND id='$OO';")
+gate_close 165
+tx mdel03_request postgres "$OT" "SELECT app.tenant_lifecycle_transition_fence('$OT'); UPDATE app.tenant_lifecycles SET state='cooling_off',phase='preconditions',request_id=uuidv7(),requester_id=uuidv7(),requested_at=clock_timestamp(),execute_after=clock_timestamp()+interval '720 hours' WHERE tenant_id='$OT'; $(park 165)" &
+await mdel03_request advisory
+tx mdel03_late_fulfill app_runtime "$OT" "SELECT app.fulfillment_create_shipment('$OO',$OV,'$(sql <<<"SELECT uuidv4();")','manual','race-late',jsonb_build_array(jsonb_build_object('order_line_id','$OL','quantity',2)));" &
+await mdel03_late_fulfill "${ROWLOCK[@]}"
+gate_open 165; wait
+expect mdel03_request ok; expect mdel03_late_fulfill 'tenant deletion write fence'
+[[ $(sql <<<"SELECT count(*) FROM app.shipments WHERE tenant_id='$OT';") == 0 ]] || { echo 'FAIL: MDEL03_LATE_SHIPMENT'; fail=1; }
+# Epoch changes while the eraser waits at the lifecycle fence, before any scrub.
+read -r OT OO OL <<<"$(mdel03_fixture)"
+ORQ=$(sql <<<"SELECT uuidv7();")
+gate_close 166
+tx mdel03_epoch postgres "$OT" "SELECT app.tenant_lifecycle_transition_fence('$OT'); UPDATE app.tenant_lifecycles SET state='executing',phase='executing',epoch=8,request_id='$ORQ',requester_id=uuidv7(),requested_at=clock_timestamp(),execute_after=clock_timestamp() WHERE tenant_id='$OT'; $(park 166)" &
+await mdel03_epoch advisory
+tx mdel03_stale_scrub postgres "$OT" "SELECT app.orders_erase_merchant('$OT','$ORQ',7);" &
+await mdel03_stale_scrub "${ROWLOCK[@]}"
+gate_open 166; wait
+expect mdel03_epoch ok; expect mdel03_stale_scrub 'stale Orders erasure'
+[[ $(sql <<<"SELECT sku FROM app.order_lines WHERE tenant_id='$OT' AND id='$OL';") == mdel03-canary-sku ]] || { echo 'FAIL: MDEL03_STALE_SCRUB'; fail=1; }
+echo 'PASS: MDEL03 gates 164-166 fulfillment boundary, late write denial, post-fence epoch'
+
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth/fulfillment/returns contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'

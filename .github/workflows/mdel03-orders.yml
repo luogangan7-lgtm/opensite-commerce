@@ -1,0 +1,58 @@
+name: mdel03-orders
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/mdel03-orders.yml'
+      - 'internal/modules/orders/**'
+      - 'migrations/**'
+      - 'queries/orders.sql'
+      - 'tests/db_orders_merchant_deletion.sql'
+      - 'tests/fixtures/mdel03_orders.sql'
+      - 'tests/probes/mdel03_orders.py'
+      - 'tests/probes/mdel03_prerequisites.py'
+permissions:
+  contents: read
+jobs:
+  orders-pg:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GOTOOLCHAIN: local
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+      OPENSITE_ALLOW_PENDING_MIGRATIONS: '1'
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - run: ./scripts/ci_apt_install.sh --no-install-recommends postgresql-client
+      - name: Dependency parser rejects malformed declarations before writes
+        run: python3 tests/test_pending_migrations.py
+      - name: Real PG baseline at exact head
+        id: baseline
+        run: |
+          git rev-parse HEAD
+          ./scripts/migrate_river.sh
+          ./scripts/migrate.sh
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_orders_merchant_deletion.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_role_matrix.sql
+      - name: Every prefix prerequisite must exist
+        run: python3 tests/probes/mdel03_prerequisites.py
+      - name: Isolated mutation assertions (temporary draft PR only)
+        if: always() && steps.baseline.outcome == 'success' && startsWith(github.head_ref, 'codex/mdel-03-probes')
+        run: python3 tests/probes/mdel03_orders.py

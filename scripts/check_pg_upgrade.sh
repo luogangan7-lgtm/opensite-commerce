@@ -182,10 +182,11 @@ AUDIT_DB=""
 CALLER_KEYS_DB=""
 LIFECYCLE_DB=""
 IDENTITY_MERCHANT_DB=""
+ORDERS_MERCHANT_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB" "$CALLER_KEYS_DB" "$LIFECYCLE_DB" "$IDENTITY_MERCHANT_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB" "$CALLER_KEYS_DB" "$LIFECYCLE_DB" "$IDENTITY_MERCHANT_DB" "$ORDERS_MERCHANT_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1425,6 +1426,46 @@ db "$LIFECYCLE_DB" -f tests/db_tenant_lifecycle.sql >/dev/null
 db "$LIFECYCLE_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $LIFECYCLE_DB" >/dev/null; LIFECYCLE_DB=""
 pass 'MDEL01 populated upgrade preserves business rows and every prior role scope'
+
+# MDEL-03: seed real financial/FK snapshots before this module's migration;
+# apply every predecessor/successor by suffix, never integration-assigned number.
+orders_merchant_files=(migrations/[0-9][0-9][0-9]_orders_merchant_deletion.sql)
+[[ ${#orders_merchant_files[@]} == 1 ]] || { bad 'exactly one Orders merchant migration required'; exit 1; }
+ORDERS_MERCHANT_DB=upgrade_orders_merchant_$$
+admin -c "CREATE DATABASE $ORDERS_MERCHANT_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f == "${orders_merchant_files[0]}" ]] && break
+ apply_forward "$ORDERS_MERCHANT_DB" "$f"
+done
+{ cat tests/fixtures/mdel03_orders.sql
+  cat <<'SQL'
+SELECT pg_temp.mdel03_fixture() AS guest \gset
+SELECT pg_temp.mdel03_fixture(true) AS registered \gset
+CREATE TABLE public.mdel03_before AS
+ SELECT 'orders' AS tab,to_jsonb(x) AS snapshot FROM app.orders x UNION ALL
+ SELECT 'lines',to_jsonb(x) FROM app.order_lines x UNION ALL
+ SELECT 'adjustments',to_jsonb(x) FROM app.order_adjustments x;
+SQL
+} | db "$ORDERS_MERCHANT_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${orders_merchant_files[0]} ]] && continue
+ apply_forward "$ORDERS_MERCHANT_DB" "$f"
+done
+db "$ORDERS_MERCHANT_DB" <<'SQL' >/dev/null
+DO $check$ BEGIN
+ IF EXISTS(WITH actual AS(
+  SELECT 'orders' AS tab,to_jsonb(x) AS snapshot FROM app.orders x UNION ALL
+  SELECT 'lines',to_jsonb(x) FROM app.order_lines x UNION ALL
+  SELECT 'adjustments',to_jsonb(x) FROM app.order_adjustments x)
+  SELECT FROM ((SELECT * FROM actual EXCEPT SELECT * FROM public.mdel03_before)
+   UNION ALL(SELECT * FROM public.mdel03_before EXCEPT SELECT * FROM actual)) delta) THEN
+  RAISE EXCEPTION 'MDEL03_UPGRADE_CHANGED_FINANCIAL_SNAPSHOT'; END IF;
+END $check$;
+SQL
+db "$ORDERS_MERCHANT_DB" -f tests/db_orders_merchant_deletion.sql >/dev/null
+db "$ORDERS_MERCHANT_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $ORDERS_MERCHANT_DB" >/dev/null; ORDERS_MERCHANT_DB=""
+pass 'MDEL03 populated forward upgrade preserves every financial/FK snapshot before exact erasure'
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
