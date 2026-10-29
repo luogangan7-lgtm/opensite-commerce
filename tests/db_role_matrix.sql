@@ -685,7 +685,7 @@ SELECT 'PASS: cart tenant helper exact owner/search_path/boolean/STABLE/EXECUTE;
 DO $orders$
 DECLARE r record; t record; a record; f record; role_name text; privilege text;
  expected boolean; allowed text[];
- names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','orders_compensate_refund'];
+ names text[]:=ARRAY['orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','orders_compensate_refund','orders_merchant_mutation_fence','orders_merchant_obligations'];
 BEGIN
  SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_orders_executor';
  IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
@@ -732,7 +732,7 @@ BEGIN
    RAISE EXCEPTION 'unsafe orders function %',f.proname;
   END IF;
   IF has_function_privilege('app_orders_executor',f.oid,'EXECUTE') IS DISTINCT FROM
-   (f.proname=ANY(names) OR f.proname IN('inventory_commit','inventory_release'))
+   (f.proname=ANY(names) OR f.proname IN('inventory_commit','inventory_release','tenant_lifecycle_read_fence','tenant_lifecycle_write_fence','tenant_lifecycle_drain_fence'))
    OR has_function_privilege('app_orders_executor',f.oid,'EXECUTE WITH GRANT OPTION') THEN
    -- An owner implicitly has grant option for its own routines.
    IF NOT (f.proname=ANY(names) AND f.proowner='app_orders_executor'::regrole) THEN
@@ -742,7 +742,7 @@ BEGIN
   IF f.proname=ANY(names) THEN
    FOREACH role_name IN ARRAY ARRAY['app_runtime','app_auth','app_domain_resolver','app_domain_verifier','app_media_service',
     'app_publisher','app_publish_executor','app_outbox_worker','app_reliability_executor','app_inventory_manager','app_inventory_executor','app_customer_auth','app_ledger_executor','app_queue_worker','app_outbox_tenant_broker','app_fulfillment_executor','app_returns_service'] LOOP
-    expected:=role_name='app_runtime' AND f.proname IN('orders_create','orders_transition','orders_lock_reservations','orders_check_creation')
+    expected:=role_name='app_runtime' AND f.proname IN('orders_create','orders_transition','orders_lock_reservations','orders_check_creation','orders_merchant_obligations')
      OR role_name='app_fulfillment_executor' AND f.proname IN('orders_context','orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget');
     IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
      OR has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
@@ -1669,7 +1669,9 @@ BEGIN
    expected:=role_name='app_tenant_lifecycle_executor'
     OR role_name IN ('app_runtime','app_auth','app_credential_writer') AND f.proname='tenant_lifecycle_read_fence'
     OR role_name IN ('app_runtime','app_credential_writer') AND f.proname='tenant_lifecycle_write_fence'
-    OR role_name='app_identity_merchant_executor' AND f.proname IN('tenant_lifecycle_read_fence','tenant_lifecycle_transition_fence');
+    OR role_name='app_identity_merchant_executor' AND f.proname IN('tenant_lifecycle_read_fence','tenant_lifecycle_transition_fence')
+    OR role_name='app_orders_executor' AND f.proname IN('tenant_lifecycle_read_fence','tenant_lifecycle_write_fence','tenant_lifecycle_drain_fence')
+    OR role_name='app_orders_privacy_executor' AND f.proname='tenant_lifecycle_read_fence';
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR role_name<>'app_tenant_lifecycle_executor' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'MDEL01_ROUTINE_ACL % %',role_name,f.proname; END IF;
@@ -1757,3 +1759,49 @@ BEGIN
  END LOOP;
 END $identity_merchant_acl$;
 SELECT 'PASS: MDEL02 exact proof custody, receipt-only access and unassumable worker capability';
+
+-- MDEL-03 dedicated scrub role: no login/membership, no foreign table writes,
+-- no raw Orders money/state authority and no worker activation capability.
+DO $orders_privacy_acl$
+DECLARE r record; t record; a record; f record; privilege text; expected boolean; allowed text[]; role_name text;
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_orders_privacy_executor';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+  OR EXISTS(SELECT FROM pg_auth_members WHERE roleid=r.oid OR member=r.oid)
+  OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'MDEL03_UNSAFE_EXECUTOR'; END IF;
+ FOR t IN SELECT c.oid,c.relname FROM pg_class c WHERE c.relnamespace='app'::regnamespace AND c.relkind IN('r','p') LOOP
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected:=t.relname IN('orders','order_lines','order_adjustments') AND privilege='SELECT';
+   allowed:=CASE
+    WHEN t.relname='orders' AND privilege='UPDATE' THEN ARRAY['guest_contact','shipping_snapshot']
+    WHEN t.relname='order_lines' AND privilege='UPDATE' THEN ARRAY['sku','tax_snapshot']
+    WHEN t.relname='order_adjustments' AND privilege='UPDATE' THEN ARRAY['reason']
+    WHEN t.relname='tenant_lifecycles' AND privilege='SELECT' THEN ARRAY['tenant_id','id','request_id','epoch','state','phase']
+    ELSE ARRAY[]::text[] END;
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected
+    OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN RAISE EXCEPTION 'MDEL03_TABLE_ACL % %',t.relname,privilege; END IF;
+   IF privilege IN('SELECT','INSERT','UPDATE','REFERENCES') THEN
+    FOR a IN SELECT attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+     IF has_column_privilege(r.oid,t.oid,a.attname,privilege) IS DISTINCT FROM(expected OR a.attname=ANY(allowed))
+      OR has_column_privilege(r.oid,t.oid,a.attname,privilege||' WITH GRANT OPTION') THEN
+      RAISE EXCEPTION 'MDEL03_COLUMN_ACL % % %',t.relname,a.attname,privilege; END IF;
+    END LOOP;
+   END IF;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
+  expected:=f.proname IN('orders_erase_merchant','orders_merchant_scrub_guard','tenant_lifecycle_read_fence');
+  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM expected THEN RAISE EXCEPTION 'MDEL03_FOREIGN_ROUTINE %',f.proname; END IF;
+  IF f.proname IN('orders_erase_merchant','orders_merchant_scrub_guard') THEN
+   IF f.proowner<>r.oid OR f.prosecdef IS DISTINCT FROM(f.proname='orders_erase_merchant') OR cardinality(f.proconfig)<>1
+    OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp' THEN RAISE EXCEPTION 'MDEL03_ROUTINE_OWNER'; END IF;
+   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM(role_name=r.rolname)
+     OR role_name<>r.rolname AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN RAISE EXCEPTION 'MDEL03_ERASE_ACTIVATED'; END IF;
+   END LOOP;
+  END IF;
+ END LOOP;
+ IF (SELECT count(*) FROM pg_trigger WHERE tgrelid IN('app.orders'::regclass,'app.order_lines'::regclass,'app.order_adjustments'::regclass)
+  AND tgname='orders_merchant_exact_scrub' AND tgfoid='app.orders_merchant_scrub_guard()'::regprocedure AND tgenabled='O')<>3 THEN
+  RAISE EXCEPTION 'MDEL03_GUARDS_REQUIRED'; END IF;
+END $orders_privacy_acl$;

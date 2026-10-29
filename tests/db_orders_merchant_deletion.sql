@@ -73,6 +73,56 @@ BEGIN
  IF NOT EXISTS(SELECT FROM app.orders WHERE tenant_id=t AND id=(b->>'o')::uuid AND guest_contact IS NULL
   AND customer_id=(b->>'c')::uuid) THEN RAISE EXCEPTION 'MDEL03_REGISTERED_FK_NULL'; END IF;
 END $test$;
+SET LOCAL ROLE app_orders_privacy_executor;
+DO $$ DECLARE t uuid:=(current_setting('test.mdel03.guest')::jsonb->>'t')::uuid; BEGIN
+ PERFORM set_config('app.tenant_id',t::text,true);
+ BEGIN
+  UPDATE app.orders SET shipping_snapshot='{}' WHERE tenant_id=t;
+  RAISE EXCEPTION 'MDEL03_ARBITRARY_HEADER_SCRUB';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM<>'MDEL03_EXACT_SCRUB_ONLY' THEN RAISE; END IF;
+ END;
+ BEGIN
+  UPDATE app.order_lines SET sku='unapproved' WHERE tenant_id=t;
+  RAISE EXCEPTION 'MDEL03_ARBITRARY_LINE_SCRUB';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM<>'MDEL03_EXACT_SCRUB_ONLY' THEN RAISE; END IF;
+ END;
+ BEGIN
+  UPDATE app.order_adjustments SET reason='unapproved' WHERE tenant_id=t;
+  RAISE EXCEPTION 'MDEL03_ARBITRARY_ADJUSTMENT_SCRUB';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM<>'MDEL03_EXACT_SCRUB_ONLY' THEN RAISE; END IF;
+ END;
+ BEGIN
+  UPDATE app.orders SET total_minor=0 WHERE tenant_id=t;
+  RAISE EXCEPTION 'MDEL03_MONEY_WRITE_GRANT';
+ EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $$;
+RESET ROLE;
+-- Every write prefix rejects ordinary business commands during cooling-off;
+-- verified financial completion of an existing pending order can still drain.
+SELECT pg_temp.mdel03_fixture() AS cooling \gset
+SELECT set_config('test.mdel03.cooling',:'cooling',true);
+DO $$ DECLARE f jsonb:=current_setting('test.mdel03.cooling')::jsonb; t uuid:=(f->>'t')::uuid; BEGIN
+ UPDATE app.tenant_lifecycles SET state='cooling_off',phase='preconditions',request_id=uuidv7(),requester_id=uuidv7(),
+  requested_at=clock_timestamp(),execute_after=clock_timestamp()+interval '720 hours' WHERE tenant_id=t;
+ BEGIN
+  PERFORM app.orders_check_creation(uuidv7(),uuidv4()::text,sha256('blocked'::bytea));
+  RAISE EXCEPTION 'MDEL03_COOLING_NEW_WRITE';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM<>'tenant deletion write fence' THEN RAISE; END IF;
+ END;
+ PERFORM app.orders_transition((f->>'o')::uuid,'paid','cooling-completion',0);
+ IF (SELECT count FROM app.orders_merchant_obligations(t))<>1 THEN RAISE EXCEPTION 'MDEL03_COOLING_DRAIN_WITNESS'; END IF;
+ UPDATE app.tenant_lifecycles SET state='executing',phase='executing' WHERE tenant_id=t;
+ BEGIN
+  PERFORM app.orders_transition((f->>'o')::uuid,'paid','cooling-completion',0);
+  RAISE EXCEPTION 'MDEL03_EXECUTING_LATE_COMPLETION';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM<>'tenant deletion drain fence' THEN RAISE; END IF;
+ END;
+END $$;
 SET LOCAL ROLE app_runtime;
 DO $$ BEGIN
  BEGIN

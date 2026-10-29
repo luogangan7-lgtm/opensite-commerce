@@ -91,3 +91,9 @@ WHERE o.tenant_id=sqlc.arg(tenant_id) AND o.id=sqlc.arg(order_id) AND o.sealed
  AND (o.customer_id=sqlc.arg(customer_id) OR (o.customer_id IS NULL AND EXISTS(
   SELECT 1 FROM app.customer_guest_order_links k WHERE k.tenant_id=o.tenant_id AND k.order_id=o.id AND k.customer_id=sqlc.arg(customer_id))))
 ORDER BY l.id;
+
+-- name: GetOrdersMerchantObligations :one
+SELECT count,object_ids FROM app.orders_merchant_obligations(sqlc.arg(tenant_id)::uuid);
+
+-- name: EraseOrdersMerchant :one
+SELECT app.orders_erase_merchant(sqlc.arg(tenant_id)::uuid,sqlc.arg(request_id)::uuid,sqlc.arg(epoch)::bigint)::bigint AS erased;
