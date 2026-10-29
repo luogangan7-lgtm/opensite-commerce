@@ -6,6 +6,7 @@ package orders
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -26,13 +27,22 @@ func (MerchantDeletion) DeletionObligations(ctx context.Context, q *db.Queries, 
 	}
 	var t pgtype.UUID
 	_ = t.Scan(tenantID)
-	witness, err := q.GetOrdersMerchantObligations(ctx, t)
+	raw, err := q.GetOrdersMerchantObligations(ctx, t)
 	if err != nil {
 		return nil, errors.New("Orders obligation authority unavailable")
 	}
+	var witness struct {
+		Count     int64    `json:"count"`
+		ObjectIDs []string `json:"object_ids"`
+	}
+	if err := json.Unmarshal(raw, &witness); err != nil || witness.Count < int64(len(witness.ObjectIDs)) || len(witness.ObjectIDs) > 16 {
+		return nil, errors.New("Orders obligation authority unavailable")
+	}
 	item := tenant.Obligation{Category: tenant.PaidUnfulfilled, Known: true, Count: witness.Count}
-	for _, id := range witness.ObjectIds {
-		value := id.String()
+	for _, value := range witness.ObjectIDs {
+		if !tenanttx.ValidTenantID(value) {
+			return nil, errors.New("Orders obligation authority unavailable")
+		}
 		item.Objects = append(item.Objects, tenant.ObligationObject{ID: value, ResolutionPath: "/admin/t/" + tenantID + "/orders/" + value})
 	}
 	return []tenant.Obligation{item}, nil

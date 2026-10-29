@@ -2210,7 +2210,7 @@ OV=$(sql <<<"SELECT version FROM app.orders WHERE tenant_id='$OT' AND id='$OO';"
 gate_close 164
 tx mdel03_fulfill app_runtime "$OT" "SELECT app.fulfillment_create_shipment('$OO',$OV,'$(sql <<<"SELECT uuidv4();")','manual','race-tracking',jsonb_build_array(jsonb_build_object('order_line_id','$OL','quantity',2))); $(park 164)" &
 await mdel03_fulfill advisory
-tx mdel03_boundary postgres "$OT" "SELECT app.tenant_lifecycle_transition_fence('$OT'); SELECT 'MDEL03_BOUNDARY='||count FROM app.orders_merchant_obligations('$OT');" &
+tx mdel03_boundary postgres "$OT" "SELECT app.tenant_lifecycle_transition_fence('$OT'); SELECT 'MDEL03_BOUNDARY='||(app.orders_merchant_obligations('$OT')->>'count');" &
 await mdel03_boundary "${ROWLOCK[@]}"
 gate_open 164; wait
 expect mdel03_fulfill ok; expect mdel03_boundary ok

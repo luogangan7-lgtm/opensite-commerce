@@ -66,11 +66,12 @@ DO $prefix$ DECLARE f record; revised text; prefix text; BEGIN
  END LOOP;
 END $prefix$;
 
-CREATE FUNCTION app.orders_merchant_obligations(p_tenant uuid) RETURNS TABLE(count bigint,object_ids uuid[])
+CREATE FUNCTION app.orders_merchant_obligations(p_tenant uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg_temp AS $$
+DECLARE result jsonb;
 BEGIN
  PERFORM app.tenant_lifecycle_read_fence(p_tenant);
- RETURN QUERY WITH blocked AS MATERIALIZED(
+ WITH blocked AS MATERIALIZED(
   SELECT o.id FROM app.orders o WHERE o.tenant_id=p_tenant AND o.sealed
    AND o.state IN('paid','partially_fulfilled','fulfilled','partially_refunded','refunded')
    AND EXISTS(SELECT FROM app.order_lines l WHERE l.tenant_id=p_tenant AND l.order_id=o.id
@@ -79,7 +80,9 @@ BEGIN
      +coalesce((SELECT sum(rl.quantity::numeric) FROM app.return_lines rl JOIN app.returns r
        ON(r.tenant_id,r.id)=(rl.tenant_id,rl.return_id)
        WHERE rl.tenant_id=p_tenant AND rl.order_line_id=l.id AND r.kind='unshipped_cancel' AND r.sealed),0)))
- SELECT (SELECT pg_catalog.count(*) FROM blocked),ARRAY(SELECT b.id FROM blocked b ORDER BY b.id LIMIT 16);
+ SELECT jsonb_build_object('count',(SELECT pg_catalog.count(*) FROM blocked),'object_ids',
+  ARRAY(SELECT b.id FROM blocked b ORDER BY b.id LIMIT 16)) INTO result;
+ RETURN result;
 END $$;
 
 -- A separate invoker guard admits ONLY registry replacements. Existing guards

@@ -18,20 +18,24 @@ DECLARE f jsonb:=current_setting('test.mdel03.guest')::jsonb; b jsonb:=current_s
  req uuid:=uuidv7(); v bigint; before_o jsonb; before_l jsonb; before_a jsonb; other_before jsonb; n bigint;
 BEGIN
  PERFORM set_config('app.tenant_id',t::text,true);
- IF (SELECT count FROM app.orders_merchant_obligations(t) LIMIT 1)<>0 THEN RAISE EXCEPTION 'MDEL03_PENDING_NOT_PAID'; END IF;
+ IF (app.orders_merchant_obligations(t)->>'count')::bigint<>0 THEN RAISE EXCEPTION 'MDEL03_PENDING_NOT_PAID'; END IF;
  PERFORM app.orders_transition(o,'paid','mdel03-pay',0);
- IF (SELECT count FROM app.orders_merchant_obligations(t) LIMIT 1)<>1 THEN RAISE EXCEPTION 'MDEL03_PAID_UNFULFILLED'; END IF;
+ IF (app.orders_merchant_obligations(t)->>'count')::bigint<>1 THEN RAISE EXCEPTION 'MDEL03_PAID_UNFULFILLED'; END IF;
  SELECT version INTO v FROM app.orders WHERE tenant_id=t AND id=o;
  PERFORM app.fulfillment_create_shipment(o,v,uuidv4()::text,'manual','mdel03-canary-tracking',
   jsonb_build_array(jsonb_build_object('order_line_id',l,'quantity',1)));
- IF (SELECT count FROM app.orders_merchant_obligations(t) LIMIT 1)<>1 THEN RAISE EXCEPTION 'MDEL03_PARTIAL_QUANTITY'; END IF;
+ IF (app.orders_merchant_obligations(t)->>'count')::bigint<>1 THEN RAISE EXCEPTION 'MDEL03_PARTIAL_QUANTITY'; END IF;
  -- A full monetary refund is not a quantity witness: the remaining item blocks.
- PERFORM app.orders_transition(o,'refunded','mdel03-refund',250);
- IF (SELECT count FROM app.orders_merchant_obligations(t) LIMIT 1)<>1 THEN RAISE EXCEPTION 'MDEL03_REFUNDED_QUANTITY'; END IF;
+ BEGIN
+  PERFORM app.orders_transition(o,'refunded','mdel03-refund',250);
+  IF (app.orders_merchant_obligations(t)->>'count')::bigint<>1 THEN RAISE EXCEPTION 'MDEL03_REFUNDED_QUANTITY'; END IF;
+  -- A refunded order cannot ship; restore the partial state for the boundary.
+  RAISE EXCEPTION 'restore refund witness' USING ERRCODE='P9003';
+ EXCEPTION WHEN SQLSTATE 'P9003' THEN NULL; END;
  SELECT version INTO v FROM app.orders WHERE tenant_id=t AND id=o;
  PERFORM app.fulfillment_create_shipment(o,v,uuidv4()::text,'manual','mdel03-canary-tracking-2',
   jsonb_build_array(jsonb_build_object('order_line_id',l,'quantity',1)));
- IF (SELECT count FROM app.orders_merchant_obligations(t) LIMIT 1)<>0 THEN RAISE EXCEPTION 'MDEL03_FULFILLED_BOUNDARY'; END IF;
+ IF (app.orders_merchant_obligations(t)->>'count')::bigint<>0 THEN RAISE EXCEPTION 'MDEL03_FULFILLED_BOUNDARY'; END IF;
  BEGIN
   PERFORM app.orders_merchant_obligations((b->>'t')::uuid);
   RAISE EXCEPTION 'MDEL03_CROSS_TENANT_OBLIGATION';
@@ -114,7 +118,7 @@ DO $$ DECLARE f jsonb:=current_setting('test.mdel03.cooling')::jsonb; t uuid:=(f
   IF SQLERRM<>'tenant deletion write fence' THEN RAISE; END IF;
  END;
  PERFORM app.orders_transition((f->>'o')::uuid,'paid','cooling-completion',0);
- IF (SELECT count FROM app.orders_merchant_obligations(t))<>1 THEN RAISE EXCEPTION 'MDEL03_COOLING_DRAIN_WITNESS'; END IF;
+ IF (app.orders_merchant_obligations(t)->>'count')::bigint<>1 THEN RAISE EXCEPTION 'MDEL03_COOLING_DRAIN_WITNESS'; END IF;
  UPDATE app.tenant_lifecycles SET state='executing',phase='executing' WHERE tenant_id=t;
  BEGIN
   PERFORM app.orders_transition((f->>'o')::uuid,'paid','cooling-completion',0);

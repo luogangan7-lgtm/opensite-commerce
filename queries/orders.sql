@@ -93,7 +93,7 @@ WHERE o.tenant_id=sqlc.arg(tenant_id) AND o.id=sqlc.arg(order_id) AND o.sealed
 ORDER BY l.id;
 
 -- name: GetOrdersMerchantObligations :one
-SELECT count,object_ids FROM app.orders_merchant_obligations(sqlc.arg(tenant_id)::uuid);
+SELECT app.orders_merchant_obligations(sqlc.arg(tenant_id)::uuid)::jsonb AS witness;
 
 -- name: EraseOrdersMerchant :one
 SELECT app.orders_erase_merchant(sqlc.arg(tenant_id)::uuid,sqlc.arg(request_id)::uuid,sqlc.arg(epoch)::bigint)::bigint AS erased;
