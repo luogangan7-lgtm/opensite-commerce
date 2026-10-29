@@ -14,6 +14,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -312,5 +314,28 @@ func TestMerchantReceiptRegisteredReadRevalidates(t *testing.T) {
 				t.Fatal("MDEL02_RECEIPT_READ_NOT_REVALIDATED", q.calls)
 			}
 		})
+	}
+}
+
+// The guard must live with Tenant; Identity may only call its public fence.
+func TestMerchantTenantGuardOwnership(t *testing.T) {
+	files, err := filepath.Glob("../../../../../migrations/*_identity_merchant_deletion.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := filepath.Glob("../../../../../migrations/pending/*_identity_merchant_deletion.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files = append(files, pending...)
+	if len(files) != 1 {
+		t.Fatal("MDEL02_IDENTITY_MIGRATION_WITNESS", files)
+	}
+	source, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(source), "p.proname='tenant_lifecycle_transition'") {
+		t.Fatal("MDEL02_TENANT_GUARD_OWNERSHIP: Identity rewrites Tenant private transition")
 	}
 }
