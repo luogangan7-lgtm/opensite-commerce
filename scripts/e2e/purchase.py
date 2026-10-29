@@ -16,7 +16,7 @@ SITE = 'c0900003-0000-4000-8000-000000000001'
 SKU = 'c2400008-0000-4000-8000-000000000001'
 
 
-def publish(psql, credentials, origin='http://127.0.0.1:8080'):
+def publish(psql, credentials, origin='http://127.0.0.1:8080', *, tenant=TENANT, site=SITE):
     """Use authenticated CMS HTTP: builder seals membership in its creating TX."""
     key_id, secret = str(uuid.uuid4()), secrets.token_bytes(32)
     bearer = key_id + '.' + base64.urlsafe_b64encode(secret).decode().rstrip('=')
@@ -24,10 +24,10 @@ def publish(psql, credentials, origin='http://127.0.0.1:8080'):
     digest = hashlib.sha256(secret).hexdigest()
     psql(f"""BEGIN;
     INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
-      SELECT '{TENANT}',user_id,'owner' FROM app.tenant_memberships WHERE role='owner';
+      SELECT '{tenant}',user_id,'owner' FROM app.tenant_memberships WHERE role='owner';
     INSERT INTO app.api_keys(tenant_id,id,issued_by,key_prefix,key_hash,scopes)
-      SELECT '{TENANT}','{key_id}',user_id,'c09d-ci',decode('{digest}','hex'),ARRAY['cms:write','cms:publish']
-      FROM app.tenant_memberships WHERE tenant_id='{TENANT}' AND role='owner';
+      SELECT '{tenant}','{key_id}',user_id,'c09d-ci',decode('{digest}','hex'),ARRAY['cms:write','cms:publish']
+      FROM app.tenant_memberships WHERE tenant_id='{tenant}' AND role='owner';
     COMMIT;""")
 
     def post(path, body, etag=None):
@@ -48,7 +48,7 @@ def publish(psql, credentials, origin='http://127.0.0.1:8080'):
             raise RuntimeError(f"C09d CMS {exc.code}: {problem.get('code')}") from None
 
     try:
-        path = f'/api/v1/t/{TENANT}/sites/{SITE}/drafts'
+        path = f'/api/v1/t/{tenant}/sites/{site}/drafts'
         draft, etag = post(path, {'locale': 'en', 'title': 'OpenSite sample shop',
                                  'description': 'A published example of pages and products.'})
         release, _ = post(path + '/' + str(uuid.UUID(draft['draft_id'])) + '/publish',
@@ -59,15 +59,15 @@ def publish(psql, credentials, origin='http://127.0.0.1:8080'):
         witness = json.loads(psql(f"""SELECT jsonb_build_object('release_id',r.id,'sealed',r.sealed,
           'members',(SELECT count(*) FROM app.site_release_skus m WHERE (m.tenant_id,m.site_id,m.release_id)=(r.tenant_id,r.site_id,r.id)),
           'serving',(SELECT count(*) FROM app.storefront_serving s WHERE (s.tenant_id,s.site_id,s.release_id)=(r.tenant_id,r.site_id,r.id)))
-          FROM app.site_releases r WHERE r.tenant_id='{TENANT}' AND r.site_id='{SITE}' AND r.id='{release_id}';"""))
+          FROM app.site_releases r WHERE r.tenant_id='{tenant}' AND r.site_id='{site}' AND r.id='{release_id}';"""))
         if witness != {'release_id': release_id, 'sealed': True, 'members': 2, 'serving': 1}:
             raise RuntimeError('C09d real publication membership/serving witness differs')
         return witness
     finally:
         psql(f"""BEGIN;
-        UPDATE app.api_keys SET revoked_at=clock_timestamp() WHERE tenant_id='{TENANT}' AND id='{key_id}';
-        DELETE FROM app.tenant_memberships WHERE tenant_id='{TENANT}' AND user_id=(
-          SELECT issued_by FROM app.api_keys WHERE tenant_id='{TENANT}' AND id='{key_id}');
+        UPDATE app.api_keys SET revoked_at=clock_timestamp() WHERE tenant_id='{tenant}' AND id='{key_id}';
+        DELETE FROM app.tenant_memberships WHERE tenant_id='{tenant}' AND user_id=(
+          SELECT issued_by FROM app.api_keys WHERE tenant_id='{tenant}' AND id='{key_id}');
         COMMIT;""")
 
 
