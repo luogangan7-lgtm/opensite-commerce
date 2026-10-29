@@ -1075,6 +1075,21 @@ async function domainSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][
   const masks = [await runtimeMask(page, metadata)];
   if (state === 'paid') {
     await expect(runtimeMask(page, page.getByRole('main'))).rejects.toThrow('Date mask overlaps status or amount');
+    await page.evaluate(async () => { await document.fonts.ready; });
+    // Inject the former narrow-time mask: changing precision MUST expose its
+    // unmasked Updated-label movement before the repaired field mask is tested.
+    const narrow = await times.all();
+    const maskColor = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
+    const beforeNarrow = await page.screenshot({ fullPage: true, mask: narrow, maskColor });
+    try {
+      const changed = order.created_at.includes('.') ? order.created_at.replace(/\.\d+Z$/, 'Z') : order.created_at.replace('Z', '.123456Z');
+      await times.first().evaluate((node, value) => { node.textContent = value; }, changed);
+      const afterNarrow = await page.screenshot({ fullPage: true, mask: narrow, maskColor });
+      expect(afterNarrow.equals(beforeNarrow), 'fault witness: narrow time mask must be rejected by pixel invariance').toBe(false);
+      console.info('VISUAL-230 expected RED: narrow time mask moves the unmasked Updated label');
+    } finally {
+      await times.first().evaluate((node, value) => { node.textContent = value; }, order.created_at);
+    }
     await assertStableRuntimeMask(page, masks, times, [
       ['2099-12-31T23:59:59.999999Z', '2099-12-31T23:59:59.999999Z'],
       ['2000-01-01T00:00:00Z', '2000-01-01T00:00:00Z'],
