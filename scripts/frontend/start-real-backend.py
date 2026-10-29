@@ -189,25 +189,40 @@ def main():
             time.sleep(.2)
         raise RuntimeError('Real visual child exited unexpectedly')
     finally:
-        for proc in reversed(children):
-            proc.terminate()
-        for proc in reversed(children):
+        errors = []
+
+        def cleanup(label, action):
+            try:
+                action()
+            except Exception as error:
+                # Do not expose SQL, connection details, or process arguments.
+                errors.append(f'{label}: {type(error).__name__}')
+
+        def reap(proc):
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-        (owned / 'runtime.json').unlink(missing_ok=True)
-        (owned / 'localhost.pem').unlink(missing_ok=True)
-        (owned / 'localhost-key.pem').unlink(missing_ok=True)
+                cleanup('kill child', proc.kill)
+                cleanup('wait for killed child', proc.wait)
+
+        for proc in reversed(children):
+            cleanup('terminate child', proc.terminate)
+        for proc in reversed(children):
+            cleanup('wait for child', lambda: reap(proc))
+        for name in ('runtime.json', 'localhost.pem', 'localhost-key.pem'):
+            cleanup(f'remove {name}', lambda: (owned / name).unlink(missing_ok=True))
         pg['PGDATABASE'] = source.path[1:]
-        query(f'DROP DATABASE {database} WITH (FORCE);')
-        if bootstrap_owned:
-            query('DROP ROLE visual_bootstrap;')
-        # Group roles are cluster-global: remove ONLY logins created by this invocation,
-        # after its database/CONNECT grants are gone, before the writer's second launch.
-        if provisioned:
-            query(''.join(f'DROP ROLE {login};' for login, _ in LOGIN_ROLES.values()))
+        roles = (['visual_bootstrap'] if bootstrap_owned else []) + (
+            [login for login, _ in LOGIN_ROLES.values()] if provisioned else [])
+        # Remove database ACL dependencies even if DROP DATABASE later fails.
+        for role in roles:
+            cleanup(f'revoke connect {role}', lambda: query(f'REVOKE CONNECT ON DATABASE {database} FROM {role};'))
+        cleanup('drop database', lambda: query(f'DROP DATABASE {database} WITH (FORCE);'))
+        for role in roles:
+            cleanup(f'drop role {role}', lambda: query(f'DROP ROLE {role};'))
+        if errors:
+            raise RuntimeError('Real visual cleanup failed: ' + '; '.join(errors))
+
 
 
 if __name__ == '__main__':
