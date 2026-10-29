@@ -2143,6 +2143,54 @@ expect mdel02_execute ok; expect mdel02_late_issue 'merchant step-up denied'
 [[ $(sql <<<"SELECT count(*) FROM app.identity_merchant_proofs WHERE tenant_id='$MT';") == 0 ]] || { echo 'FAIL: MDEL02_LATE_PROOF_RECREATED'; fail=1; }
 echo 'PASS: MDEL02 gates 157-160 single consumer, post-lock DB expiry, password and execution fencing'
 
+# MDEL-02 gates 161-163: configured idle validity is sampled after a lock
+# wait, for current-owner metadata, detached terminal receipts and writes.
+# Use a non-default 60-second timeout. The driver polls the DB deadline after
+# observing the contender's row-lock wait; elapsed time never orders participants.
+for mode in owner terminal write; do
+ read -r MT MU MS MR MK <<<"$(mdel_fixture)"
+ if [[ $mode != write ]]; then
+  tx mdel02_idle_request postgres "$MT" "$(mdel_call request 0)"
+  expect mdel02_idle_request ok
+ fi
+ if [[ $mode == terminal ]]; then
+  MK=$(sql <<<"SELECT uuidv7();")
+  tx mdel02_idle_cancel postgres "$MT" "$(mdel_call cancel 1)"
+  expect mdel02_idle_cancel ok
+  sql <<<"DELETE FROM app.tenant_memberships WHERE tenant_id='$MT' AND user_id='$MU';" >/dev/null
+ fi
+ case $mode in
+  owner) idle_gate=161;;
+  terminal) idle_gate=162;;
+  write) idle_gate=163;;
+ esac
+ gate_close "$idle_gate"
+ tx mdel02_idle_holder postgres "$MT" "SELECT app.tenant_lifecycle_transition_fence('$MT'); $(park "$idle_gate")" &
+ await mdel02_idle_holder advisory
+ sql <<<"WITH instant AS MATERIALIZED(SELECT clock_timestamp() at) UPDATE app.auth_sessions SET created_at=instant.at-interval '2 minutes',last_seen_at=instant.at-interval '57 seconds' FROM instant WHERE id='$MS';" >/dev/null
+ if [[ $mode == write ]]; then
+  idle_call="app.auth_revalidate_tenant('$MT','$MU','session','$MS','catalog:write')"
+ else
+  idle_call="app.auth_merchant_receipt('$MT','$MR','$MU','$MS')"
+ fi
+ tx mdel02_idle_contender postgres "$MT" "SELECT set_config('app.session_idle_seconds','60',true); SELECT 'MDEL02_IDLE_ADMITTED='||(last_seen_at>clock_timestamp()-interval '60 seconds') FROM app.auth_sessions WHERE id='$MS'; SET LOCAL ROLE app_runtime; SELECT 'MDEL02_IDLE_DENIED='||NOT $idle_call;" &
+ # Only the admission witness reads credentials; the port runs as app_runtime.
+ await mdel02_idle_contender "${ROWLOCK[@]}"
+ idle_deadline=$((SECONDS + 15))
+ idle_expired=f
+ while (( SECONDS < idle_deadline )); do
+  idle_expired=$(sql <<<"SELECT last_seen_at<=clock_timestamp()-interval '60 seconds' FROM app.auth_sessions WHERE id='$MS';")
+  [[ $idle_expired == t ]] && break
+  sleep 0.05
+ done
+ [[ $idle_expired == t ]] || { echo "FAIL: MDEL02_IDLE_DEADLINE_$mode"; fail=1; }
+ gate_open "$idle_gate"; wait
+ expect mdel02_idle_holder ok; expect mdel02_idle_contender ok
+ result mdel02_idle_contender 'MDEL02_IDLE_ADMITTED=true'
+ result mdel02_idle_contender 'MDEL02_IDLE_DENIED=true'
+ echo "MDEL02_IDLE_POST_LOCK_$mode: checked configured DB deadline"
+done
+
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth/fulfillment/returns contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'
