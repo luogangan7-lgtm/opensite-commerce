@@ -1014,12 +1014,12 @@ test.describe('VISUAL-REAL #230 round5', () => {
   });
 });
 
-// Volatile masks are exactly the backend-issued UUID/date element, never a status or total.
+// Masks own only a verified runtime metadata field or UUID cell; status/version/money stay compared.
 async function runtimeMask(page: Page, target: Locator) {
   const box = await target.boundingBox();
   if (!box) throw new Error('Missing runtime mask geometry');
   const protectedBoxes: Box[] = [];
-  for (const locator of [page.getByRole('heading'), page.locator('.os-badge'), page.locator('.admin-stack dd'),
+  for (const locator of [page.getByRole('heading'), page.locator('.os-badge').locator('..'), page.locator('.admin-stack dd'),
     page.locator('[data-completion-ready] dd').filter({ hasNotText: /^[0-9a-f-]{36}$/ })]) {
     for (const element of await locator.all()) {
       const bounds = await element.boundingBox(); if (bounds) protectedBoxes.push(bounds);
@@ -1027,6 +1027,30 @@ async function runtimeMask(page: Page, target: Locator) {
   }
   assertDateMaskBounds(box, box, protectedBoxes);
   return target;
+}
+// Exercise different legal glyph widths/precisions in CI, then restore the real API text.
+// A broad mask is separately rejected against the protected status/money geometry.
+async function assertStableRuntimeMask(page: Page, masks: Locator[], values: Locator, variants: string[][]) {
+  await page.evaluate(async () => { await document.fonts.ready; });
+  const original = await values.allTextContents();
+  const maskColor = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
+  const capture = () => page.screenshot({ fullPage: true, mask: masks, maskColor, animations: 'disabled', caret: 'hide' });
+  const before = await capture();
+  try {
+    for (const variant of variants) {
+      expect(variant).toHaveLength(original.length);
+      for (const [index, text] of variant.entries()) await values.nth(index).evaluate((node, value) => { node.textContent = value; }, text);
+      for (const mask of masks) await runtimeMask(page, mask);
+      const after = await capture();
+      if (!after.equals(before)) {
+        await test.info().attach('runtime-mask-before', { body: before, contentType: 'image/png' });
+        await test.info().attach('runtime-mask-after', { body: after, contentType: 'image/png' });
+      }
+      expect(after.equals(before), 'runtime field changes must not alter any unmasked pixel').toBe(true);
+    }
+  } finally {
+    for (const [index, text] of original.entries()) await values.nth(index).evaluate((node, value) => { node.textContent = value; }, text);
+  }
 }
 async function domainSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][number], order: {
   state: string; order_number: number; version: number; created_at: string; updated_at: string;
@@ -1038,11 +1062,24 @@ async function domainSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][
   await expect(page.getByRole('main')).toContainText('USD 57.80');
   const times = page.getByRole('main').locator('time');
   await expect(times).toHaveCount(2);
-  const masks: Locator[] = [];
   for (const [index, stamp] of [order.created_at, order.updated_at].entries()) {
     await expect(times.nth(index)).toHaveAttribute('datetime', stamp);
     await expect(times.nth(index)).toHaveText(stamp);
-    masks.push(await runtimeMask(page, times.nth(index)));
+  }
+  // Both inline times affect the position of the fixed Updated label. Mask their
+  // exact metadata field, verified to contain only those two timestamps/labels.
+  const metadata = times.first().locator('..');
+  expect(await metadata.evaluate(node => node.tagName)).toBe('P');
+  await expect(metadata.locator(':scope > *')).toHaveCount(2);
+  await expect(metadata).toHaveText(`Created ${order.created_at} · Updated ${order.updated_at}`);
+  const masks = [await runtimeMask(page, metadata)];
+  if (state === 'paid') {
+    await expect(runtimeMask(page, page.getByRole('main'))).rejects.toThrow('Date mask overlaps status or amount');
+    await assertStableRuntimeMask(page, masks, times, [
+      ['2099-12-31T23:59:59.999999Z', '2099-12-31T23:59:59.999999Z'],
+      ['2000-01-01T00:00:00Z', '2000-01-01T00:00:00Z'],
+    ]);
+    await expect(metadata).toHaveText(`Created ${order.created_at} · Updated ${order.updated_at}`);
   }
   await staffSnapshot(page, state, masks);
 }
@@ -1085,9 +1122,25 @@ test('VISUAL-REAL #230 real two-unit purchase and five staff domain states', asy
 
   const base = `${staffSite}/api/v1/t/${tenant}`;
   const orderPath = `/orders/${checkout.order_id}`;
-  const completionID = page.locator('[data-completion-ready] dd').filter({ hasText: checkout.order_id });
+  const completionID = page.locator('[data-completion-ready] .purchase-totals > div').first().locator('dd');
   await expect(completionID).toHaveText(checkout.order_id);
-  await staffSnapshot(page, 'rma-completion', [await runtimeMask(page, completionID)]);
+  // Browser glyph ink may overhang the UUID cell by a subpixel. Clip only the
+  // already-masked value to its own bounds; no layout or unmasked UI is changed.
+  const originalClip = await completionID.evaluate(node => {
+    const element = node as HTMLElement, previous = element.style.clipPath;
+    element.style.clipPath = 'inset(0)'; return previous;
+  });
+  try {
+    const masks = [await runtimeMask(page, completionID)];
+    await expect(runtimeMask(page, page.getByRole('main'))).rejects.toThrow('Date mask overlaps status or amount');
+    await assertStableRuntimeMask(page, masks, completionID, [
+      [checkout.order_id.slice(0, -1) + '0'], [checkout.order_id.slice(0, -1) + '8'],
+    ]);
+    await expect(completionID).toHaveText(checkout.order_id);
+    await staffSnapshot(page, 'rma-completion', masks);
+  } finally {
+    await completionID.evaluate((node, value) => { (node as HTMLElement).style.clipPath = value; }, originalClip);
+  }
   await staffLogin(page, `/t/${tenant}${orderPath}`, staffSite);
   await expect(page.getByRole('cell', { name: 'C24-CANVAS-TOTE', exact: true })).toBeVisible();
   const session = await (await page.request.get(`${staffSite}/api/v1/auth/session`)).json();
