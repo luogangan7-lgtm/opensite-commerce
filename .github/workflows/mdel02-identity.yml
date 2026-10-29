@@ -92,6 +92,8 @@ jobs:
               ('auth_merchant_scope(uuid,text,text)', "IF st='cooling_off' OR (st='failed' AND ph IN('none','preconditions')) THEN", "IF (st='cooling_off' OR st='failed') AND ph IN('none','preconditions') THEN", 'MDEL02_COOLING_PHASE_SCOPE'),
               ('auth_erase_merchant_proofs(uuid,uuid,bigint)', 'DELETE FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant;', 'PERFORM 1;', 'MDEL02_DERIVED_PROOF_SCRUB'),
               ('auth_merchant_receipt(uuid,uuid,uuid,uuid)', 'IF EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id', 'IF false AND EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id', 'MDEL02_EXECUTING_OWNER_STATUS'),
+              ('auth_merchant_receipt(uuid,uuid,uuid,uuid)', "OR sess.last_seen_at<=at_db-nullif(current_setting('app.session_idle_seconds',true),'')::bigint*interval '1 second'", '', 'MDEL02_RECEIPT_IDLE_REVALIDATION'),
+              ('auth_revalidate_tenant(uuid,uuid,text,uuid,text)', "s_seen>at_db-nullif(current_setting('app.session_idle_seconds',true),'')::bigint*interval '1 second'", 'true', 'MDEL02_WRITE_IDLE_REVALIDATION'),
           ]
           guard = (" IF p_operation='cancel' AND l.phase='executing' THEN\n"
                    "  IF l.request_id IS DISTINCT FROM p_request OR l.epoch IS DISTINCT FROM p_epoch THEN\n"

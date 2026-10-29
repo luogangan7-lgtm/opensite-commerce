@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
@@ -160,6 +161,7 @@ func TestMerchantTerminalReceiptIsExactRouteOnly(t *testing.T) {
 	for _, name := range []string{"receipt", "business", "write", "wrong-operation"} {
 		t.Run(name, func(t *testing.T) {
 			f, repo := merchantFixture(t)
+			f.handler.idle = 7 * time.Minute
 			repo.receipt = true
 			delete(f.authority.memberships, c02cTenant)
 			spec := platform.RouteSpec{OperationID: "getMerchantDeletion", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/merchant-deletion/{request_id}", Access: platform.AdminSession, Scope: "tenant:delete"}
@@ -239,6 +241,14 @@ type merchantReceiptDB struct {
 	allowed bool
 	calls   int
 	args    []any
+	idle    int64
+}
+
+func (q *merchantReceiptDB) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	if strings.Contains(sql, "LoginSetTransactionIdle") {
+		q.idle = args[0].(int64)
+	}
+	return pgconn.CommandTag{}, nil
 }
 
 func (q *merchantReceiptDB) QueryRow(_ context.Context, _ string, args ...any) pgx.Row {
@@ -255,6 +265,7 @@ func TestMerchantReceiptRegisteredReadRevalidates(t *testing.T) {
 	for _, name := range []string{"requester", "current-owner", "revoked-after-admission", "other-request", "other-tenant", "admin", "key", "customer", "stale", "invalid-request"} {
 		t.Run(name, func(t *testing.T) {
 			f, repo := merchantFixture(t)
+			f.handler.idle = 7 * time.Minute
 			repo.receipt = true
 			delete(f.authority.memberships, c02cTenant)
 			q := &merchantReceiptDB{allowed: true}
@@ -327,7 +338,7 @@ func TestMerchantReceiptRegisteredReadRevalidates(t *testing.T) {
 			if w.Code != expected || called != (expected == 200) || w.Header().Get("Cache-Control") != "no-store" {
 				t.Fatalf("MDEL02_RECEIPT_READ: status=%d called=%v body=%s", w.Code, called, w.Body.String())
 			}
-			if (name == "requester" || name == "current-owner") && (q.calls != 1 || len(q.args) != 4) {
+			if (name == "requester" || name == "current-owner") && (q.calls != 1 || len(q.args) != 4 || q.idle != 420) {
 				t.Fatal("MDEL02_RECEIPT_READ_NOT_REVALIDATED", q.calls)
 			}
 			if called {

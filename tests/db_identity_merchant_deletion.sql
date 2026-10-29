@@ -4,6 +4,7 @@
 -- other-tenant global accounts survive, no application role can consume proofs.
 \set ON_ERROR_STOP on
 BEGIN;
+SET LOCAL app.session_idle_seconds='1800';
 DO $schema$
 BEGIN
  IF to_regclass('app.identity_merchant_proofs') IS NULL THEN
@@ -28,6 +29,16 @@ DECLARE t uuid:=current_setting('test.mdel02.a')::uuid; b uuid:=current_setting(
  req uuid:=uuidv7(); e bigint; n bigint; key_id uuid:=uuidv7(); phase_value text; expected_count bigint; other_before bytea; other_after bytea;
 BEGIN
  PERFORM set_config('app.tenant_id',t::text,true);
+ -- Ordinary write revalidation uses the configured timeout, not a SQL default.
+ BEGIN
+  PERFORM set_config('app.session_idle_seconds','60',true);
+  WITH instant AS MATERIALIZED(SELECT clock_timestamp() at)
+   UPDATE app.auth_sessions SET created_at=instant.at-interval '2 hours',last_seen_at=instant.at-interval '61 seconds' FROM instant WHERE id=s;
+  IF app.auth_revalidate_tenant(t,u,'session',s,'catalog:write') IS DISTINCT FROM false THEN
+   RAISE EXCEPTION 'MDEL02_WRITE_IDLE_REVALIDATION'; END IF;
+  RAISE EXCEPTION 'restore idle witness' USING ERRCODE='P9002';
+ EXCEPTION WHEN SQLSTATE 'P9002' THEN NULL; END;
+
  INSERT INTO app.api_keys(tenant_id,id,issued_by,key_prefix,key_hash,scopes) VALUES(t,key_id,u,'mdel02',sha256('mdel02-key'::bytea),ARRAY['catalog:read','tenant:delete']);
  IF app.auth_revalidate_tenant(t,u,'api_key',key_id,'tenant:delete') IS DISTINCT FROM true THEN RAISE EXCEPTION 'MDEL02_KEY_FIXTURE'; END IF;
  -- A key scope is not a session; passing a key ID as a session is denied.
@@ -160,6 +171,19 @@ BEGIN
  DROP POLICY mdel02_predicate_witness ON app.identity_merchant_proofs;
  IF app.auth_erase_merchant_proofs(t,req,e)<>0 THEN RAISE EXCEPTION 'MDEL02_SCRUB_NOT_IDEMPOTENT'; END IF;
  IF NOT app.auth_merchant_receipt(t,req,u,s) THEN RAISE EXCEPTION 'MDEL02_EXECUTING_OWNER_STATUS'; END IF;
+ BEGIN
+  PERFORM set_config('app.session_idle_seconds','60',true);
+  WITH instant AS MATERIALIZED(SELECT clock_timestamp() at)
+   UPDATE app.auth_sessions SET created_at=instant.at-interval '2 hours',last_seen_at=instant.at-interval '61 seconds' FROM instant WHERE id=s;
+  IF app.auth_merchant_receipt(t,req,u,s) IS DISTINCT FROM false THEN
+   RAISE EXCEPTION 'MDEL02_RECEIPT_IDLE_REVALIDATION'; END IF;
+  RAISE EXCEPTION 'restore idle witness' USING ERRCODE='P9002';
+ EXCEPTION WHEN SQLSTATE 'P9002' THEN NULL; END;
+ PERFORM set_config('app.session_idle_seconds','',true);
+ IF app.auth_merchant_receipt(t,req,u,s) IS DISTINCT FROM false THEN
+  RAISE EXCEPTION 'MDEL02_RECEIPT_MISSING_IDLE_CONFIG'; END IF;
+ PERFORM set_config('app.session_idle_seconds','1800',true);
+
  IF app.auth_merchant_receipt(t,req,current_setting('test.mdel02.admin')::uuid,current_setting('test.mdel02.admin_sess')::uuid)
   OR app.auth_merchant_receipt(t,uuidv7(),u,s) THEN RAISE EXCEPTION 'MDEL02_EXECUTING_STATUS_BINDING'; END IF;
  DELETE FROM app.tenant_memberships WHERE tenant_id=t AND user_id=u;

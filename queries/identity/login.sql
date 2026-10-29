@@ -148,3 +148,7 @@ SELECT app.auth_erase_merchant_proofs(sqlc.arg(tenant_id)::uuid,sqlc.arg(request
 -- Boolean lifecycle classification only; no membership/session authority grant.
 SELECT app.auth_merchant_scope(sqlc.arg(tenant_id)::uuid,sqlc.arg(kind)::text,
  sqlc.arg(scope)::text)::boolean AS allowed;
+
+-- name: LoginSetTransactionIdle :exec
+-- The setting is transaction-local and comes from LoginConfig, never a DB default.
+SELECT set_config('app.session_idle_seconds',sqlc.arg(idle_seconds)::bigint::text,true);

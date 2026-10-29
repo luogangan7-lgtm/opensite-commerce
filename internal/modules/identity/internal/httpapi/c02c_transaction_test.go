@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
@@ -25,6 +26,7 @@ type c02cReadAuthority struct {
 func TestC02cTransactionAuthorizationCapturesAdmission(t *testing.T) {
 	for _, key := range []bool{false, true} {
 		f := c02cAuthFixture(t)
+		f.handler.idle = 7 * time.Minute
 		spec := c02cSpec(platform.AdminOrAPIKey, "POST", "catalog:write")
 		q := f.request("POST", c02cTenant, !key, key)
 		q.SetPathValue("tenant_id", c02cTenant)
@@ -54,8 +56,12 @@ func TestC02cTransactionAuthorizationCapturesAdmission(t *testing.T) {
 		q.SetPathValue("tenant_id", c02cOtherTenant)
 		q.Header.Set("X-Actor-ID", c02cKeyID)
 		q.Header.Set("X-Required-Scope", "attacker:write")
-		if err := callback(context.Background(), db.New(nil)); err != nil {
+		queries := &merchantReceiptDB{}
+		if err := callback(context.Background(), db.New(queries)); err != nil {
 			t.Fatal(err)
+		}
+		if !key && queries.idle != 420 || key && queries.idle != 0 {
+			t.Fatal("MDEL02_WRITE_CONFIGURED_IDLE", queries.idle)
 		}
 		kind, credential := contract.KindSession, c02cSession
 		if key {
@@ -67,7 +73,7 @@ func TestC02cTransactionAuthorizationCapturesAdmission(t *testing.T) {
 		}
 		// Loss after request admission is still rejected when the transaction runs.
 		f.authority.revalidationErr = apperrors.New(403, "scope_forbidden", "private DB detail")
-		if err := callback(context.Background(), db.New(nil)); err == nil || err.Error() == "private DB detail" {
+		if err := callback(context.Background(), db.New(&merchantReceiptDB{})); err == nil || err.Error() == "private DB detail" {
 			t.Fatal("transaction authority loss or private detail escaped", err)
 		}
 		if err := callback(context.Background(), nil); err == nil {

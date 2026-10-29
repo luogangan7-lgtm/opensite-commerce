@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
@@ -309,6 +310,9 @@ func (h *Handler) ResolveTransactionAuthorization(ctx context.Context, r *http.R
 			if q == nil {
 				return unauthenticated()
 			}
+			if err := q.LoginSetTransactionIdle(ctx, int64(h.idle / time.Second)); err != nil {
+				return authUnavailable()
+			}
 			var tenant, req, user, session pgtype.UUID
 			_ = tenant.Scan(p.TenantID)
 			_ = req.Scan(request)
@@ -336,6 +340,11 @@ func (h *Handler) ResolveTransactionAuthorization(ctx context.Context, r *http.R
 	return func(txctx context.Context, q *db.Queries) error {
 		if q == nil {
 			return authUnavailable()
+		}
+		if grant.Kind == contract.KindSession {
+			if err := q.LoginSetTransactionIdle(txctx, int64(h.idle / time.Second)); err != nil {
+				return authUnavailable()
+			}
 		}
 		if err := revalidator.Revalidate(txctx, q, tenant, grant); err != nil {
 			if errors.Is(err, contract.ErrNotFound) {

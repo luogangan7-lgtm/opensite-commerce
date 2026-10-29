@@ -79,6 +79,10 @@ BEGIN
  -- session/action. No raw proof or password hash is retained.
  DELETE FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant
   AND (expires_at<=at_db OR user_id=p_user AND session_id=p_session AND action=p_action);
+ -- Deleting a previous proof may wait on its row; do not issue after idle expiry.
+ IF NOT app.auth_revalidate_tenant(p_tenant,p_user,'session',p_session,'tenant:delete') THEN
+  RAISE EXCEPTION 'merchant step-up denied' USING ERRCODE='42501'; END IF;
+ at_db:=clock_timestamp();
  INSERT INTO app.identity_merchant_proofs(tenant_id,user_id,session_id,action,proof_digest,created_at,expires_at)
  VALUES(p_tenant,p_user,p_session,p_action,p_digest,at_db,at_db+interval '5 minutes');
  RETURN at_db+interval '5 minutes';
@@ -98,7 +102,8 @@ BEGIN
  SELECT * INTO proof FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant AND proof_digest=p_digest
   AND user_id=p_user AND session_id=p_session AND action=p_action FOR UPDATE;
  at_db:=clock_timestamp();
- IF NOT FOUND OR proof.expires_at<=at_db THEN RAISE EXCEPTION 'merchant step-up denied' USING ERRCODE='42501'; END IF;
+ IF NOT FOUND OR proof.expires_at<=at_db
+  OR NOT app.auth_revalidate_tenant(p_tenant,p_user,'session',p_session,'tenant:delete') THEN RAISE EXCEPTION 'merchant step-up denied' USING ERRCODE='42501'; END IF;
  DELETE FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant AND id=proof.id;
 END $fn$;
 
@@ -116,7 +121,10 @@ BEGIN
  at_db:=clock_timestamp();
  IF NOT FOUND OR sess.revoked_at IS NOT NULL OR NOT isfinite(sess.expires_at) OR sess.expires_at<=at_db
   OR NOT isfinite(sess.created_at) OR NOT isfinite(sess.last_seen_at) OR sess.created_at>at_db OR sess.last_seen_at>at_db
-  OR sess.last_seen_at<sess.created_at OR sess.expires_at<=sess.created_at THEN RETURN false; END IF;
+  OR sess.last_seen_at<sess.created_at OR sess.expires_at<=sess.created_at
+  OR nullif(current_setting('app.session_idle_seconds',true),'') IS NULL
+  OR nullif(current_setting('app.session_idle_seconds',true),'')::bigint NOT BETWEEN 1 AND 86400
+  OR sess.last_seen_at<=at_db-nullif(current_setting('app.session_idle_seconds',true),'')::bigint*interval '1 second' THEN RETURN false; END IF;
  -- Current owners retain only deletion-status metadata while execution has
  -- fenced ordinary tenant authority. Suspension still denies interactive use.
  IF EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id
@@ -146,12 +154,23 @@ END $fn$;
 -- Preserve the existing authorization body, owner and ACL. The common fence
 -- precedes its global/user locks; existing unknown scope checks stay intact.
 DO $wrap$
-DECLARE def text; body text;
+DECLARE def text; body text; revised text;
 BEGIN
  SELECT pg_get_functiondef(p.oid),p.prosrc INTO STRICT def,body FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
   WHERE n.nspname='app' AND p.proname='auth_revalidate_tenant';
- EXECUTE replace(def,body,regexp_replace(body,'\mBEGIN\M',
-  'BEGIN IF NOT app.auth_merchant_scope(p_tenant,p_kind,p_scope) THEN RETURN false; END IF;'));
+ revised:=regexp_replace(body,'\mBEGIN\M',
+  'BEGIN IF NOT app.auth_merchant_scope(p_tenant,p_kind,p_scope) THEN RETURN false; END IF;');
+ -- The HTTP callback supplies the same configured idle duration as admission.
+ -- Legacy direct non-merchant callers retain their existing capability contract;
+ -- merchant writes fail closed without the transaction-local configuration.
+ IF position('AND s_seen>=s_created AND s_exp>s_created;' IN revised)=0 THEN
+  RAISE EXCEPTION 'session revalidation anchor drift'; END IF;
+ revised:=replace(revised,'AND s_seen>=s_created AND s_exp>s_created;',
+  $idle$AND s_seen>=s_created AND s_exp>s_created
+   AND coalesce(((p_scope<>'tenant:delete' AND nullif(current_setting('app.session_idle_seconds',true),'') IS NULL)
+    OR (nullif(current_setting('app.session_idle_seconds',true),'')::bigint BETWEEN 1 AND 86400
+     AND s_seen>at_db-nullif(current_setting('app.session_idle_seconds',true),'')::bigint*interval '1 second')),false);$idle$);
+ EXECUTE replace(def,body,revised);
 END $wrap$;
 DO $owners$
 DECLARE f record;

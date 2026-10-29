@@ -53,8 +53,10 @@ cleanup() {  # never leave parked participants or gate sessions behind
 }
 trap cleanup EXIT
 tx() {
+  local idle_context=''
+  [[ $1 != mdel02_* ]] || idle_context="SELECT set_config('app.session_idle_seconds','1800',true);"
   printf "SET application_name='${RACE_PREFIX}%s'; %s BEGIN; SELECT set_config('app.tenant_id','%s',true); SET LOCAL ROLE %s; %s COMMIT;\n" \
-    "$1" "${5:-}" "$3" "$2" "$4" | sql >"$ERRDIR/$1.out" 2>"$ERRDIR/$1" || true
+    "$1" "${5:-}" "$3" "$2" "$idle_context $4" | sql >"$ERRDIR/$1.out" 2>"$ERRDIR/$1" || true
 }
 park() { echo "SELECT pg_advisory_xact_lock_shared($$, $1);"; } # SQL: wait for gate $1
 gate_close() {  # driver session holds advisory lock $1 until gate_open
