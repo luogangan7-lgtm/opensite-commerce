@@ -19,14 +19,18 @@ Bun.serve({ hostname: '127.0.0.1', port: 4181, idleTimeout: 30, async fetch(requ
     }
     if (url.pathname !== '/__visual/arm' || request.method !== 'POST' || fault) return new Response(null, { status: 409 });
     const input = await request.json() as { path?: string; method?: string; mode?: string };
-    if (!input.path?.startsWith('/api/v1/') || !['GET', 'POST'].includes(input.method ?? '') || !['hold', 'drop', '503'].includes(input.mode ?? '')) return new Response(null, { status: 400 });
+    if (!input.path?.startsWith('/api/v1/') || !['GET', 'POST', 'PUT', 'PATCH'].includes(input.method ?? '') || !['hold', 'drop', '503'].includes(input.mode ?? '')) return new Response(null, { status: 400 });
+    // A wildcard owns one server-issued upload UUID, never arbitrary business paths.
+    if (input.path.includes('*') && !/^\/api\/v1\/t\/[0-9a-f-]{36}\/media\/uploads\/\*\/(content|complete)$/.test(input.path)) return new Response(null, { status: 400 });
     let release!: () => void;
     const pending = new Promise<void>(resolve => { release = resolve; });
     fault = { path: input.path, method: input.method!, mode: input.mode as Fault['mode'], matched: false, release, pending };
     return new Response(null, { status: 204 });
   }
   if (!url.pathname.startsWith('/api/v1/') && url.pathname !== '/healthz') return new Response(null, { status: 404 });
-  const current = fault && !fault.matched && fault.path === url.pathname && fault.method === request.method ? fault : undefined;
+  const pathMatches = fault && (fault.path === url.pathname || fault.path.includes('*') &&
+    new RegExp('^' + fault.path.replace('*', '[0-9a-f-]{36}') + '$').test(url.pathname));
+  const current = fault && !fault.matched && pathMatches && fault.method === request.method ? fault : undefined;
   // Claim before awaiting fetch: one armed fault can affect exactly one request.
   if (current) current.matched = true;
   const response = await fetch(`http://127.0.0.1:4180${url.pathname}${url.search}`, {
