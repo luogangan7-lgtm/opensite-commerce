@@ -41,6 +41,8 @@ jobs:
         with:
           go-version: '1.27.2'
       - run: ./scripts/ci_apt_install.sh --no-install-recommends postgresql-client
+      - name: Dependency parser rejects malformed declarations before writes
+        run: python3 tests/test_pending_migrations.py
       - name: Real PG baseline at exact head
         id: baseline
         run: |

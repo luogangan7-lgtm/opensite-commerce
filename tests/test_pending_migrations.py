@@ -218,19 +218,29 @@ for pending in ({'aa_ok.sql': 'SELECT 1;\n', 'bb_bad.sql': '-- depends-on: nope\
             failed = subprocess.run(args, cwd=root, capture_output=True, text=True)
             assert failed.returncode == 2 and tree(root) == before, (pending, args, failed.stderr)
 
+# Multiple dependencies are valid only as separate, known stable-id lines.
+with tempfile.TemporaryDirectory() as temp:
+    root = repo(temp, {'aa_first.sql': '-- depends-on: zz\n-- depends-on: mm\nSELECT 1;\n',
+                       'mm_second.sql': 'SELECT 2;\n', 'zz_third.sql': 'SELECT 3;\n'})
+    result, log = run(root, 'scripts/migrate.sh')
+    assert result.returncode == 0, result.stderr
+    assert includes(log)[-3:] == ['004_second.sql SELECT 2;', '005_third.sql SELECT 3;', '006_first.sql SELECT 1;'], log
+
 # Malformed dependency declarations must fail before SQL or filesystem writes.
 for declaration in ('aa, zz', 'aa,zz', 'aa trailing-junk', '', 'nope'):
     with tempfile.TemporaryDirectory() as temp:
-        root = repo(temp, {'aa_ok.sql': 'SELECT 1;\n', 'zz_ok.sql': 'SELECT 2;\n',
+        root = repo(temp, {'aa_first.sql': 'SELECT 1;\n', 'zz_second.sql': 'SELECT 2;\n',
                            'bb_bad.sql': '-- depends-on: ' + declaration + '\nSELECT 3;\n'})
         before = tree(root)
+        reason = 'unknown depends-on' if declaration == 'nope' else 'invalid depends-on'
         for args in (['python3', 'scripts/pending_migrations.py', 'ci-normalize'],
                      ['bash', 'scripts/land_migration.sh', 'aa']):
             failed = subprocess.run(args, cwd=root, capture_output=True, text=True)
-            assert failed.returncode == 2 and tree(root) == before, (
+            assert failed.returncode == 2 and reason in failed.stderr and tree(root) == before, (
                 'DEPENDENCY_DECLARATION_MUST_FAIL_CLOSED', declaration, args, failed.stderr)
         failed, log = run(root, 'scripts/migrate.sh')
-        assert failed.returncode != 0 and not log and tree(root) == before, (
+        assert failed.returncode == 2 and reason in failed.stderr and not log and tree(root) == before, (
             'DEPENDENCY_DECLARATION_REACHED_SQL', declaration, failed.stderr)
+        print('PASS: exact dependency rejection before writes/SQL:', repr(declaration))
 
 print('PASS: pending migrations order/apply/land + production refusal (mock psql; NO SQL executed)')
