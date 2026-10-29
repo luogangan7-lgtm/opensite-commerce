@@ -57,6 +57,10 @@ DO $prefix$ DECLARE f record; revised text; prefix text; BEGIN
    WHEN 'orders_check_creation' THEN 'IF NOT current_setting(''transaction_read_only'')::boolean THEN PERFORM app.orders_merchant_mutation_fence(false); END IF;'
    WHEN 'orders_transition' THEN 'PERFORM app.orders_merchant_mutation_fence(p_target IN(''paid'',''cancelled''));'
    WHEN 'orders_refund_budget' THEN 'PERFORM app.orders_merchant_mutation_fence(p_phase IN(''freeze'',''lock'',''fail'',''complete''));'
+   WHEN 'orders_fulfillment_advance' THEN 'PERFORM app.orders_merchant_mutation_fence(EXISTS(
+    SELECT FROM app.returns r WHERE r.tenant_id=t AND r.order_id=p_id AND r.sealed
+     AND r.status IN(''refund_failed'',''refund_reconcile'') AND r.refund_key IS NOT NULL
+     AND p_event=r.status||'':''||r.id::text||'':''||encode(sha256(convert_to(r.refund_key,''UTF8'')),''hex'')));'
    WHEN 'orders_finish_return_refund' THEN 'PERFORM app.orders_merchant_mutation_fence(true);'
    WHEN 'orders_compensate_refund' THEN 'PERFORM app.orders_merchant_mutation_fence(true);'
    ELSE 'PERFORM app.orders_merchant_mutation_fence(false);' END;

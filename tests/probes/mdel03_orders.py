@@ -35,6 +35,9 @@ for function, old, new, marker in [
     ('orders_erase_merchant(uuid,uuid,bigint)',
      'UPDATE app.order_lines SET sku=\'[erased]\',tax_snapshot=\'{"erased":true}\'::jsonb WHERE tenant_id=p_tenant;',
      'PERFORM 1;', 'MDEL03_DERIVED_SCRUB'),
+    ('orders_fulfillment_advance(uuid,text)',
+     "p_event=r.status||':'||r.id::text||':'||encode(sha256(convert_to(r.refund_key,'UTF8')),'hex')",
+     'false', 'MDEL03_COOLING_FAILED_REFUND_DRAIN'),
 ]:
     source = command("SELECT pg_get_functiondef('app." + function + "'::regprocedure);")
     assert source.count(old) == 1, 'mutation anchor drift'
@@ -44,4 +47,4 @@ for function, old, new, marker in [
     finally:
         command(source)
 test()
-print('PASS: MDEL03 two exact CAUSAL_RED assertions and restored baseline', flush=True)
+print('PASS: MDEL03 three exact CAUSAL_RED assertions and restored baseline', flush=True)

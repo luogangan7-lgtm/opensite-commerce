@@ -127,6 +127,60 @@ DO $$ DECLARE f jsonb:=current_setting('test.mdel03.cooling')::jsonb; t uuid:=(f
   IF SQLERRM<>'tenant deletion drain fence' THEN RAISE; END IF;
  END;
 END $$;
+-- Existing provider failure/reconciliation is a drain, including its nested
+-- Orders projection. Use real sealed RMA and frozen refund authority, no row
+-- fabrication or trigger bypass. New refund reservations remain active-only.
+SELECT pg_temp.mdel03_fixture() AS drain \gset
+SELECT set_config('test.mdel03.drain',:'drain',true);
+DO $drain$
+DECLARE f jsonb:=current_setting('test.mdel03.drain')::jsonb; t uuid:=(f->>'t')::uuid; o uuid:=(f->>'o')::uuid;
+ income uuid:=uuidv7(); tax uuid:=uuidv7(); shipping uuid:=uuidv7(); cash uuid:=uuidv7(); v bigint;
+ r jsonb; rid uuid; key_id text:=uuidv4()::text; frozen jsonb;
+BEGIN
+ INSERT INTO app.ledger_accounts(tenant_id,id,code,currency,account_type) VALUES
+  (t,income,'mdel03-income','USD','revenue'),(t,tax,'mdel03-tax','USD','liability'),
+  (t,shipping,'mdel03-shipping','USD','revenue'),(t,cash,'mdel03-cash','USD','asset');
+ PERFORM app.orders_transition(o,'paid','mdel03-drain-paid',0);
+ SELECT version INTO v FROM app.orders WHERE tenant_id=t AND id=o;
+ r:=app.returns_create(o,v,uuidv4()::text,'unshipped_cancel','mdel03-cancel',
+  jsonb_build_array(jsonb_build_object('order_line_id',(f->>'l')::uuid,'quantity',1)));
+ rid:=(r->>'id')::uuid;
+ SELECT version INTO v FROM app.orders WHERE tenant_id=t AND id=o;
+ PERFORM app.returns_prepare_refund(rid,v,key_id,'mdel03-opaque-capture',1,income,tax,shipping,cash);
+ SELECT to_jsonb(x)-ARRAY['status','order_version'] INTO frozen FROM app.returns x WHERE tenant_id=t AND id=rid;
+ UPDATE app.tenant_lifecycles SET state='cooling_off',phase='preconditions',request_id=uuidv7(),requester_id=uuidv7(),
+  requested_at=clock_timestamp(),execute_after=clock_timestamp()+interval '720 hours' WHERE tenant_id=t;
+ BEGIN
+  r:=app.returns_fail_refund(rid,key_id,false);
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM='tenant deletion write fence' THEN RAISE EXCEPTION 'MDEL03_COOLING_FAILED_REFUND_DRAIN'; ELSE RAISE; END IF;
+ END;
+ IF r->>'status'<>'refund_reconcile' THEN RAISE EXCEPTION 'MDEL03_COOLING_RECONCILIATION'; END IF;
+ r:=app.returns_fail_refund(rid,key_id,true);
+ IF r->>'status'<>'refund_failed' OR
+  (SELECT to_jsonb(x)-ARRAY['status','order_version'] FROM app.returns x WHERE tenant_id=t AND id=rid) IS DISTINCT FROM frozen THEN
+  RAISE EXCEPTION 'MDEL03_COOLING_REFUND_AUTHORITY_CHANGED'; END IF;
+ BEGIN
+  SELECT version INTO v FROM app.orders WHERE tenant_id=t AND id=o;
+  PERFORM app.returns_prepare_refund(rid,v,uuidv4()::text,'mdel03-opaque-capture',1,income,tax,shipping,cash);
+  RAISE EXCEPTION 'MDEL03_COOLING_NEW_REFUND_RESERVATION';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM<>'tenant deletion write fence' THEN RAISE; END IF;
+ END;
+ BEGIN
+  PERFORM app.orders_fulfillment_advance(o,'refund_failed:'||rid::text||':'||repeat('0',64));
+  RAISE EXCEPTION 'MDEL03_FORGED_DRAIN_EVENT';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM<>'tenant deletion write fence' THEN RAISE; END IF;
+ END;
+ UPDATE app.tenant_lifecycles SET state='executing',phase='executing' WHERE tenant_id=t;
+ BEGIN
+  PERFORM app.returns_fail_refund(rid,key_id,true);
+  RAISE EXCEPTION 'MDEL03_EXECUTING_REFUND_DRAIN';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  IF SQLERRM<>'tenant deletion drain fence' THEN RAISE; END IF;
+ END;
+END $drain$;
 SET LOCAL ROLE app_runtime;
 DO $$ BEGIN
  BEGIN
