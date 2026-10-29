@@ -229,9 +229,10 @@ func TestMerchantCoolingWriteIsForbidden(t *testing.T) {
 type merchantReceiptDB struct {
 	db.DBTX
 	allowed bool
-	calls int
-	args []any
+	calls   int
+	args    []any
 }
+
 func (q *merchantReceiptDB) QueryRow(_ context.Context, _ string, args ...any) pgx.Row {
 	q.calls++
 	q.args = args
@@ -271,7 +272,9 @@ func TestMerchantReceiptRegisteredReadRevalidates(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = io.WriteString(w, `{"request_id":"`+c02cKeyID+`","state":"deleted","phase":"complete","epoch":2,"requested_at":"2030-01-01T00:00:00Z","execute_after":"2030-01-31T00:00:00Z","attempt":1,"next_retry_at":null,"categories":{}}`)
 			})
-			port, ok := any(f.handler).(interface { MerchantReceiptRoute(http.Handler) platform.Route })
+			port, ok := any(f.handler).(interface {
+				MerchantReceiptRoute(http.Handler) platform.Route
+			})
 			if !ok {
 				t.Fatal("MDEL02_RECEIPT_ROUTE_PORT_REQUIRED")
 			}

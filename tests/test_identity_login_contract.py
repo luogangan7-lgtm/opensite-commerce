@@ -174,7 +174,7 @@ def assert_contract(registry, source):
 
 registry = json.loads((ROOT / 'modules/registry.yaml').read_text())
 source = (ROOT / 'api/openapi.yaml').read_text()
-identity_migration = next((ROOT / 'migrations/pending').glob('mdel02-identity_*.sql')).read_text()
+identity_migration = next((ROOT / 'migrations').rglob('*_identity_merchant_deletion.sql')).read_text()
 assert "p.proname='tenant_lifecycle_transition'" not in identity_migration, 'MDEL02_TENANT_GUARD_OWNERSHIP: Identity rewrites Tenant private transition'
 assert_contract(registry, source)
 check_operations(registry, ROOT / 'api/openapi.yaml')
