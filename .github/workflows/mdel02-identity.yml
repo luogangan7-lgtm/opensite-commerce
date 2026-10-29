@@ -7,6 +7,8 @@ on:
     paths:
       - 'internal/modules/identity/**'
       - 'migrations/pending/mdel02-identity_*'
+      - 'migrations/pending/mdel02-tenant-guard_*'
+      - 'internal/platform/httpapi/router.go'
       - 'tests/db_identity_merchant_deletion.sql'
       - '.github/workflows/mdel02-identity.yml'
 permissions:
@@ -90,6 +92,13 @@ jobs:
               ('auth_erase_merchant_proofs(uuid,uuid,bigint)', 'DELETE FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant;', 'PERFORM 1;', 'MDEL02_DERIVED_PROOF_SCRUB'),
               ('auth_merchant_receipt(uuid,uuid,uuid,uuid)', 'IF EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id', 'IF false AND EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id', 'MDEL02_EXECUTING_OWNER_STATUS'),
           ]
+          guard = (" IF p_operation='cancel' AND l.phase='executing' THEN\n"
+                   "  IF l.request_id IS DISTINCT FROM p_request OR l.epoch IS DISTINCT FROM p_epoch THEN\n"
+                   "   RAISE EXCEPTION 'stale lifecycle operation' USING ERRCODE='55000'; END IF;\n"
+                   "  RAISE EXCEPTION 'tenant deletion cancellation closed' USING ERRCODE='55000';\n"
+                   " END IF;")
+          mutations.append(('tenant_lifecycle_transition(uuid,uuid,uuid,uuid,text,uuid,bytea,bigint,jsonb)',
+                            guard, '', 'MDEL02_TENANT_CANCEL_GUARD'))
           for function, old, new, marker in mutations:
               source = command("SELECT pg_get_functiondef('app." + function + "'::regprocedure);")
               assert source.count(old) == 1, 'mutation anchor drift'

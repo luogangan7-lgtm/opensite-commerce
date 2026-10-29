@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
@@ -246,12 +247,15 @@ func (q *merchantReceiptDB) Scan(dest ...any) error {
 }
 
 func TestMerchantReceiptRegisteredReadRevalidates(t *testing.T) {
-	for _, name := range []string{"requester", "revoked-after-admission", "other-request", "other-tenant", "admin", "key", "customer", "stale"} {
+	for _, name := range []string{"requester", "current-owner", "revoked-after-admission", "other-request", "other-tenant", "admin", "key", "customer", "stale", "invalid-request"} {
 		t.Run(name, func(t *testing.T) {
 			f, repo := merchantFixture(t)
 			repo.receipt = true
 			delete(f.authority.memberships, c02cTenant)
 			q := &merchantReceiptDB{allowed: true}
+			if name == "current-owner" {
+				f.authority.memberships[c02cTenant] = c02cMembership{UserID: c02cUser, TenantID: c02cTenant, Role: "owner"}
+			}
 			if name == "revoked-after-admission" {
 				q.allowed = false
 			}
@@ -272,7 +276,7 @@ func TestMerchantReceiptRegisteredReadRevalidates(t *testing.T) {
 				}
 				called = true
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = io.WriteString(w, `{"request_id":"`+c02cKeyID+`","state":"deleted","phase":"complete","epoch":2,"requested_at":"2030-01-01T00:00:00Z","execute_after":"2030-01-31T00:00:00Z","attempt":1,"next_retry_at":null,"categories":{}}`)
+				_, _ = io.WriteString(w, `{"request_id":"`+c02cKeyID+`","state":"deleted","phase":"completed","epoch":2,"requested_at":"2030-01-01T00:00:00Z","execute_after":"2030-01-31T00:00:00Z","attempt":1,"next_retry_at":null,"categories":{}}`)
 			})
 			port, ok := any(f.handler).(interface {
 				MerchantReceiptRoute(http.Handler) platform.Route
@@ -286,6 +290,12 @@ func TestMerchantReceiptRegisteredReadRevalidates(t *testing.T) {
 				t.Fatal("MDEL02_RECEIPT_REGISTER", err)
 			}
 			r := httptest.NewRequest("GET", "/api/v1/t/"+c02cTenant+"/merchant-deletion/"+c02cKeyID, nil)
+			if name == "other-tenant" {
+				r.URL.Path = strings.Replace(r.URL.Path, c02cTenant, c02cOtherTenant, 1)
+			}
+			if name == "invalid-request" {
+				r.URL.Path = strings.Replace(r.URL.Path, c02cKeyID, "invalid", 1)
+			}
 			r.RemoteAddr = "192.0.2.8:12345"
 			r.AddCookie(&http.Cookie{Name: SessionCookie, Value: f.sessionToken})
 			if name == "key" {
@@ -306,12 +316,21 @@ func TestMerchantReceiptRegisteredReadRevalidates(t *testing.T) {
 				expected = 404
 			case "key", "customer", "stale":
 				expected = 401
+			case "invalid-request":
+				expected = 400
 			}
 			if w.Code != expected || called != (expected == 200) || w.Header().Get("Cache-Control") != "no-store" {
 				t.Fatalf("MDEL02_RECEIPT_READ: status=%d called=%v body=%s", w.Code, called, w.Body.String())
 			}
-			if name == "requester" && (q.calls != 1 || len(q.args) != 4) {
+			if (name == "requester" || name == "current-owner") && (q.calls != 1 || len(q.args) != 4) {
 				t.Fatal("MDEL02_RECEIPT_READ_NOT_REVALIDATED", q.calls)
+			}
+			if called {
+				for i, expected := range []string{c02cTenant, c02cKeyID, c02cUser, c02cSession} {
+					if q.args[i].(pgtype.UUID).String() != expected {
+						t.Fatal("MDEL02_RECEIPT_READ_BINDING", i)
+					}
+				}
 			}
 		})
 	}

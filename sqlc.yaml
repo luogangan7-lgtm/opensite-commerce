@@ -69,6 +69,7 @@ sql:
       - "migrations/pending/b-pricing-invalidation_publication_candidates.sql"
       - "migrations/pending/mdel00-caller-keys_caller_key_constraints.sql"
       - "migrations/pending/mdel01-lifecycle_tenant_lifecycle.sql"
+      - "migrations/pending/mdel02-tenant-guard_tenant_lifecycle_cancel_guard.sql"
       - "migrations/pending/mdel02-identity_identity_merchant_deletion.sql"
     queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant", "queries/pricing", "queries/catalog"]
     gen:

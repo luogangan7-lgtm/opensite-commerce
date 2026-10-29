@@ -12,10 +12,35 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx"
 )
 
 func merchantStepUpSpec() platform.RouteSpec {
 	return platform.RouteSpec{OperationID: "merchantDeletionStepUp", Method: "POST", Pattern: "/api/v1/t/{tenant_id}/merchant-deletion/step-up", Access: platform.AdminSession, Scope: "tenant:delete", MaxBodySize: 4096}
+}
+
+// MerchantReceiptRoute is a dormant composition port: DataRights supplies its
+// closed metadata reader and calls RevalidateTransaction inside that read's
+// tenant transaction. Routes() excludes it until the activation gate.
+func (h *Handler) MerchantReceiptRoute(metadata http.Handler) platform.Route {
+	spec := platform.RouteSpec{OperationID: "getMerchantDeletion", Method: "GET", Pattern: "/api/v1/t/{tenant_id}/merchant-deletion/{request_id}", Access: platform.AdminSession, Scope: "tenant:delete"}
+	return platform.Route{Spec: spec, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		p, err := h.admitted(r.Context(), r, spec)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if !tenanttx.ValidTenantID(r.PathValue("request_id")) {
+			writeError(w, r, apperrors.New(400, "invalid_request", "Request must be a canonical UUID"))
+			return
+		}
+		if p.Kind != "session" || metadata == nil {
+			writeError(w, r, scopeDenied())
+			return
+		}
+		metadata.ServeHTTP(w, r)
+	})}
 }
 
 func merchantReceiptRoute(spec platform.RouteSpec) bool {

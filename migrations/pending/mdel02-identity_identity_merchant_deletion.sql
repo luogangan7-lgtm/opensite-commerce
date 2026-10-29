@@ -1,5 +1,5 @@
 -- stable-id: mdel02-identity
--- depends-on: mdel01-lifecycle, h4-identity
+-- depends-on: mdel02-tenant-guard, h4-identity
 -- module: identity
 -- Responsibility: merchant proof custody and target-tenant Identity admission.
 -- Dependencies: Tenant lifecycle public fence and authorization capabilities.
@@ -17,7 +17,7 @@ BEGIN
 END $role$;
 GRANT USAGE ON SCHEMA app TO app_identity_merchant_executor;
 CREATE TABLE app.identity_merchant_proofs (
- tenant_id uuid NOT NULL REFERENCES app.tenants(id),
+ tenant_id uuid NOT NULL REFERENCES app.tenants(id) ON DELETE CASCADE,
  id uuid NOT NULL DEFAULT uuidv7(),
  user_id uuid NOT NULL REFERENCES app.users(id),
  session_id uuid NOT NULL REFERENCES app.auth_sessions(id) ON DELETE CASCADE,
@@ -58,7 +58,7 @@ BEGIN
  PERFORM app.tenant_lifecycle_read_fence(p_tenant);
  SELECT state,phase INTO STRICT st,ph FROM app.tenant_lifecycles WHERE tenant_id=p_tenant AND id=p_tenant;
  IF st='active' THEN RETURN true; END IF;
- IF st='cooling_off' OR st='failed' AND ph IN('none','preconditions') THEN
+ IF st='cooling_off' OR (st='failed' AND ph IN('none','preconditions')) THEN
   RETURN p_kind='session' AND p_scope IN('catalog:read','orders:read','quotes:read','tenant:delete');
  END IF;
  RETURN false;
@@ -122,7 +122,7 @@ BEGIN
  IF EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id
   JOIN app.tenant_memberships m ON m.tenant_id=l.tenant_id AND m.user_id=p_user
   WHERE l.tenant_id=p_tenant AND l.id=p_tenant AND l.request_id=p_request
-  AND l.state IN('cooling_off','executing','failed') AND t.status='active' AND m.role='owner' AND m.status='active') THEN
+  AND l.state IN('active','cooling_off','executing','failed') AND t.status='active' AND m.role='owner' AND m.status='active') THEN
   RETURN true;
  END IF;
  RETURN EXISTS(SELECT FROM app.tenant_lifecycle_events e JOIN app.tenant_lifecycle_receipts r
@@ -153,18 +153,6 @@ BEGIN
  EXECUTE replace(def,body,regexp_replace(body,'\mBEGIN\M',
   'BEGIN IF NOT app.auth_merchant_scope(p_tenant,p_kind,p_scope) THEN RETURN false; END IF;'));
 END $wrap$;
--- Keep Tenant's existing invalid-destructive-cancel conflict classification.
--- Identity now fences interactive authority in that phase, so reject the
--- impossible transition before owner revalidation. This opens no authority:
--- the primitive stays ungranted and request/normal-cancel checks are unchanged.
-DO $phase_guard$
-DECLARE def text; body text;
-BEGIN
- SELECT pg_get_functiondef(p.oid),p.prosrc INTO STRICT def,body FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-  WHERE n.nspname='app' AND p.proname='tenant_lifecycle_transition';
- EXECUTE replace(def,body,replace(body,'now_db:=clock_timestamp();',
-  'now_db:=clock_timestamp(); IF p_operation=''cancel'' AND p_request IS NOT NULL AND l.phase=''executing'' THEN IF l.request_id IS DISTINCT FROM p_request OR l.epoch IS DISTINCT FROM p_epoch THEN RAISE EXCEPTION ''stale lifecycle operation'' USING ERRCODE=''55000''; END IF; RAISE EXCEPTION ''tenant deletion cancellation closed'' USING ERRCODE=''55000''; END IF;'));
-END $phase_guard$;
 DO $owners$
 DECLARE f record;
 BEGIN

@@ -172,19 +172,29 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 		if keyCredential {
 			missing = unauthenticated()
 		}
-		if err != nil {
-			if !keyCredential && merchantReceiptRoute(spec) && errors.Is(err, contract.ErrNotFound) {
-				actor, _ := login.ActorFromContext(ctx)
-				allowed, receiptErr := h.service.MerchantReceipt(ctx, tenant, r.PathValue("request_id"), actor)
-				if receiptErr != nil {
-					return nil, authUnavailable()
-				}
-				if allowed {
-					snapshot.ReceiptOnly = true
-					snapshot.Scopes = []string{"tenant:delete"}
-					return context.WithValue(ctx, principalKey{}, principal{owner: h, spec: spec, snapshot: snapshot, token: token, session: session}), nil
-				}
+		if !keyCredential && merchantReceiptRoute(spec) {
+			if !tenanttx.ValidTenantID(r.PathValue("request_id")) {
+				return nil, apperrors.New(400, "invalid_request", "Request must be a canonical UUID")
 			}
+			if err != nil && !errors.Is(err, contract.ErrNotFound) {
+				return nil, authorityError(err, missing)
+			}
+			if err == nil && (membership.UserID != snapshot.UserID || membership.TenantID != tenant || membership.Role != "owner") {
+				return nil, scopeDenied()
+			}
+			actor, _ := login.ActorFromContext(ctx)
+			allowed, receiptErr := h.service.MerchantReceipt(ctx, tenant, r.PathValue("request_id"), actor)
+			if receiptErr != nil {
+				return nil, authUnavailable()
+			}
+			if !allowed {
+				return nil, tenantNotFound()
+			}
+			snapshot.ReceiptOnly = true
+			snapshot.Scopes = []string{"tenant:delete"}
+			return context.WithValue(ctx, principalKey{}, principal{owner: h, spec: spec, snapshot: snapshot, token: token, session: session}), nil
+		}
+		if err != nil {
 			return nil, authorityError(err, missing)
 		}
 		if membership.UserID != snapshot.UserID || membership.TenantID != tenant {
@@ -305,8 +315,11 @@ func (h *Handler) ResolveTransactionAuthorization(ctx context.Context, r *http.R
 			_ = user.Scan(p.UserID)
 			_ = session.Scan(p.CredentialID)
 			ok, err := q.MerchantReceiptAllowed(ctx, db.MerchantReceiptAllowedParams{TenantID: tenant, RequestID: req, UserID: user, SessionID: session})
-			if err != nil || !ok {
-				return unauthenticated()
+			if err != nil {
+				return authUnavailable()
+			}
+			if !ok {
+				return scopeDenied()
 			}
 			return nil
 		}, nil
@@ -325,7 +338,7 @@ func (h *Handler) ResolveTransactionAuthorization(ctx context.Context, r *http.R
 			return authUnavailable()
 		}
 		if err := revalidator.Revalidate(txctx, q, tenant, grant); err != nil {
-			return authorityError(err, unauthenticated())
+			return authorityError(err, scopeDenied())
 		}
 		return nil
 	}, nil

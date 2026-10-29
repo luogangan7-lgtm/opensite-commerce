@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"net/http"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
@@ -18,6 +19,12 @@ import (
 
 func (m *LoginModule) MerchantDeletionStepUpRoute() platform.Route {
 	return m.handler.MerchantStepUpRoute()
+}
+
+// MerchantDeletionReceiptRoute composes the future DataRights metadata reader;
+// its transaction uses the Router's sealed receipt revalidation callback.
+func (m *LoginModule) MerchantDeletionReceiptRoute(metadata http.Handler) platform.Route {
+	return m.handler.MerchantReceiptRoute(metadata)
 }
 
 // ConsumeMerchantProof must share the request/cancel transition transaction.

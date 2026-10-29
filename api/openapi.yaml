@@ -357,6 +357,34 @@ paths:
         '428': {$ref: '#/components/responses/PreconditionRequired'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
         default: {$ref: '#/components/responses/Problem'}
+  /api/v1/t/{tenant_id}/merchant-deletion/{request_id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - name: request_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Tenant]
+      operationId: getMerchantDeletion
+      x-opensite-status: planned
+      x-opensite-access: AdminSession
+      x-required-scope: tenant:delete
+      description: Dormant metadata-only status contract for the current owner, or the authenticated frozen requester of a terminal receipt after detachment. The live session and exact tenant/request binding are revalidated inside the read transaction. No contact or export capability is returned. Explicit MDEL-26 composition is required.
+      security: [{adminSession: []}]
+      responses:
+        '200':
+          description: Closed deletion metadata only, with no personal data or capability.
+          headers:
+            Cache-Control: {schema: {type: string, const: no-store}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MerchantDeletionMetadata'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Problem'}
   /api/v1/t/{tenant_id}/api-keys:
     post:
       tags: [Identity]

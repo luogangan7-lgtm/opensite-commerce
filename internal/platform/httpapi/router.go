@@ -178,7 +178,7 @@ func (s *Router) registerWithContract(spec RouteSpec, handler http.Handler, cont
 				ctx = context.WithValue(ctx, authorizedActorKey{}, actor)
 			}
 
-			if isWrite(spec.Method) && strings.Contains(spec.Pattern, "{tenant_id}") {
+			if (isWrite(spec.Method) || spec.OperationID == "getMerchantDeletion" && spec.Method == "GET") && strings.Contains(spec.Pattern, "{tenant_id}") {
 				if resolver, ok := s.auth.(TransactionAuthorizationResolver); ok {
 					check, err := resolver.ResolveTransactionAuthorization(ctx, r, spec)
 					if err != nil {

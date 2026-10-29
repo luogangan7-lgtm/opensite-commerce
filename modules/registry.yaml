@@ -97,6 +97,10 @@
           "status": "implemented"
         },
         {
+          "operation_id": "getMerchantDeletion",
+          "status": "planned"
+        },
+        {
           "operation_id": "requestMerchantDeletion",
           "status": "planned"
         }
@@ -1931,6 +1935,7 @@
         "tenant_lifecycle_events"
       ]
     },
+    {"file":"migrations/pending/mdel02-tenant-guard_tenant_lifecycle_cancel_guard.sql","owner":"tenant","touches_tables":["tenant_lifecycles","tenant_lifecycle_receipts","tenant_lifecycle_events","tenant_memberships"]},
     {"file":"migrations/pending/mdel02-identity_identity_merchant_deletion.sql","owner":"identity","touches_tables":["identity_merchant_proofs","users","auth_sessions","tenant_memberships","tenant_lifecycles","tenant_lifecycle_events","tenant_lifecycle_receipts"]}
   ]
 }
