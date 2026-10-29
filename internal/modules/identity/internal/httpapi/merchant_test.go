@@ -21,13 +21,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -244,11 +244,11 @@ type merchantReceiptDB struct {
 	idle    int64
 }
 
-func (q *merchantReceiptDB) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+func (q *merchantReceiptDB) Exec(_ context.Context, sql string, args ...any) (pgxadapter.CommandTag, error) {
 	if strings.Contains(sql, "LoginSetTransactionIdle") {
 		q.idle = args[0].(int64)
 	}
-	return pgconn.CommandTag{}, nil
+	return pgxadapter.CommandTag{}, nil
 }
 
 func (q *merchantReceiptDB) QueryRow(_ context.Context, _ string, args ...any) pgx.Row {
