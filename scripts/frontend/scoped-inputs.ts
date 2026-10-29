@@ -279,7 +279,8 @@ export function scopeInputs(scope: RendererScope, root = process.cwd()): string[
     'real-backend': [...storefrontConfig, ...commercePages.map(page => `web/storefront/src/pages/${page}`),
       'tests/frontend/real-backend.spec.ts', 'scripts/frontend/real-proxy.ts', 'scripts/frontend/start-real-backend.py',
       'scripts/e2e/seed.sql', 'scripts/e2e/purchase.py', 'scripts/ops_deploy.py',
-      'scripts/frontend/notification-sink.py',
+      'scripts/frontend/notification-sink.py', 'scripts/frontend/real-admin.ts',
+      'web/admin/index.html', 'web/admin/package.json', 'web/admin/vite.config.ts',
       'scripts/start_storefront_ssr.sh', 'cmd/bootstrap-admin/main.go', ...reader],
   };
   if (!(scope in registry)) throw new Error(`Unknown renderer scope: ${scope}`);

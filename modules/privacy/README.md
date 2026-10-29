@@ -128,8 +128,9 @@ File bytes have their own policies, independently of DB storage-key columns.
 The current source inventory has four kinds: media originals, upload staging,
 customer export JSON and export temporary files. Explicit `privacy-artifact`
 annotations distinguish temporary creation from final Rename publication at the
-two filesystem writer implementations. The gate scans production
-`internal/**/*.go` filesystem-create/OpenFile/Rename calls, rejects
+two filesystem writer implementations. The gate scans production Go files in
+all first-party package roots (`cmd/`, `internal/`, the module root and other
+package directories) for filesystem-create/OpenFile/Rename calls, rejects
 unannotated writer calls, and reconciles artifact IDs/source paths in both
 directions. OS writers must be called directly: aliases, method values and
 callback/return references fail closed even if annotated. Typed dot-imported

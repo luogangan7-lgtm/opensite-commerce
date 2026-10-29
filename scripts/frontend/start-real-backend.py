@@ -5,6 +5,7 @@ Astro holds HTTP capabilities only. Playwright owns this process and its childre
 """
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import signal
@@ -24,6 +25,9 @@ from e2e import purchase
 def main():
     if os.environ.get('GITHUB_ACTIONS') != 'true' or not os.environ.get('GITHUB_RUN_ID'):
         raise RuntimeError('Real visual stack requires GitHub Actions')
+    rma_tenant = 'c2300001-0000-4000-8000-000000000001'
+    rma_site = 'c2300003-0000-4000-8000-000000000001'
+    rma_sku = 'c2310008-0000-4000-8000-000000000001'
     source = urlsplit(os.environ['DATABASE_URL'])
     if source.scheme not in ('postgres', 'postgresql') or source.hostname not in ('postgres', '127.0.0.1', 'localhost'):
         raise RuntimeError('Real visuals require the disposable CI PostgreSQL service')
@@ -37,11 +41,12 @@ def main():
     owned.mkdir(parents=True, exist_ok=True)
 
     def query(sql):
-        result = subprocess.run(['psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1'], input=sql,
+        result = subprocess.run(['psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate'], input=sql,
                                 text=True, capture_output=True, env={**os.environ, **pg}, timeout=60)
         if result.returncode:
             # SQL can contain generated passwords. Never include statement/DSN in diagnostics.
-            raise RuntimeError('Real visual seed/query failed')
+            code = re.search(r'ERROR:\s+([A-Z0-9]{5})\b', result.stderr)
+            raise RuntimeError('Real visual seed/query failed SQLSTATE=' + (code.group(1) if code else 'unknown'))
         return result.stdout
 
     def run(command, env):
@@ -80,7 +85,15 @@ def main():
         run(['bash', 'scripts/migrate_river.sh'], migration)
         run(['bash', 'scripts/migrate.sh'], migration)
         for seed in ['tests/fixtures/storefront_seed.sql', 'scripts/e2e/seed.sql']:
-            query((ROOT / seed).read_text())
+            text = (ROOT / seed).read_text()
+            # Separate the new RMA tenant/hostname from historical bigint fixtures.
+            # Reuse the exact existing catalog/rule seeds with namespaced identities.
+            query(text.replace("'localhost'", "'visual-main.localhost.test'"))
+            rma_seed = text.replace('c090', 'c230').replace('c240', 'c231')
+            rma_seed = rma_seed.replace("'localhost'", "'visual-rma.localhost.test'")
+            rma_seed = rma_seed.replace("'127.0.0.1'", "'localhost'").replace('.c09.test', '.rma230.test')
+            rma_seed = rma_seed.replace("'c09d-e2e'", "'visual-rma230-e2e'")
+            query(rma_seed)
         passwords = {kind: secrets.token_hex(32) for kind in LOGIN_ROLES}
         names = ','.join("'" + login + "'" for login, _ in LOGIN_ROLES.values())
         if query(f'SELECT count(*) FROM pg_roles WHERE rolname IN ({names});') != '0\n':
@@ -115,9 +128,17 @@ def main():
         spawn([str(owned / 'api')], env)
         wait('http://127.0.0.1:4180/healthz', 204)
         purchase.publish(query, {}, 'http://127.0.0.1:4180')
+        rma_env = {**env, 'OSC_API_ADDR': '127.0.0.1:4185',
+                   'OPENSITE_STOREFRONT_TENANT_ID': rma_tenant, 'OPENSITE_SERVING_REFRESH_TENANTS': rma_tenant,
+                   'OPENSITE_CHECKOUT_RULE_METADATA': json.dumps({'Profiles': {rma_tenant: 'c2310014-0000-4000-8000-000000000001'},
+                     'SKUs': {rma_tenant: {f'c2310008-0000-4000-8000-{n:012d}': {'TaxCategory': 'standard', 'WeightG': 100} for n in (1, 2)}}})}
+        spawn([str(owned / 'api')], rma_env)
+        wait('http://127.0.0.1:4185/healthz', 204)
+        purchase.publish(query, {}, 'http://127.0.0.1:4185', tenant=rma_tenant, site=rma_site)
         # publish() revokes its temporary issuer membership in finally. B2B's
         # separately authorized test staff identity needs its own tenant binding.
         query(f"INSERT INTO app.tenant_memberships(tenant_id,user_id,role) SELECT '{purchase.TENANT}',id,'owner' FROM app.users WHERE email='visual-owner@example.test';")
+        query(f"INSERT INTO app.tenant_memberships(tenant_id,user_id,role) SELECT '{rma_tenant}',id,'owner' FROM app.users WHERE email='visual-owner@example.test';")
         # Reuse the existing MVP B2B opt-in composition on the same owned DB.
         # Its existing-order checkout must not replace the cart checkout above.
         b2b = {**env, 'OSC_API_ADDR': '127.0.0.1:4184', 'OPENSITE_STOREFRONT_KEY': '',
@@ -127,6 +148,7 @@ def main():
         spawn([str(owned / 'api')], b2b)
         wait('http://127.0.0.1:4184/healthz', 204)
         query(f"SELECT set_config('app.tenant_id','{purchase.TENANT}',false); SELECT app.inventory_adjust('{purchase.SKU}',1000,'Visual CI stock','c4490001-0000-4000-8000-000000000001','inbound');")
+        query(f"SELECT set_config('app.tenant_id','{rma_tenant}',false); SELECT app.inventory_adjust('{rma_sku}',1000,'Visual RMA stock','c4490001-0000-4000-8000-000000000002','inbound');")
         runtime = {'pg': pg, 'cookieKey': secrets.token_urlsafe(32), 'control': secrets.token_urlsafe(32),
                    'staffPassword': boot_env['OSC_BOOTSTRAP_PASSWORD'],
                    'fakeWebhookKey': env['OPENSITE_FAKE_WEBHOOK_KEY']}
@@ -144,39 +166,63 @@ def main():
         # identical to deployment; trust this disposable certificate only in this lane.
         certificate, private_key = owned / 'localhost.pem', owned / 'localhost-key.pem'
         run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
-             '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1',
+             '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost',
              '-keyout', str(private_key), '-out', str(certificate)], env)
         private_key.chmod(0o600)
+        spawn(['bun', 'scripts/frontend/real-admin.ts'], env)
+        wait('https://127.0.0.1:4350/login', context=ssl.create_default_context(cafile=str(certificate)))
         frontend.update(HOST='127.0.0.1', PORT='4349', OSC_COMMERCE_MODE='backend',
                         SERVER_CERT_PATH=str(certificate), SERVER_KEY_PATH=str(private_key),
                         OSC_READ_API_ORIGIN='http://127.0.0.1:4181', OSC_COMMERCE_API_ORIGIN='http://127.0.0.1:4181',
                         OSC_COMMERCE_SITE='https://127.0.0.1:4349', OSC_COMMERCE_COOKIE_KEY=runtime['cookieKey'], OPENSITE_FAKE_ACCOUNT_ID='c09d-e2e')
         spawn(['bash', 'scripts/start_storefront_ssr.sh'], frontend)
         wait('https://127.0.0.1:4349/products/canvas-tote', context=ssl.create_default_context(cafile=str(certificate)))
+        spawn(['bun', 'scripts/frontend/real-admin.ts'], {**env,
+              'VISUAL_ADMIN_PORT': '4352', 'VISUAL_ADMIN_UPSTREAM': 'http://127.0.0.1:4185'})
+        wait('https://localhost:4352/login', context=ssl.create_default_context(cafile=str(certificate)))
+        spawn(['bash', 'scripts/start_storefront_ssr.sh'], {**frontend, 'PORT': '4351',
+              'OSC_READ_API_ORIGIN': 'http://127.0.0.1:4185', 'OSC_COMMERCE_API_ORIGIN': 'http://127.0.0.1:4185',
+              'OSC_COMMERCE_SITE': 'https://localhost:4351', 'OPENSITE_FAKE_ACCOUNT_ID': 'visual-rma230-e2e'})
+        wait('https://localhost:4351/products/canvas-tote', context=ssl.create_default_context(cafile=str(certificate)))
         print('VISUAL-REAL: restricted Go + PostgreSQL 18.6 + transparent proxy + Astro ready', flush=True)
         while all(proc.poll() is None for proc in children):
             time.sleep(.2)
         raise RuntimeError('Real visual child exited unexpectedly')
     finally:
-        for proc in reversed(children):
-            proc.terminate()
-        for proc in reversed(children):
+        errors = []
+
+        def cleanup(label, action):
+            try:
+                action()
+            except Exception as error:
+                # Do not expose SQL, connection details, or process arguments.
+                errors.append(f'{label}: {type(error).__name__}')
+
+        def reap(proc):
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-        (owned / 'runtime.json').unlink(missing_ok=True)
-        (owned / 'localhost.pem').unlink(missing_ok=True)
-        (owned / 'localhost-key.pem').unlink(missing_ok=True)
+                cleanup('kill child', proc.kill)
+                cleanup('wait for killed child', proc.wait)
+
+        for proc in reversed(children):
+            cleanup('terminate child', proc.terminate)
+        for proc in reversed(children):
+            cleanup('wait for child', lambda: reap(proc))
+        for name in ('runtime.json', 'localhost.pem', 'localhost-key.pem'):
+            cleanup(f'remove {name}', lambda: (owned / name).unlink(missing_ok=True))
         pg['PGDATABASE'] = source.path[1:]
-        query(f'DROP DATABASE {database} WITH (FORCE);')
-        if bootstrap_owned:
-            query('DROP ROLE visual_bootstrap;')
-        # Group roles are cluster-global: remove ONLY logins created by this invocation,
-        # after its database/CONNECT grants are gone, before the writer's second launch.
-        if provisioned:
-            query(''.join(f'DROP ROLE {login};' for login, _ in LOGIN_ROLES.values()))
+        roles = (['visual_bootstrap'] if bootstrap_owned else []) + (
+            [login for login, _ in LOGIN_ROLES.values()] if provisioned else [])
+        # Remove database ACL dependencies even if DROP DATABASE later fails.
+        for role in roles:
+            cleanup(f'revoke connect {role}', lambda: query(f'REVOKE CONNECT ON DATABASE {database} FROM {role};'))
+        cleanup('drop database', lambda: query(f'DROP DATABASE {database} WITH (FORCE);'))
+        for role in roles:
+            cleanup(f'drop role {role}', lambda: query(f'DROP ROLE {role};'))
+        if errors:
+            raise RuntimeError('Real visual cleanup failed: ' + '; '.join(errors))
+
 
 
 if __name__ == '__main__':

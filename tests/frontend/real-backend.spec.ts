@@ -782,3 +782,538 @@ test.describe('VISUAL-REAL #235', () => {
     expect(await page.evaluate(value => document.documentElement.outerHTML.includes(value), proof)).toBe(false);
   });
 });
+
+// #230 uses a fresh tenant per data fixture: other visual suites cannot change
+// its list, pagination cursor or empty state. Historical dates are never masked.
+const staffSite = 'https://127.0.0.1:4350';
+function staffOrders(count = 1, long = false) {
+  const target = randomUUID(), product = randomUUID(), variant = randomUUID();
+  const secondVariant = randomUUID();
+  const ids = Array.from({ length: count }, () => randomUUID());
+  const number = long ? 9007199254740991 : 723001;
+  const code = long ? 'LONG-SKU-'.repeat(28) + 'END' : 'STAFF-CANVAS-TOTE';
+  sql(`BEGIN; INSERT INTO app.tenants(id,name,settlement_currency) VALUES('${target}','Visual staff fixture','USD');
+    INSERT INTO app.tenant_memberships(tenant_id,user_id,role)
+      SELECT '${target}',id,'owner' FROM app.users WHERE email='visual-owner@example.test';
+    SELECT set_config('app.tenant_id','${target}',true);
+    INSERT INTO app.products(tenant_id,id,product_code,lifecycle_status) VALUES('${target}','${product}','staff-visual','ready');
+    INSERT INTO app.product_variants(tenant_id,id,product_id,sku,option_key,lifecycle_status)
+      VALUES('${target}','${variant}','${product}','${code}','default','ready');
+    SELECT app.inventory_adjust('${variant}',1000,'Visual staff stock',gen_random_uuid(),'inbound');
+    ${long ? `INSERT INTO app.product_variants(tenant_id,id,product_id,sku,option_key,lifecycle_status)
+      VALUES('${target}','${secondVariant}','${product}','SECOND-LINE','second','ready');
+      SELECT app.inventory_adjust('${secondVariant}',1,'Visual second stock',gen_random_uuid(),'inbound');` : ''}
+    ${ids.map((id, index) => `DO $staff$ DECLARE r app.inventory_reservations; r2 app.inventory_reservations; BEGIN
+      r:=app.inventory_reserve('${variant}',1,'order','${id}',gen_random_uuid()::text,3600);
+      IF ${long} THEN r2:=app.inventory_reserve('${secondVariant}',1,'order','${id}',gen_random_uuid()::text,3600); END IF;
+      SET LOCAL ROLE app_orders_executor;
+      INSERT INTO app.orders(tenant_id,id,order_number,creation_key,request_hash,guest_contact,currency,
+        items_net_minor,tax_minor,shipping_minor,shipping_snapshot,total_minor,created_at)
+      VALUES('${target}','${id}',${number - index},gen_random_uuid()::text,sha256('${id}'::bytea),
+        '{"email":"staff-visual@example.test"}','USD',${long ? '9223372036854775807' : '3140'},0,0,'{}',
+        ${long ? '9223372036854775807' : '3140'},'2026-01-02T12:00:00Z'::timestamptz-${index}*interval '1 second');
+      INSERT INTO app.order_lines(tenant_id,id,order_id,sku_id,sku,quantity,unit_price_minor,line_net_minor,
+        line_tax_minor,line_total_minor,reservation_id,tax_snapshot)
+      VALUES('${target}',${long ? "'00000001-0000-4000-8000-000000000001'" : "'" + id + "'"}::uuid,'${id}','${variant}','${code}',1,
+        ${long ? '9223372036854775807' : '3140'},${long ? '9223372036854775807' : '3140'},0,
+        ${long ? '9223372036854775807' : '3140'},r.id,'{}');
+      IF ${long} THEN
+        INSERT INTO app.order_lines(tenant_id,id,order_id,sku_id,sku,quantity,unit_price_minor,line_net_minor,
+          line_tax_minor,line_total_minor,reservation_id,tax_snapshot)
+        VALUES('${target}','ffffffff-ffff-4fff-bfff-ffffffffffff','${id}','${secondVariant}','SECOND-LINE',1,0,0,0,0,r2.id,'{}');
+      END IF;
+      UPDATE app.orders SET sealed=true,updated_at=created_at WHERE tenant_id='${target}' AND id='${id}';
+      RESET ROLE;
+    END $staff$;`).join('\n')}
+    COMMIT;`);
+  return { tenant: target, product, variant, ids, number: String(number), code,
+    path: `/t/${target}/orders`, api: `/api/v1/t/${target}/orders` };
+}
+// Orders' existing real seed command owns reservation validation, snapshots,
+// number allocation, sealing and outbox. Catalog API cannot create legacy spaced
+// SKU text and Orders has no title snapshot; seed that catalog boundary only.
+function domainMultilineOrder() {
+  const fixture = staffOrders(0), id = randomUUID();
+  const code = 'Canvas tote with reinforced shoulder straps and a roomy everyday compartment for books groceries and weekend travel essentials in natural cotton canvas';
+  sql(`BEGIN; SELECT set_config('app.tenant_id','${fixture.tenant}',true);
+    UPDATE app.product_variants SET sku='${code}' WHERE tenant_id='${fixture.tenant}' AND id='${fixture.variant}';
+    DO $domain$ DECLARE r app.inventory_reservations; BEGIN
+      r:=app.inventory_reserve('${fixture.variant}',1,'order','${id}',gen_random_uuid()::text,3600);
+      PERFORM app.orders_create('${id}',gen_random_uuid()::text,sha256('${id}'::bytea),NULL,
+        '{"email":"staff-visual@example.test"}','USD',0,'{}',
+        (SELECT jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'sku_id',v.id,'sku',v.sku,
+          'quantity',1,'unit_price_minor',3140,'line_net_minor',3140,'line_tax_minor',0,
+          'line_total_minor',3140,'reservation_id',r.id,'tax_snapshot','{"category":"standard"}'::jsonb))
+         FROM app.product_variants v WHERE v.tenant_id='${fixture.tenant}' AND v.id='${fixture.variant}'),'[]');
+    END $domain$; COMMIT;`);
+  return { ...fixture, ids: [id], number: '1', code };
+}
+async function staffLogin(page: Page, path: string, origin = staffSite) {
+  await page.goto(origin + path);
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+  await page.getByLabel('Email', { exact: true }).fill('visual-owner@example.test');
+  await page.getByLabel('Password', { exact: true }).fill(runtime().staffPassword);
+  const signedIn = page.waitForResponse(r => new URL(r.url()).pathname === '/api/v1/auth/login' && r.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  expect((await signedIn).status()).toBe(201);
+  await expect(page).toHaveURL(origin + path);
+}
+async function staffSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][number], masks: Locator[] = []) {
+  await page.evaluate(async () => { await document.fonts.ready; });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'staff fits viewport').toBe(true);
+  const report = await new AxeBuilder({ page }).analyze();
+  expect(report.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
+  await expect(page.getByText('CONTRACT FIXTURE', { exact: false })).toHaveCount(0);
+  const maskColor = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
+  await expect(page).toHaveScreenshot(`real-230-${state}.png`, { fullPage: true, mask: masks, maskColor });
+}
+async function staffListReady(page: Page) {
+  await expect(page.getByRole('table', { name: 'Order list', exact: true })).toHaveAttribute('aria-busy', 'false');
+}
+
+test.describe('VISUAL-REAL #230', () => {
+  test.afterEach(async ({ page }) => { await control(page, 'release'); });
+
+  test('real staff normal list/detail are read-only with exact amounts and persisted ETag', async ({ page }) => {
+    const fixture = staffOrders();
+    await staffLogin(page, fixture.path); await staffListReady(page);
+    const writes: string[] = [];
+    page.on('request', request => {
+      if (new URL(request.url()).pathname.startsWith(fixture.api) && !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(request.method());
+    });
+    const listResponse = await page.request.get(staffSite + fixture.api);
+    expect(listResponse.status()).toBe(200);
+    expect((await listResponse.json()).items).toEqual([expect.objectContaining({ id: fixture.ids[0], order_number: 723001, total_minor: '3140', state: 'pending_payment' })]);
+    await expect(page.getByRole('link', { name: fixture.number, exact: true })).toBeVisible();
+    await staffSnapshot(page, 'list');
+    const read = page.waitForResponse(r => new URL(r.url()).pathname === `${fixture.api}/${fixture.ids[0]}`);
+    await page.getByRole('link', { name: fixture.number, exact: true }).click();
+    const response = await read, detail = await response.json();
+    expect(response.status()).toBe(200); expect(response.headers().etag).toBe(`"${detail.version}"`);
+    expect(detail.lines).toEqual([expect.objectContaining({ sku_code: fixture.code, quantity: 1, line_total_minor: '3140' })]);
+    expect(detail.total_minor).toBe('3140'); expect(detail).not.toHaveProperty('guest_contact');
+    await expect(page.getByRole('heading', { name: `Order ${fixture.number}`, exact: true })).toBeVisible();
+    await expect(page.getByRole('cell', { name: fixture.code, exact: true })).toBeVisible();
+    const main = page.getByRole('main');
+    await expect(main.getByRole('button')).toHaveCount(0); await expect(main.getByRole('form')).toHaveCount(0);
+    await expect(main.locator('input,textarea,select,[contenteditable="true"]')).toHaveCount(0);
+    await staffSnapshot(page, 'detail'); expect(writes).toEqual([]);
+    console.log('VISUAL-230 write conflict/disabled mutation N/A: no admin order write UI (read-only contract #52)');
+  });
+
+  test('real staff long safe order number, bigint money and two snapshot lines stay in the scroll region', async ({ page }) => {
+    const fixture = staffOrders(1, true);
+    expect(fixture.code.length).toBe(255);
+    await staffLogin(page, fixture.path); await staffListReady(page);
+    await expect(page.getByRole('link', { name: fixture.number, exact: true })).toBeVisible();
+    await staffSnapshot(page, 'long-list');
+    await page.getByRole('link', { name: fixture.number, exact: true }).click();
+    await expect(page.getByRole('heading', { name: `Order ${fixture.number}`, exact: true })).toBeVisible();
+    const table = page.getByRole('table', { name: 'Order lines', exact: true });
+    await expect(table.getByRole('row')).toHaveCount(3);
+    await expect(table.getByRole('cell', { name: fixture.code, exact: true })).toBeVisible();
+    await expect(table.getByRole('cell', { name: 'SECOND-LINE', exact: true })).toBeVisible();
+    await expect(page.getByRole('main')).toContainText('USD 92,233,720,368,547,758.07');
+    const region = page.getByRole('region', { name: 'Order lines', exact: true });
+    await region.focus(); await expect(region).toBeFocused();
+    await staffSnapshot(page, 'long-detail');
+    if (await region.evaluate(el => el.scrollWidth > el.clientWidth)) {
+      await page.keyboard.press('ArrowRight');
+      await expect.poll(() => region.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+    }
+  });
+
+  test('real empty tenant and keyset pagination retain disabled and enabled navigation', async ({ page }) => {
+    const empty = staffOrders(0);
+    await staffLogin(page, empty.path); await staffListReady(page);
+    await expect(page.getByText('No orders match this filter.', { exact: true })).toBeVisible();
+    for (const name of ['Previous page', 'Next page']) await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
+    await staffSnapshot(page, 'empty');
+    const fixture = staffOrders(27);
+    await page.goto(staffSite + fixture.path); await staffListReady(page);
+    await expect(page.getByRole('table', { name: 'Order list' }).getByRole('row')).toHaveCount(26);
+    const nextRead = page.waitForResponse(r => new URL(r.url()).pathname === fixture.api && new URL(r.url()).searchParams.has('cursor'));
+    await page.getByRole('button', { name: 'Next page', exact: true }).click();
+    const response = await nextRead; expect(response.status()).toBe(200);
+    const next = await response.json(); expect(next.items).toHaveLength(2);
+    expect(next.items.map((row: { id: string }) => row.id)).toEqual(fixture.ids.slice(25));
+    await staffListReady(page);
+    await expect(page.getByRole('button', { name: 'Previous page', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeDisabled();
+    await staffSnapshot(page, 'pagination');
+    await page.getByRole('button', { name: 'Previous page', exact: true }).click(); await staffListReady(page);
+    await expect(page.getByRole('link', { name: fixture.number, exact: true })).toBeVisible();
+  });
+
+  test('real staff loading and 503 reads expose safe retry without fixture fallback', async ({ page }) => {
+    const fixture = staffOrders();
+    await staffLogin(page, fixture.path); await staffListReady(page);
+    for (const detail of [false, true]) {
+      const api = fixture.api + (detail ? `/${fixture.ids[0]}` : '');
+      const path = fixture.path + (detail ? `/${fixture.ids[0]}` : '');
+      await fault(page, api, 'GET', 'hold'); await page.goto(staffSite + path);
+      await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBe(200);
+      if (detail) await expect(page.getByRole('status')).toHaveText('Loading order…');
+      else await expect(page.getByRole('table', { name: 'Order list' })).toHaveAttribute('aria-busy', 'true');
+      await staffSnapshot(page, detail ? 'detail-loading' : 'list-loading');
+      await control(page, 'release');
+      if (detail) await expect(page.getByRole('heading', { name: `Order ${fixture.number}`, exact: true })).toBeVisible();
+      else await staffListReady(page);
+      await fault(page, api, 'GET', '503');
+      const read = page.waitForResponse(r => new URL(r.url()).pathname === api);
+      await page.reload(); expect((await read).status()).toBe(503);
+      expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 200 });
+      await expect(page.getByRole('alert')).toHaveText('The service is temporarily unavailable. Try again later.Retry');
+      await expect(page.getByRole('table')).toHaveCount(0);
+      await staffSnapshot(page, detail ? 'order-detail-unavailable-503' : 'list-503');
+      await control(page, 'release');
+      await page.getByRole('button', { name: 'Retry', exact: true }).click();
+      if (detail) await expect(page.getByRole('heading', { name: `Order ${fixture.number}`, exact: true })).toBeVisible();
+      else await staffListReady(page);
+      await expect(page.getByRole('alert')).toHaveCount(0);
+    }
+  });
+
+  test('real staff guard, foreign order, viewer denial and DB-clock session expiry hide private data', async ({ page }) => {
+    const fixture = staffOrders(), other = staffOrders();
+    let reads = 0;
+    page.on('request', r => { if (new URL(r.url()).pathname.startsWith(fixture.api)) reads++; });
+    await page.goto(staffSite + fixture.path);
+    await expect(page).toHaveURL(/\/login$/); await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+    expect(reads).toBe(0); await staffSnapshot(page, 'unauthenticated');
+    await staffLogin(page, fixture.path); await staffListReady(page);
+    const own = await page.request.get(`${staffSite}${other.api}/${other.ids[0]}`);
+    expect(own.status()).toBe(200); // foreign id really exists; this staff owns both fixture tenants.
+    const foreignRead = page.waitForResponse(r => new URL(r.url()).pathname === `${fixture.api}/${other.ids[0]}`);
+    await page.goto(`${staffSite}${fixture.path}/${other.ids[0]}`);
+    expect((await foreignRead).status()).toBe(404);
+    await expect(page.getByRole('alert')).toContainText('Order not found or unavailable in this tenant.');
+    await expect(page.getByRole('table')).toHaveCount(0); await staffSnapshot(page, 'cross-tenant');
+    sql(`UPDATE app.tenant_memberships SET role='viewer' WHERE tenant_id='${fixture.tenant}'
+      AND user_id=(SELECT id FROM app.users WHERE email='visual-owner@example.test');`);
+    const denied = page.waitForResponse(r => new URL(r.url()).pathname === fixture.api);
+    await page.goto(staffSite + fixture.path); expect((await denied).status()).toBe(403);
+    await expect(page.getByRole('alert')).toContainText('This action is not allowed for your current session.');
+    await expect(page.getByRole('table')).toHaveCount(0); await staffSnapshot(page, 'permission-denied');
+    sql(`UPDATE app.tenant_memberships SET role='owner' WHERE tenant_id='${fixture.tenant}'
+      AND user_id=(SELECT id FROM app.users WHERE email='visual-owner@example.test');`);
+    await page.goto(`${staffSite}${fixture.path}/${fixture.ids[0]}`);
+    await expect(page.getByRole('heading', { name: `Order ${fixture.number}`, exact: true })).toBeVisible();
+    const session = await (await page.request.get(`${staffSite}/api/v1/auth/session`)).json();
+    expect(session.session_id).toMatch(/^[0-9a-f-]{36}$/);
+    sql(`WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AS n)
+      UPDATE app.auth_sessions SET created_at=stamp.n-interval '2 hours',last_seen_at=stamp.n-interval '1 hour',
+        expires_at=stamp.n-interval '1 second' FROM stamp WHERE id='${session.session_id}';`);
+    const expired = page.waitForResponse(r => new URL(r.url()).pathname === fixture.api);
+    await page.getByRole('navigation', { name: 'Store navigation' }).getByRole('link', { name: 'Orders', exact: true }).click();
+    expect((await expired).status()).toBe(401);
+    await expect(page.getByRole('status')).toHaveText('Your session expired. Sign in to continue.');
+    await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+    await expect(page.getByRole('table')).toHaveCount(0); await staffSnapshot(page, 'expired-session');
+    expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
+  });
+});
+
+
+test.describe('VISUAL-REAL #230 round5', () => {
+  test('real multiline order text wraps completely inside the visible line cell', async ({ page }) => {
+    const fixture = domainMultilineOrder();
+    await staffLogin(page, `${fixture.path}/${fixture.ids[0]}`);
+    const response = await page.request.get(`${staffSite}${fixture.api}/${fixture.ids[0]}`);
+    expect(response.status()).toBe(200);
+    const order = await response.json(), snapshot = order.lines[0];
+    expect(snapshot.sku_code).toBe(sql(`SELECT sku FROM app.product_variants WHERE tenant_id='${fixture.tenant}' AND id='${fixture.variant}';`));
+    expect(snapshot).toMatchObject({ title: null, quantity: 1, line_total_minor: '3140' });
+    expect(sql(`SELECT count(*) FROM app.outbox_events WHERE tenant_id='${fixture.tenant}' AND dedup_key='created:${fixture.ids[0]}';`)).toBe('1');
+    const cell = page.getByRole('cell', { name: fixture.code, exact: true });
+    await expect(cell).toBeVisible();
+    expect(await cell.innerText()).toBe(fixture.code);
+    const geometry = await cell.evaluate(node => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      const rects = [...range.getClientRects()].filter(r => r.width > 0 && r.height > 0);
+      const region = node.closest('[role="region"]')!.getBoundingClientRect();
+      return { lines: new Set(rects.map(r => r.top)).size,
+        visible: rects.every(r => r.left >= region.left && r.right <= region.right),
+        clipped: node.scrollHeight > node.clientHeight };
+    });
+    expect(geometry.lines, 'multi-word line item must genuinely wrap').toBeGreaterThan(1);
+    expect(geometry.visible, 'all wrapped text stays visible without horizontal clipping').toBe(true);
+    expect(geometry.clipped).toBe(false);
+    const times = page.getByRole('main').locator('time');
+    await expect(times).toHaveCount(2);
+    for (const [index, stamp] of [order.created_at, order.updated_at].entries()) {
+      await expect(times.nth(index)).toHaveAttribute('datetime', stamp);
+      await expect(times.nth(index)).toHaveText(stamp);
+    }
+    const metadata = times.first().locator('..');
+    await expect(metadata).toHaveText(`Created ${order.created_at} · Updated ${order.updated_at}`);
+    await staffSnapshot(page, 'multiline', [await runtimeMask(page, metadata, metadata)]);
+  });
+});
+
+// Masks own only a verified runtime metadata field or UUID cell; status/version/money stay compared.
+async function runtimeMask(page: Page, target: Locator, field: Locator) {
+  const box = await target.boundingBox();
+  const fieldBounds = await field.boundingBox();
+  if (!box || !fieldBounds) throw new Error('Missing runtime mask geometry');
+  const protectedBoxes: Box[] = [];
+  for (const locator of [page.getByRole('heading'), page.locator('.os-badge').locator('..'), page.locator('.admin-stack dd'),
+    page.locator('[data-completion-ready] dd').filter({ hasNotText: /^[0-9a-f-]{36}$/ })]) {
+    for (const element of await locator.all()) {
+      const bounds = await element.boundingBox(); if (bounds) protectedBoxes.push(bounds);
+    }
+  }
+  assertDateMaskBounds(box, fieldBounds, protectedBoxes);
+  return target;
+}
+// This candidate extends only one pixel beyond its independently measured field.
+// It need not touch money/status: containment itself must reject it.
+async function assertOversizedRuntimeMaskRejected(page: Page, field: Locator) {
+  const bounds = await field.boundingBox();
+  if (!bounds) throw new Error('Missing runtime field geometry');
+  await page.evaluate(box => {
+    const probe = document.createElement('div');
+    probe.dataset.visualMaskProbe = '';
+    Object.assign(probe.style, { position: 'fixed', left: `${box.x}px`, top: `${box.y}px`,
+      width: `${box.width + 1}px`, height: `${box.height}px`, pointerEvents: 'none' });
+    document.body.append(probe);
+  }, bounds);
+  try {
+    await expect(runtimeMask(page, page.locator('[data-visual-mask-probe]'), field))
+      .rejects.toThrow('Date mask extends outside time element');
+    console.info('VISUAL-230 expected RED: oversized runtime mask rejected against independent field bounds');
+  } finally {
+    await page.locator('[data-visual-mask-probe]').evaluate(node => node.remove());
+  }
+}
+// Exercise different legal glyph widths/precisions in CI, then restore the real API text.
+// A broad mask is separately rejected against the protected status/money geometry.
+async function assertStableRuntimeMask(page: Page, masks: Locator[], field: Locator, values: Locator, variants: string[][]) {
+  await page.evaluate(async () => { await document.fonts.ready; });
+  const original = await values.allTextContents();
+  const maskColor = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
+  const capture = () => page.screenshot({ fullPage: true, mask: masks, maskColor, animations: 'disabled', caret: 'hide' });
+  const before = await capture();
+  try {
+    for (const variant of variants) {
+      expect(variant).toHaveLength(original.length);
+      for (const [index, text] of variant.entries()) await values.nth(index).evaluate((node, value) => { node.textContent = value; }, text);
+      for (const mask of masks) await runtimeMask(page, mask, field);
+      const after = await capture();
+      if (!after.equals(before)) {
+        await test.info().attach('runtime-mask-before', { body: before, contentType: 'image/png' });
+        await test.info().attach('runtime-mask-after', { body: after, contentType: 'image/png' });
+      }
+      expect(after.equals(before), 'runtime field changes must not alter any unmasked pixel').toBe(true);
+    }
+  } finally {
+    for (const [index, text] of original.entries()) await values.nth(index).evaluate((node, value) => { node.textContent = value; }, text);
+  }
+}
+async function domainSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][number], order: {
+  state: string; order_number: number; version: number; created_at: string; updated_at: string;
+}) {
+  await page.reload();
+  await expect(page.getByRole('heading', { name: `Order ${order.order_number}`, exact: true })).toBeVisible();
+  await expect(page.locator('.os-badge')).toHaveText(order.state.replaceAll('_', ' '));
+  await expect(page.getByRole('main')).toContainText(`Version ${order.version}`);
+  await expect(page.getByRole('main')).toContainText('USD 57.80');
+  const times = page.getByRole('main').locator('time');
+  await expect(times).toHaveCount(2);
+  for (const [index, stamp] of [order.created_at, order.updated_at].entries()) {
+    await expect(times.nth(index)).toHaveAttribute('datetime', stamp);
+    await expect(times.nth(index)).toHaveText(stamp);
+  }
+  // Both inline times affect the position of the fixed Updated label. Mask their
+  // exact metadata field, verified to contain only those two timestamps/labels.
+  const metadata = times.first().locator('..');
+  expect(await metadata.evaluate(node => node.tagName)).toBe('P');
+  await expect(metadata.locator(':scope > *')).toHaveCount(2);
+  await expect(metadata).toHaveText(`Created ${order.created_at} · Updated ${order.updated_at}`);
+  const masks = [await runtimeMask(page, metadata, metadata)];
+  if (state === 'paid') {
+    await expect(runtimeMask(page, page.getByRole('main'), metadata)).rejects.toThrow('Date mask extends outside time element');
+    await assertOversizedRuntimeMaskRejected(page, metadata);
+    await page.evaluate(async () => { await document.fonts.ready; });
+    // Inject the former narrow-time mask: changing precision MUST expose its
+    // unmasked Updated-label movement before the repaired field mask is tested.
+    const narrow = await times.all();
+    const maskColor = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
+    const beforeNarrow = await page.screenshot({ fullPage: true, mask: narrow, maskColor });
+    try {
+      const changed = order.created_at.includes('.') ? order.created_at.replace(/\.\d+Z$/, 'Z') : order.created_at.replace('Z', '.123456Z');
+      await times.first().evaluate((node, value) => { node.textContent = value; }, changed);
+      const afterNarrow = await page.screenshot({ fullPage: true, mask: narrow, maskColor });
+      expect(afterNarrow.equals(beforeNarrow), 'fault witness: narrow time mask must be rejected by pixel invariance').toBe(false);
+      console.info('VISUAL-230 expected RED: narrow time mask moves the unmasked Updated label');
+    } finally {
+      await times.first().evaluate((node, value) => { node.textContent = value; }, order.created_at);
+    }
+    await assertStableRuntimeMask(page, masks, metadata, times, [
+      ['2099-12-31T23:59:59.999999Z', '2099-12-31T23:59:59.999999Z'],
+      ['2000-01-01T00:00:00Z', '2000-01-01T00:00:00Z'],
+    ]);
+    await expect(metadata).toHaveText(`Created ${order.created_at} · Updated ${order.updated_at}`);
+  }
+  await staffSnapshot(page, state, masks);
+}
+
+test('VISUAL-REAL #230 real two-unit purchase and five staff domain states', async ({ page }, info) => {
+  test.setTimeout(300_000);
+  const site = 'https://localhost:4351', staffSite = 'https://localhost:4352';
+  const tenant = 'c2300001-0000-4000-8000-000000000001';
+  // Same quantity-two journey as tests/e2e/rma.spec.ts, on its isolated REAL tenant.
+  await page.goto(`${site}/products/canvas-tote`);
+  await page.getByRole('button', { name: 'Add to cart', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Item added to cart.');
+  await page.goto(`${site}/cart`);
+  await expect(page.locator('[data-cart-line]')).toHaveCount(1);
+  await page.getByLabel('Quantity', { exact: true }).fill('2');
+  await page.getByRole('button', { name: 'Update quantity', exact: true }).click();
+  await expect(page.getByRole('main')).toContainText('$48.00');
+  await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('2');
+  await staffSnapshot(page, 'rma-cart');
+  await page.goto(`${site}/checkout`);
+  for (const [label, value] of [['Email', 'visual-rma@example.test'], ['Country code', 'US'],
+    ['Address line 1', '1 Test Way'], ['City', 'Test City'], ['Postal code', '10001']]) {
+    await page.getByLabel(label!, { exact: true }).fill(value!);
+  }
+  await page.getByRole('button', { name: 'Review totals', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Start test checkout', exact: true })).toBeEnabled();
+  await expect(page.getByRole('main')).toContainText('$57.80');
+  await staffSnapshot(page, 'rma-checkout');
+  const started = page.waitForResponse(r => new URL(r.url()).pathname === '/purchase/api/checkout' && r.request().method() === 'POST');
+  await start(page);
+  const response = await started;
+  expect(response.status()).toBe(201);
+  const checkout = await response.json();
+  expect(checkout).toMatchObject({ state: 'ready', amount_minor: '5780', currency: 'USD' });
+  await page.getByRole('button', { name: 'Fake payment: capture', exact: true }).click();
+  await page.getByRole('link', { name: 'View order confirmation', exact: true }).click();
+  await expect(page.locator('[data-completion-ready]')).toBeVisible();
+  expect(await (await page.request.get(`${site}/purchase/api/completion`)).json())
+    .toMatchObject({ order_id: checkout.order_id, state: 'paid', payment: { status: 'captured' } });
+
+  const base = `${staffSite}/api/v1/t/${tenant}`;
+  const orderPath = `/orders/${checkout.order_id}`;
+  const completionID = page.locator('[data-completion-ready] .purchase-totals > div').first().locator('dd');
+  await expect(completionID).toHaveText(checkout.order_id);
+  // Browser glyph ink may overhang the UUID cell by a subpixel. Clip only the
+  // already-masked value to its own bounds; no layout or unmasked UI is changed.
+  const originalClip = await completionID.evaluate(node => {
+    const element = node as HTMLElement, previous = element.style.clipPath;
+    element.style.clipPath = 'inset(0)'; return previous;
+  });
+  try {
+    const masks = [await runtimeMask(page, completionID, completionID)];
+    await expect(runtimeMask(page, page.getByRole('main'), completionID)).rejects.toThrow('Date mask extends outside time element');
+    await assertOversizedRuntimeMaskRejected(page, completionID);
+    await assertStableRuntimeMask(page, masks, completionID, completionID, [
+      [checkout.order_id.slice(0, -1) + '0'], [checkout.order_id.slice(0, -1) + '8'],
+    ]);
+    await expect(completionID).toHaveText(checkout.order_id);
+    await staffSnapshot(page, 'rma-completion', masks);
+  } finally {
+    await completionID.evaluate((node, value) => { (node as HTMLElement).style.clipPath = value; }, originalClip);
+  }
+  await staffLogin(page, `/t/${tenant}${orderPath}`, staffSite);
+  await expect(page.getByRole('cell', { name: 'C24-CANVAS-TOTE', exact: true })).toBeVisible();
+  const session = await (await page.request.get(`${staffSite}/api/v1/auth/session`)).json();
+  const read = async () => {
+    const response = await page.request.get(base + orderPath);
+    expect(response.status()).toBe(200);
+    return response.json();
+  };
+  const write = (path: string, data: unknown, version: number, key = crypto.randomUUID(), targetTenant: string = tenant) =>
+    page.request.post(`${staffSite}/api/v1/t/${targetTenant}${path}`, { data, headers: {
+      Origin: staffSite, 'X-CSRF-Token': session.csrf_token,
+      'Idempotency-Key': key, 'If-Match': `"${version}"`,
+    } });
+  const accepted = async (op: string, response: APIResponse, status: number) => {
+    let body;
+    try { body = await response.json(); }
+    catch { throw new Error(`${op}: status=${response.status()} code=invalid_json`); }
+    const code = body.code === 'route_not_found' ? 'route_not_found' : response.ok() ? 'none' : 'unknown';
+    const label = `${op}: status=${response.status()} code=${code}`;
+    if (response.status() === 503 || body.code === 'route_not_found' ||
+        (op === 'refundReturn' && response.status() !== status))
+      throw new Error(label);
+    expect(response.status(), 'Return operation status').toBe(status);
+    return body;
+  };
+  let order = await read();
+  expect(order).toMatchObject({ state: 'paid', total_minor: '5780', lines: [{ quantity: 2 }] });
+  await domainSnapshot(page, 'paid', order);
+  const line = order.lines[0].line_id;
+  const shipment = (n: number) => ({ carrier: 'E2E-RMA', tracking_number: `visual-rma-${info.project.name}-${n}`,
+    lines: [{ order_line_id: line, quantity: 1 }] });
+  const first = await accepted('createShipment', await write(orderPath + '/shipments', shipment(1), order.version), 201);
+  order = await read();
+  expect(order.state).toBe('partially_fulfilled');
+  expect(order.version).toBe(first.order_version);
+  await domainSnapshot(page, 'partially-fulfilled', order);
+  const second = await accepted('createShipment', await write(orderPath + '/shipments', shipment(2), order.version), 201);
+  order = await read();
+  expect(order.state).toBe('fulfilled');
+  expect(order.version).toBe(second.order_version);
+  await domainSnapshot(page, 'fulfilled', order);
+  expect(second.id).not.toBe(first.id);
+
+  const requestReturn = { kind: 'shipment_return', reason: 'E2E-RMA', lines: [
+    { order_line_id: line, shipment_line_id: first.lines[0].id, quantity: 1 },
+  ] };
+  const rma = await accepted('createReturn', await write(orderPath + '/returns', requestReturn, order.version), 201);
+  expect(rma).toMatchObject({ status: 'requested', restocked: false, refund_minor: '2890' });
+  const returnPath = `/returns/${rma.id}`;
+  const receiptKey = crypto.randomUUID();
+  const received = await accepted('receiveReturn', await write(returnPath + '/receive', { restock: true }, rma.order_version, receiptKey), 200);
+  expect(received).toMatchObject({ id: rma.id, status: 'received', restocked: true });
+  const replay = await accepted('receiveReturn', await write(returnPath + '/receive', { restock: true }, rma.order_version, receiptKey), 200);
+  expect(replay).toEqual(received);
+  // A fresh command identity cannot receive/restock the same RMA again.
+  const duplicate = await write(returnPath + '/receive', { restock: true }, received.order_version);
+  expect([409, 422]).toContain(duplicate.status());
+  const foreignTenant = sql(`SELECT tenant_id FROM app.tenant_memberships WHERE user_id=(SELECT id FROM app.users WHERE email='visual-owner@example.test') AND tenant_id<>'${tenant}' ORDER BY tenant_id LIMIT 1;`);
+  const foreign = await write(returnPath + '/receive', { restock: true }, received.order_version,
+    crypto.randomUUID(), foreignTenant);
+  expect(foreign.status()).toBe(404);
+  expect((await page.request.get(`${staffSite}/api/v1/t/${foreignTenant}${orderPath}`)).status()).toBe(404);
+  // Money is server owned: injected refund amount is rejected before any PSP action.
+  expect((await write(returnPath + '/refund', { amount_minor: '5781' }, received.order_version)).status()).toBe(400);
+  const refundKey = crypto.randomUUID();
+  const refunded = await accepted('refundReturn', await write(returnPath + '/refund', {}, received.order_version, refundKey), 200);
+  expect(refunded).toMatchObject({ id: rma.id, status: 'refunded', restocked: true, refund_minor: '2890' });
+  expect(await accepted('refundReturn', await write(returnPath + '/refund', {}, received.order_version, refundKey), 200)).toEqual(refunded);
+  order = await read();
+  expect(order.state).toBe('partially_refunded');
+  await domainSnapshot(page, 'partially-refunded', order);
+  // Returning an already returned shipment unit would exceed its original entitlement.
+  const excess = await write(orderPath + '/returns', requestReturn, order.version);
+  expect([409, 422]).toContain(excess.status());
+  expect(await read()).toEqual(order);
+  // A distinct shipped unit needs its own RMA and Payments command identity.
+  const remaining = await accepted('createReturn', await write(orderPath + '/returns', {
+    ...requestReturn, lines: [{ order_line_id: line, shipment_line_id: second.lines[0].id, quantity: 1 }],
+  }, order.version), 201);
+  expect(remaining).toMatchObject({ status: 'requested', restocked: false, refund_minor: '2890' });
+  expect(remaining.id).not.toBe(rma.id);
+  const remainingPath = `/returns/${remaining.id}`;
+  const remainingReceived = await accepted('receiveReturn', await write(remainingPath + '/receive',
+    { restock: true }, remaining.order_version), 200);
+  expect(remainingReceived).toMatchObject({ id: remaining.id, status: 'received', restocked: true });
+  const fullRefundKey = crypto.randomUUID();
+  expect(fullRefundKey).not.toBe(refundKey);
+  const fullRefund = await accepted('refundReturn', await write(remainingPath + '/refund', {},
+    remainingReceived.order_version, fullRefundKey), 200);
+  expect(fullRefund).toMatchObject({ id: remaining.id, status: 'refunded', restocked: true, refund_minor: '2890' });
+  expect(await accepted('refundReturn', await write(remainingPath + '/refund', {},
+    remainingReceived.order_version, fullRefundKey), 200)).toEqual(fullRefund);
+  order = await read();
+  expect(order).toMatchObject({ state: 'refunded', total_minor: '5780' });
+  expect(BigInt(refunded.refund_minor) + BigInt(fullRefund.refund_minor)).toBe(BigInt(order.total_minor));
+  expect(await read()).toEqual(order);
+  await page.reload();
+  await expect(page.getByRole('main')).toContainText('refunded');
+  await domainSnapshot(page, 'refunded', order);
+  await info.attach('rma-journey', { body: JSON.stringify({ first, second, received, refunded, remainingReceived, fullRefund, order }), contentType: 'application/json' });
+});

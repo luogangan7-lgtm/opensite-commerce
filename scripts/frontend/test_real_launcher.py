@@ -24,6 +24,47 @@ class Provisioned(Exception):
 
 
 class LauncherCleanup(unittest.TestCase):
+    def test_drop_database_failure_still_attempts_each_role(self):
+        statements = []
+
+        def command(argv, **kwargs):
+            if argv[0] == 'psql':
+                statement = kwargs['input']
+                if statement.startswith(('CREATE DATABASE', 'REVOKE CONNECT', 'DROP ')):
+                    statements.append(statement)
+                if statement.startswith('DROP DATABASE') or statement == 'DROP ROLE visual_cleanup_one;':
+                    return subprocess.CompletedProcess(argv, 1, '', '')
+                return subprocess.CompletedProcess(argv, 0, '0\n', '')
+            if argv[:3] == ['go', 'run', './cmd/bootstrap-admin']:
+                raise Provisioned
+            return subprocess.CompletedProcess(argv, 0)
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory)
+            for seed in ('tests/fixtures/storefront_seed.sql', 'scripts/e2e/seed.sql'):
+                path = fixture / seed
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('SELECT 1;')
+            env = {'GITHUB_ACTIONS': 'true', 'GITHUB_RUN_ID': '1',
+                   'DATABASE_URL': 'postgres://postgres:secret@localhost/opensite'}
+            roles = {'DOMAIN': ('visual_cleanup_one', 'unused'), 'OTHER': ('visual_cleanup_two', 'unused')}
+            with patch.dict(os.environ, env), patch.object(launcher, 'ROOT', fixture), \
+                 patch.object(launcher, 'LOGIN_ROLES', roles), \
+                 patch.object(launcher, 'provision_sql', return_value='SELECT 1;'), \
+                 patch.object(launcher.urllib.request, 'urlopen') as ready, \
+                 patch.object(launcher.subprocess, 'run', side_effect=command):
+                ready.return_value.__enter__.return_value.status = 204
+                with self.assertRaisesRegex(RuntimeError, 'cleanup') as caught:
+                    launcher.main()
+            self.assertIn('drop database', str(caught.exception))
+            self.assertIn('drop role visual_cleanup_one', str(caught.exception))
+            self.assertIn('REVOKE CONNECT ON DATABASE ' + next(
+                s.split()[2].rstrip(';') for s in statements if s.startswith('CREATE DATABASE')) +
+                ' FROM visual_cleanup_two;', statements)
+            self.assertIn('DROP ROLE visual_bootstrap;', statements)
+            self.assertIn('DROP ROLE visual_cleanup_one;', statements)
+            self.assertIn('DROP ROLE visual_cleanup_two;', statements)
+
     def test_owned_bootstrap_failure_timeout_and_interrupt_allow_second_launch(self):
         self.assertEqual(os.environ.get('GITHUB_ACTIONS'), 'true')
         source = urlsplit(os.environ['DATABASE_URL'])
