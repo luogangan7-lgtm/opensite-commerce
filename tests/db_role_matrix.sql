@@ -339,6 +339,7 @@ BEGIN
     IF role_name='app_domain_verifier' AND t.relname='site_domains' AND privilege=ANY(ARRAY['SELECT','INSERT','UPDATE'])
     OR role_name='app_media_service' AND t.relname=ANY(ARRAY['media_uploads','media_blobs','media_assets']) AND privilege=ANY(ARRAY['SELECT','INSERT','UPDATE'])
     OR role_name='app_media_service' AND t.relname='products' AND privilege='SELECT'
+    OR role_name='app_media_service' AND t.relname='idempotency_records' AND privilege='SELECT'
     OR role_name='app_media_service' AND t.relname='product_media' AND privilege=ANY(ARRAY['SELECT','INSERT','DELETE'])
     OR role_name='app_media_service' AND t.relname='media_assets' AND privilege='DELETE'
     OR role_name='app_publish_executor' AND t.relname=ANY(ARRAY['sites','site_releases','site_release_routes','site_release_templates','site_release_media','media_assets','media_blobs','site_drafts','draft_pages','draft_operations','pages','page_revisions','products','product_variants','product_listings','product_content_revisions','price_lists','price_entries','draft_page_media']) AND privilege='SELECT'
@@ -350,6 +351,10 @@ BEGIN
      expected_table := true;
      SELECT array_agg(attname::text) INTO allowed FROM pg_attribute
       WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped;
+    ELSIF role_name='app_media_service' AND t.relname='idempotency_records' AND privilege='INSERT' THEN
+     allowed:=ARRAY['tenant_id','actor_kind','actor_id','operation','idempotency_key','request_hash','expires_at','claim_token','created_at'];
+    ELSIF role_name='app_media_service' AND t.relname='idempotency_records' AND privilege='UPDATE' THEN
+     allowed:=ARRAY['claim_token','expires_at','state','response_status','response_body_reference','completed_at'];
     ELSIF role_name='app_media_service' AND t.relname='product_media' AND privilege='UPDATE' THEN
      allowed := ARRAY['sort_order'];
     ELSIF role_name='app_publish_executor' AND privilege='INSERT' THEN
@@ -418,7 +423,7 @@ BEGIN
    OR has_function_privilege('app_publisher',f.oid,'EXECUTE') IS DISTINCT FROM (f.proname IN ('seal_release','publish_release'))
    OR has_function_privilege('app_outbox_worker',f.oid,'EXECUTE') IS DISTINCT FROM (f.proname IN ('claim_outbox','complete_outbox','fail_outbox'))
    OR has_function_privilege('app_domain_verifier',f.oid,'EXECUTE')
-   OR has_function_privilege('app_media_service',f.oid,'EXECUTE') THEN
+   OR has_function_privilege('app_media_service',f.oid,'EXECUTE') IS DISTINCT FROM (f.proname='idempotency_claim') THEN
    RAISE EXCEPTION 'unsafe function capability: %',f.proname;
   END IF;
  END LOOP;
