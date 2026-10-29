@@ -1633,7 +1633,7 @@ test.describe('VISUAL-REAL #274', () => {
   });
 
   for (const step of ['reserve', 'content', 'complete'] as const) test(`real media ${step} failure retries the same stable step keys once`, async ({ page }, info) => {
-    const f = await catalogFixture(page, info.project.name, 'MEDIA-' + step);
+    await catalogFixture(page, info.project.name, 'MEDIA-' + step);
     const observed: { path: string; key: string; method: string }[] = [];
     page.on('request', r => { const path = new URL(r.url()).pathname;
       if (path.startsWith(catalogBase + '/media/uploads') && ['POST', 'PUT'].includes(r.method())) observed.push({ path, key: r.headers()['idempotency-key'] ?? '', method: r.method() }); });
