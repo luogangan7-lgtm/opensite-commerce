@@ -86,7 +86,9 @@ func TestMerchantDeletionAdmissionAndMoneyReplay(t *testing.T) {
 				if err := tx.QueryRow(ctx, "SELECT app.tenant_lifecycle_transition($1,$2,$3,$4,'request',$5,sha256('request'::bytea),0,$6::jsonb)", p.f.tenant, request, user, session, uuid.NewString(), encoded).Scan(&result); err != nil {
 					return err
 				}
-				var admission struct{ Code string `json:"code"` }
+				var admission struct {
+					Code string `json:"code"`
+				}
 				if err := json.Unmarshal(result, &admission); err != nil {
 					return err
 				}
@@ -95,13 +97,15 @@ func TestMerchantDeletionAdmissionAndMoneyReplay(t *testing.T) {
 				}
 				// Execute exercises the same count map with the real Tenant worker
 				// boundary with the same Payments witness used for request admission.
-				if _, err := tx.Exec(ctx, "UPDATE app.tenant_lifecycles SET state='cooling_off',phase='none',request_id=$2,epoch=1,requested_at=clock_timestamp()-interval '721 hours',execute_after=clock_timestamp()-interval '1 hour' WHERE tenant_id=$1", p.f.tenant, request); err != nil {
+				if _, err := tx.Exec(ctx, "UPDATE app.tenant_lifecycles SET state='cooling_off',phase='none',request_id=$2,requester_id=$3,epoch=1,requested_at=clock_timestamp()-interval '721 hours',execute_after=clock_timestamp()-interval '1 hour' WHERE tenant_id=$1", p.f.tenant, request, user); err != nil {
 					return err
 				}
 				if err := tx.QueryRow(ctx, "SELECT app.tenant_lifecycle_transition($1,$2,NULL,NULL,'execute',NULL,NULL,1,$3::jsonb)", p.f.tenant, request, encoded).Scan(&result); err != nil {
 					return err
 				}
-				var state struct{ State string `json:"state"` }
+				var state struct {
+					State string `json:"state"`
+				}
 				if err := json.Unmarshal(result, &state); err != nil {
 					return err
 				}
@@ -117,4 +121,30 @@ func TestMerchantDeletionAdmissionAndMoneyReplay(t *testing.T) {
 			}
 		})
 	}
+	// The same authenticated capture can replay while cooling; it cannot create
+	// another journal. Execution fences it before any financial effect.
+	setState := func(state string) {
+		t.Helper()
+		err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, "UPDATE app.tenant_lifecycles SET state=$2,phase=CASE WHEN $2='executing' THEN 'executing' ELSE 'none' END WHERE tenant_id=$1", p.f.tenant, state)
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	setState("cooling_off")
+	p.receive(t, "mdel04-capture", payment.StatusCaptured, p.start.AmountMinor)
+	if p.witness(t) != before {
+		t.Fatal("MDEL04_COOLING_REPLAY_MONEY_EFFECT")
+	}
+	setState("executing")
+	raw := p.raw("mdel04-late", payment.StatusCaptured, p.start.AmountMinor)
+	if _, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at)); err == nil {
+		t.Fatal("MDEL04_EXECUTION_INGRESS")
+	}
+	if p.witness(t) != before {
+		t.Fatal("MDEL04_EXECUTION_MONEY_EFFECT")
+	}
+	setState("active")
 }

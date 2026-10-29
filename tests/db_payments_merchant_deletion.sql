@@ -50,7 +50,7 @@ BEGIN
  INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency)
   VALUES(t,drain_event,'mdel04-a','existing',repeat('d',64),uuidv7(),1,'refunded',100,'USD');
  event:=app.admit_payment_inbox('mdel04-a','new-obligation',sha256('new'::bytea));
- UPDATE app.tenant_lifecycles SET state='cooling_off',request_id=req,epoch=1,
+ UPDATE app.tenant_lifecycles SET state='cooling_off',request_id=req,requester_id=uuidv7(),epoch=1,
   requested_at=clock_timestamp(),execute_after=clock_timestamp()+interval '720 hours' WHERE tenant_id=t;
  UPDATE app.payment_events SET applied=true WHERE tenant_id=t AND id=drain_event;
  SELECT jsonb_agg(to_jsonb(e) ORDER BY id) INTO original FROM app.payment_events e WHERE tenant_id=t;

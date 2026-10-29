@@ -1555,7 +1555,7 @@ BEGIN
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
     IF has_column_privilege(role_name,'app.payment_return_refunds',col,privilege)
-      IS DISTINCT FROM (role_name='app_payments_service' AND privilege='SELECT') THEN
+      IS DISTINCT FROM (role_name IN('app_payments_service','app_payments_deletion_executor') AND privilege='SELECT') THEN
      RAISE EXCEPTION 'PAYMENT_RETURN_BINDING_ACL % % %',role_name,col,privilege; END IF;
    END LOOP;
   END LOOP;

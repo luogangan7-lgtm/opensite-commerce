@@ -2211,7 +2211,7 @@ result mdel04_request 'MDEL04_REQUEST=tenant_deletion_blocked'
 # Existing completion holds the share fence; execution waits and then revokes
 # drains. A late SQL/bulk writer waits for execution and is denied at statement
 # admission before taking any module row lock.
-sql <<<"UPDATE app.tenant_lifecycles SET state='cooling_off',request_id='$MR',epoch=1,requested_at=clock_timestamp()-interval '721 hours',execute_after=clock_timestamp()-interval '1 hour' WHERE tenant_id='$MT';" >/dev/null
+sql <<<"UPDATE app.tenant_lifecycles SET state='cooling_off',request_id='$MR',requester_id='$MU',epoch=1,requested_at=clock_timestamp()-interval '721 hours',execute_after=clock_timestamp()-interval '1 hour' WHERE tenant_id='$MT';" >/dev/null
 gate_close 165
 tx mdel04_drain app_runtime "$MT" "UPDATE app.payment_events SET applied=true WHERE tenant_id='$MT' AND id='$ME'; $(park 165)" &
 await mdel04_drain advisory
