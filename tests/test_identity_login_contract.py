@@ -95,7 +95,7 @@ def assert_contract(registry, source):
     assert receipt['x-opensite-access'] == 'AdminSession' and receipt['security'] == [{'adminSession': []}]
     assert receipt['x-required-scope'] == 'tenant:delete'
     assert receipt['responses']['200']['content']['application/json']['schema'] == {'$ref': '#/components/schemas/MerchantDeletionMetadata'}
-    for status, response in [('401', 'Unauthorized'), ('403', 'Forbidden'), ('404', 'NotFound')]:
+    for status, response in [('401', 'Unauthorized'), ('403', 'Forbidden'), ('404', 'NotFound'), ('409', 'Conflict'), ('412', 'PreconditionFailed'), ('413', 'PayloadTooLarge'), ('415', 'UnsupportedMediaType'), ('422', 'UnprocessableEntity'), ('428', 'PreconditionRequired'), ('429', 'TooManyRequests')]:
         assert receipt['responses'][status] == {'$ref': '#/components/responses/' + response}
     step_up = blocks[('/api/v1/t/{tenant_id}/merchant-deletion/step-up', 'post')]
     assert step_up['operationId'] == 'merchantDeletionStepUp' and step_up['x-opensite-status'] == 'planned'

@@ -204,7 +204,7 @@ func TestMerchantRoutesRemainDormant(t *testing.T) {
 
 // A live admitted subject losing tenant write authority receives Forbidden.
 func TestMerchantCoolingWriteIsForbidden(t *testing.T) {
-	for _, state := range []string{"cooling_off", "failed"} {
+	for _, state := range []string{"cooling_off", "failed", "active-role-loss"} {
 		t.Run(state, func(t *testing.T) {
 			f := c02cAuthFixture(t)
 			spec := c02cSpec(platform.AdminSession, "POST", "catalog:write")
@@ -221,8 +221,13 @@ func TestMerchantCoolingWriteIsForbidden(t *testing.T) {
 				t.Fatal("missing transaction check", err)
 			}
 			f.authority.revalidationErr = contract.ErrNotFound
+			q := &merchantReceiptDB{allowed: state == "active-role-loss"}
+			expected := 403
+			if state == "active-role-loss" {
+				expected = 401
+			}
 			var public *apperrors.Error
-			if err := check(ctx, db.New(nil)); !errors.As(err, &public) || public.Status != 403 {
+			if err := check(ctx, db.New(q)); !errors.As(err, &public) || public.Status != expected {
 				t.Fatalf("MDEL02_COOLING_HTTP_FORBIDDEN: %v", err)
 			}
 		})

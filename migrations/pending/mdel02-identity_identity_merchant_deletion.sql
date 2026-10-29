@@ -164,7 +164,7 @@ BEGIN
  END LOOP;
  REVOKE CREATE ON SCHEMA app FROM app_identity_merchant_executor;
 END $owners$;
-GRANT EXECUTE ON FUNCTION app.auth_merchant_scope(uuid,text,text) TO app_auth,app_credential_writer;
+GRANT EXECUTE ON FUNCTION app.auth_merchant_scope(uuid,text,text) TO app_auth,app_credential_writer,app_runtime;
 GRANT EXECUTE ON FUNCTION app.auth_issue_merchant_proof(uuid,uuid,uuid,text,bytea,text),app.auth_merchant_receipt(uuid,uuid,uuid,uuid) TO app_auth;
 GRANT EXECUTE ON FUNCTION app.auth_merchant_receipt(uuid,uuid,uuid,uuid) TO app_runtime;
 -- Consume/erase remain ungranted until restricted DataRights composition.

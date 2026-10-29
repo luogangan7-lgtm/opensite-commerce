@@ -338,7 +338,20 @@ func (h *Handler) ResolveTransactionAuthorization(ctx context.Context, r *http.R
 			return authUnavailable()
 		}
 		if err := revalidator.Revalidate(txctx, q, tenant, grant); err != nil {
-			return authorityError(err, scopeDenied())
+			if errors.Is(err, contract.ErrNotFound) {
+				// Lifecycle denial is Forbidden; preserve the existing Unauthorized
+				// contract for role/session loss in an otherwise active tenant.
+				var target pgtype.UUID
+				_ = target.Scan(tenant)
+				allowed, scopeErr := q.MerchantScopeAllowed(txctx, db.MerchantScopeAllowedParams{TenantID: target, Kind: grant.Kind, Scope: grant.Scope})
+				if scopeErr != nil {
+					return authUnavailable()
+				}
+				if !allowed {
+					return scopeDenied()
+				}
+			}
+			return authorityError(err, unauthenticated())
 		}
 		return nil
 	}, nil

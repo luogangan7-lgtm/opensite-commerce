@@ -1742,7 +1742,7 @@ BEGIN
    expected:=role_name='app_identity_merchant_executor'
     OR role_name='app_auth' AND f.proname IN('auth_merchant_scope','auth_issue_merchant_proof','auth_merchant_receipt')
     OR role_name='app_credential_writer' AND f.proname='auth_merchant_scope'
-    OR role_name='app_runtime' AND f.proname='auth_merchant_receipt';
+    OR role_name='app_runtime' AND f.proname IN('auth_merchant_receipt','auth_merchant_scope');
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR role_name<>'app_identity_merchant_executor' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'MDEL02_ROUTINE_ACL % %',role_name,f.proname; END IF;

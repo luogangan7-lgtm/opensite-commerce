@@ -143,3 +143,8 @@ SELECT app.auth_merchant_receipt(sqlc.arg(tenant_id)::uuid,sqlc.arg(request_id):
 -- name: MerchantEraseProofs :one
 SELECT app.auth_erase_merchant_proofs(sqlc.arg(tenant_id)::uuid,sqlc.arg(request_id)::uuid,
  sqlc.arg(epoch)::bigint)::bigint AS erased;
+
+-- name: MerchantScopeAllowed :one
+-- Boolean lifecycle classification only; no membership/session authority grant.
+SELECT app.auth_merchant_scope(sqlc.arg(tenant_id)::uuid,sqlc.arg(kind)::text,
+ sqlc.arg(scope)::text)::boolean AS allowed;
