@@ -40,7 +40,7 @@ func (r *LoginRepository) IssueMerchantProof(ctx context.Context, tenant string,
 		if err := q.TenantSetContext(ctx, t); err != nil {
 			return err
 		}
-		if err := q.LoginSetTransactionIdle(ctx, int64(r.idle / time.Second)); err != nil {
+		if err := q.LoginSetTransactionIdle(ctx, int64(r.idle/time.Second)); err != nil {
 			return err
 		}
 		value, err := q.MerchantIssueProof(ctx, db.MerchantIssueProofParams{TenantID: t, UserID: u, SessionID: s, Action: action, ProofDigest: digest[:], VerifiedHash: verified})
@@ -63,7 +63,7 @@ func (r *LoginRepository) MerchantReceipt(ctx context.Context, tenant, request s
 		if err := q.TenantSetContext(ctx, t); err != nil {
 			return err
 		}
-		if err := q.LoginSetTransactionIdle(ctx, int64(r.idle / time.Second)); err != nil {
+		if err := q.LoginSetTransactionIdle(ctx, int64(r.idle/time.Second)); err != nil {
 			return err
 		}
 		var err error

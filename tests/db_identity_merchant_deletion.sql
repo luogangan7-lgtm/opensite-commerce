@@ -34,6 +34,10 @@ BEGIN
   PERFORM set_config('app.session_idle_seconds','60',true);
   WITH instant AS MATERIALIZED(SELECT clock_timestamp() at)
    UPDATE app.auth_sessions SET created_at=instant.at-interval '2 hours',last_seen_at=instant.at-interval '61 seconds' FROM instant WHERE id=s;
+  PERFORM set_config('app.session_idle_seconds','120',true);
+  IF app.auth_revalidate_tenant(t,u,'session',s,'catalog:write') IS DISTINCT FROM true THEN
+   RAISE EXCEPTION 'MDEL02_WRITE_CONFIGURED_IDLE'; END IF;
+  PERFORM set_config('app.session_idle_seconds','60',true);
   IF app.auth_revalidate_tenant(t,u,'session',s,'catalog:write') IS DISTINCT FROM false THEN
    RAISE EXCEPTION 'MDEL02_WRITE_IDLE_REVALIDATION'; END IF;
   RAISE EXCEPTION 'restore idle witness' USING ERRCODE='P9002';
@@ -175,6 +179,10 @@ BEGIN
   PERFORM set_config('app.session_idle_seconds','60',true);
   WITH instant AS MATERIALIZED(SELECT clock_timestamp() at)
    UPDATE app.auth_sessions SET created_at=instant.at-interval '2 hours',last_seen_at=instant.at-interval '61 seconds' FROM instant WHERE id=s;
+  PERFORM set_config('app.session_idle_seconds','120',true);
+  IF app.auth_merchant_receipt(t,req,u,s) IS DISTINCT FROM true THEN
+   RAISE EXCEPTION 'MDEL02_RECEIPT_CONFIGURED_IDLE'; END IF;
+  PERFORM set_config('app.session_idle_seconds','60',true);
   IF app.auth_merchant_receipt(t,req,u,s) IS DISTINCT FROM false THEN
    RAISE EXCEPTION 'MDEL02_RECEIPT_IDLE_REVALIDATION'; END IF;
   RAISE EXCEPTION 'restore idle witness' USING ERRCODE='P9002';

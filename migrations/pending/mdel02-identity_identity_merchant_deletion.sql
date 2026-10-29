@@ -69,7 +69,8 @@ RETURNS timestamptz LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog
 DECLARE at_db timestamptz;
 BEGIN
  PERFORM app.tenant_lifecycle_read_fence(p_tenant);
- IF p_action IS NULL OR p_action NOT IN('request','cancel') OR p_digest IS NULL OR octet_length(p_digest)<>32
+ IF nullif(current_setting('app.session_idle_seconds',true),'') IS NULL
+  OR p_action IS NULL OR p_action NOT IN('request','cancel') OR p_digest IS NULL OR octet_length(p_digest)<>32
   OR NOT app.auth_revalidate_tenant(p_tenant,p_user,'session',p_session,'tenant:delete')
   OR NOT EXISTS(SELECT FROM app.tenant_memberships WHERE tenant_id=p_tenant AND user_id=p_user AND role='owner' AND status='active')
   OR NOT EXISTS(SELECT FROM app.users WHERE id=p_user AND status='active' AND password_hash=p_verified_hash) THEN
@@ -96,7 +97,8 @@ RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app,pg
 DECLARE proof app.identity_merchant_proofs; at_db timestamptz;
 BEGIN
  PERFORM app.tenant_lifecycle_transition_fence(p_tenant);
- IF NOT app.auth_revalidate_tenant(p_tenant,p_user,'session',p_session,'tenant:delete')
+ IF nullif(current_setting('app.session_idle_seconds',true),'') IS NULL
+  OR NOT app.auth_revalidate_tenant(p_tenant,p_user,'session',p_session,'tenant:delete')
   OR NOT EXISTS(SELECT FROM app.tenant_memberships WHERE tenant_id=p_tenant AND user_id=p_user AND role='owner' AND status='active') THEN
   RAISE EXCEPTION 'merchant step-up denied' USING ERRCODE='42501'; END IF;
  SELECT * INTO proof FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant AND proof_digest=p_digest
@@ -161,13 +163,13 @@ BEGIN
  revised:=regexp_replace(body,'\mBEGIN\M',
   'BEGIN IF NOT app.auth_merchant_scope(p_tenant,p_kind,p_scope) THEN RETURN false; END IF;');
  -- The HTTP callback supplies the same configured idle duration as admission.
- -- Legacy direct non-merchant callers retain their existing capability contract;
- -- merchant writes fail closed without the transaction-local configuration.
+ -- Legacy direct capability callers retain their existing contract;
+ -- proof/receipt ports separately require the transaction-local configuration.
  IF position('AND s_seen>=s_created AND s_exp>s_created;' IN revised)=0 THEN
   RAISE EXCEPTION 'session revalidation anchor drift'; END IF;
  revised:=replace(revised,'AND s_seen>=s_created AND s_exp>s_created;',
   $idle$AND s_seen>=s_created AND s_exp>s_created
-   AND coalesce(((p_scope<>'tenant:delete' AND nullif(current_setting('app.session_idle_seconds',true),'') IS NULL)
+   AND coalesce((nullif(current_setting('app.session_idle_seconds',true),'') IS NULL
     OR (nullif(current_setting('app.session_idle_seconds',true),'')::bigint BETWEEN 1 AND 86400
      AND s_seen>at_db-nullif(current_setting('app.session_idle_seconds',true),'')::bigint*interval '1 second')),false);$idle$);
  EXECUTE replace(def,body,revised);

@@ -310,7 +310,7 @@ func (h *Handler) ResolveTransactionAuthorization(ctx context.Context, r *http.R
 			if q == nil {
 				return unauthenticated()
 			}
-			if err := q.LoginSetTransactionIdle(ctx, int64(h.idle / time.Second)); err != nil {
+			if err := q.LoginSetTransactionIdle(ctx, int64(h.idle/time.Second)); err != nil {
 				return authUnavailable()
 			}
 			var tenant, req, user, session pgtype.UUID
@@ -342,7 +342,7 @@ func (h *Handler) ResolveTransactionAuthorization(ctx context.Context, r *http.R
 			return authUnavailable()
 		}
 		if grant.Kind == contract.KindSession {
-			if err := q.LoginSetTransactionIdle(txctx, int64(h.idle / time.Second)); err != nil {
+			if err := q.LoginSetTransactionIdle(txctx, int64(h.idle/time.Second)); err != nil {
 				return authUnavailable()
 			}
 		}

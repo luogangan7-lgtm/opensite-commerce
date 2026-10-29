@@ -328,6 +328,16 @@ func (q *Queries) LoginRotationSession(ctx context.Context, arg LoginRotationSes
 	return allowed, err
 }
 
+const loginSetTransactionIdle = `-- name: LoginSetTransactionIdle :exec
+SELECT set_config('app.session_idle_seconds',$1::bigint::text,true)
+`
+
+// The setting is transaction-local and comes from LoginConfig, never a DB default.
+func (q *Queries) LoginSetTransactionIdle(ctx context.Context, idleSeconds int64) error {
+	_, err := q.db.Exec(ctx, loginSetTransactionIdle, idleSeconds)
+	return err
+}
+
 const merchantConsumeProof = `-- name: MerchantConsumeProof :exec
 SELECT app.auth_consume_merchant_proof($1::uuid,$2::uuid,
  $3::uuid,$4::text,$5::bytea)
