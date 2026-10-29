@@ -2222,7 +2222,17 @@ expect mdel04_drain ok; expect mdel04_execute ok
 [[ $(sql <<<"SELECT state FROM app.tenant_lifecycles WHERE tenant_id='$MT';") == executing ]] || { echo 'FAIL: MDEL04_DRAIN_EXECUTION'; fail=1; }
 tx mdel04_late_bulk app_runtime "$MT" "UPDATE app.payment_events SET applied=true WHERE tenant_id='$MT' AND id='$ME';"
 expect mdel04_late_bulk MDEL04_EXECUTION_FENCE
-echo 'PASS: MDEL04 lock-synchronized writer/request and drain/execution, late bulk denial'
+gate_close 166
+tx mdel04_account_transition postgres "$MT" "SELECT app.tenant_lifecycle_transition_fence('$MT'); $(park 166)" &
+await mdel04_account_transition advisory
+tx mdel04_mapped_late app_runtime "$MT" "SELECT tenant_id FROM app.resolve_fake_payment_account('mdel04-$MT'); UPDATE app.payment_events SET applied=true WHERE tenant_id='$MT' AND id='$ME';" &
+await mdel04_mapped_late "${ROWLOCK[@]}"
+# A resolver that locks the account before the fence would hold RowShareLock.
+# Only the directory's initial nonlocking lookup (AccessShareLock) may precede it.
+[[ $(sql <<<"SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a USING(pid) WHERE a.application_name='${RACE_PREFIX}mdel04_mapped_late' AND l.relation='app.payment_provider_accounts'::regclass AND l.mode='RowShareLock' AND l.granted;") == 0 ]] || { echo 'FAIL: MDEL04_ACCOUNT_BEFORE_FENCE'; fail=1; }
+gate_open 166; wait
+expect mdel04_account_transition ok; expect mdel04_mapped_late MDEL04_EXECUTION_FENCE
+echo 'PASS: MDEL04 lock-synchronized writer/request, drain/execution and fence-before-account mapping'
 
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth/fulfillment/returns contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
