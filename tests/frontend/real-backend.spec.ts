@@ -1426,18 +1426,27 @@ async function catalogSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[274]
   const mediaStatus = page.locator('#media-heading').locator('..').getByRole('status').filter({ hasText: 'Upload session:' });
   if (await mediaStatus.count()) {
     await expect(mediaStatus).toContainText('ready');
+    const before = await mediaStatus.boundingBox();
     await mediaStatus.evaluate(node => {
       for (const child of [...node.childNodes]) if (child.nodeType === Node.TEXT_NODE) {
         const match = /^(.*Media ID: )([0-9a-f-]{36})$/.exec(child.textContent ?? '');
-        if (match) { const span = document.createElement('span'); span.dataset.catalogUuid = ''; span.textContent = match[2]!;
-          child.replaceWith(document.createTextNode(match[1]!), span); }
+        if (match) {
+          // Keep natural UUID hyphen wrapping; one rectangle must never span
+          // multiple lines and accidentally cover the adjacent ready badge.
+          const groups = match[2]!.match(/[0-9a-f]+-?/g)!.map(text => {
+            const span = document.createElement('span'); span.dataset.catalogUuid = ''; span.textContent = text; return span;
+          });
+          child.replaceWith(document.createTextNode(match[1]!), ...groups);
+        }
       }
     });
+    expect(await mediaStatus.boundingBox(), 'UUID fragments preserve the shipped status layout').toEqual(before);
     const uuid = mediaStatus.locator('[data-catalog-uuid]');
-    await expect(uuid).toHaveCount(1);
+    await expect(uuid).toHaveCount(5);
+    expect((await uuid.allTextContents()).join('')).toBe(await mediaID.inputValue());
     const badge = await mediaStatus.locator('.os-badge').boundingBox();
     if (!badge) throw new Error('Missing ready badge geometry');
-    await assertDateMaskBounds(uuid, mediaStatus, [badge]); masks.push(uuid);
+    for (const group of await uuid.all()) { await assertDateMaskBounds(group, mediaStatus, [badge]); masks.push(group); }
   }
   if (!pending) {
     const report = await new AxeBuilder({ page }).analyze();
@@ -1517,7 +1526,7 @@ test.describe('VISUAL-REAL #274', () => {
     await fault(page, catalogBase + '/media/uploads/*/complete', 'POST', '503');
     await page.getByRole('button', { name: 'Upload media', exact: true }).click();
     await expect(page.getByRole('alert')).toHaveText('The service is temporarily unavailable. Try again later.');
-    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 200 });
+    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 202 });
     await catalogSnapshot(page, 'upload-failure');
   });
 
@@ -1646,7 +1655,7 @@ test.describe('VISUAL-REAL #274', () => {
     await fault(page, exactStep, step === 'content' ? 'PUT' : 'POST', '503');
     await page.getByRole('button', { name: 'Upload media', exact: true }).click();
     await expect(page.getByRole('alert')).toHaveText('The service is temporarily unavailable. Try again later.');
-    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: step === 'reserve' ? 201 : step === 'content' ? 204 : 200 });
+    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: step === 'reserve' ? 201 : step === 'content' ? 204 : 202 });
     await catalogSnapshot(page, `${step}-failure`);
     await control(page, 'release');
     await page.getByRole('button', { name: 'Upload media', exact: true }).click();
@@ -1735,8 +1744,9 @@ test.describe('VISUAL-REAL #274', () => {
     const published = await catalogWrite(page, f.headers, 'POST', drafts + '/' + draft.draft_id + '/publish',
       { expected_release_id: data.base_release_id, expected_publication_revision: data.publication_revision, renderer_build_id: 'visual-274' }, ready.headers().etag);
     expect(published.status()).toBe(201); const release = await published.json();
-    const attached = await page.request.get(staffSite + f.api + '/media'); expect(attached.status()).toBe(200);
-    expect(JSON.stringify(await attached.json())).toContain(media);
+    // This contract exposes POST attachment only, no invented GET collection.
+    // Independent readback observes the result of the actual domain command.
+    expect(sql(`SELECT count(*) FROM app.product_media WHERE tenant_id='${tenant}' AND product_id='${f.id}' AND media_id='${media}' AND role='main';`)).toBe('1');
     await catalogSnapshot(page, 'attached-published');
     await expect.poll(async () => {
       const response = await page.request.get('http://127.0.0.1:4180/api/v1/public/sites/current?host=127.0.0.1');
