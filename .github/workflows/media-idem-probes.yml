@@ -1,0 +1,102 @@
+# Temporary FIX-MEDIA-IDEM negative controls; never merged into the product PR.
+name: media-idem-probes
+on:
+  pull_request:
+    paths: ['.github/workflows/media-idem-probes.yml']
+permissions:
+  contents: read
+jobs:
+  mutation:
+    if: github.head_ref == 'codex/probe-media-idem'
+    name: media-idem-${{ matrix.mutation }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mutation: [replay, fingerprint]
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GOTOOLCHAIN: local
+      OPENSITE_REQUIRE_PGX_FIXTURES: '1'
+      IDEMPOTENCY_REQUIRE_PG: '1'
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+      C07_FIXTURE_PASSWORD: ci_catalog_test_only
+      C07_DATABASE_URL: postgres://c07_runtime:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
+      C07_MEDIA_DATABASE_URL: postgres://c07_media:ci_catalog_test_only@localhost:5432/opensite?sslmode=disable
+      MUTATION: ${{ matrix.mutation }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with:
+          go-version: '1.27.2'
+      - name: Prepare real migrated fixtures
+        run: |
+          python3 scripts/pending_migrations.py ci-normalize
+          ./scripts/ci_apt_install.sh postgresql-client
+          go mod download
+          ./scripts/migrate_river.sh
+          ./scripts/migrate.sh
+          OPENSITE_DISPOSABLE_PG=1 ./scripts/check_catalog_api.sh
+      - name: Baseline must pass before semantic mutation
+        run: |
+          git rev-parse HEAD | tee checkout-sha.txt
+          go test -race -tags pgx -count=1 -timeout=90s -v -run '^TestPGMediaReserveIdempotency$' ./internal/db > baseline.log 2>&1 || { tail -100 baseline.log; exit 1; }
+          cat baseline.log
+      - name: Inject one independent semantic fault
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          if os.environ['MUTATION'] == 'replay':
+              path = Path('internal/modules/media/uploads.go')
+              old, new = 'if replay != nil {', 'if replay != nil && false {'
+          else:
+              path = Path('internal/platform/idempotency/postgres.go')
+              old = 'if !bytes.Equal(record.RequestHash, hash[:]) {'
+              new = 'if !bytes.Equal(record.RequestHash, hash[:]) && false {'
+          source = path.read_text()
+          assert source.count(old) == 1, 'mutation target drifted'
+          path.write_text(source.replace(old, new))
+          PY
+      - name: Require a behavioral RED then restore and GREEN
+        run: |
+          case "$MUTATION" in
+            replay) selector='^TestPGMediaReserveIdempotency$/^exact_replay_and_restart$'; marker='exact replay: first=201';;
+            fingerprint) selector='^TestPGMediaReserveIdempotency$/^changed_request_rejected$'; marker='changed request=201';;
+          esac
+          if go test -race -tags pgx -count=1 -timeout=90s -v -run "$selector" ./internal/db > mutation.log 2>&1; then
+            cat mutation.log
+            echo 'FAIL: semantic mutation escaped the gate'
+            exit 1
+          fi
+          cat mutation.log
+          grep -F -- '--- FAIL: TestPGMediaReserveIdempotency/' mutation.log
+          grep -F "$marker" mutation.log
+          echo "EXPECTED_SEMANTIC_RED=$MUTATION"
+          git restore internal/modules/media/uploads.go internal/platform/idempotency/postgres.go
+          go test -race -tags pgx -count=1 -timeout=90s -v -run '^TestPGMediaReserveIdempotency$' ./internal/db > restored.log 2>&1 || { tail -100 restored.log; exit 1; }
+          cat restored.log
+          echo "RESTORED_GREEN=$MUTATION"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: media-idem-probe-${{ matrix.mutation }}-${{ github.run_id }}
+          path: |
+            checkout-sha.txt
+            baseline.log
+            mutation.log
+            restored.log
+          if-no-files-found: error
