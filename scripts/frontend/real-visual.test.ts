@@ -8,6 +8,22 @@ import { BASELINES, sha256 } from './baseline-provenance';
 import { REAL_VISUAL_STATES, realVisualPaths, realBackendEvidence } from './real-visual-manifest';
 import { assertDistinctHistoryPngs, assertDistinctStaffPngs, SHARED_RENDER } from './real-visual-shared-render-manifest';
 
+test('VISUAL-230 runtime masks cannot compare their geometry with itself', () => {
+  const source = readFileSync('tests/frontend/real-backend.spec.ts', 'utf8');
+  const calls = [...source.matchAll(/assertDateMaskBounds\(([^;]+)\);/g)];
+  for (const call of calls) {
+    const args = call[1].split(',').map(value => value.trim());
+    expect(args[0], `Self-comparing mask bounds: ${call[0]}`).not.toBe(args[1]);
+  }
+});
+
+test('VISUAL-230 multiline fixture snapshots the actual catalog variant through Orders', () => {
+  const source = readFileSync('tests/frontend/real-backend.spec.ts', 'utf8');
+  const multiline = source.slice(source.indexOf("test('real multiline order text"), source.indexOf('// Masks own only'));
+  expect(multiline).toContain('domainMultilineOrder');
+  expect(multiline).toContain('snapshot.sku_code');
+});
+
 test('VISUAL-REAL requires every issue state in desktop and mobile', () => {
   for (const snapshot of realVisualPaths()) {
     const path = `${BASELINES}/${snapshot}`;
