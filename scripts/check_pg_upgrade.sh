@@ -182,10 +182,11 @@ AUDIT_DB=""
 CALLER_KEYS_DB=""
 LIFECYCLE_DB=""
 IDENTITY_MERCHANT_DB=""
+PAYMENTS_MERCHANT_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB" "$CALLER_KEYS_DB" "$LIFECYCLE_DB" "$IDENTITY_MERCHANT_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB" "$CALLER_KEYS_DB" "$LIFECYCLE_DB" "$IDENTITY_MERCHANT_DB" "$PAYMENTS_MERCHANT_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1425,6 +1426,50 @@ db "$LIFECYCLE_DB" -f tests/db_tenant_lifecycle.sql >/dev/null
 db "$LIFECYCLE_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $LIFECYCLE_DB" >/dev/null; LIFECYCLE_DB=""
 pass 'MDEL01 populated upgrade preserves business rows and every prior role scope'
+
+# MDEL04: discover the complete predecessor set by suffix, not migration number.
+payments_merchant_files=(migrations/[0-9][0-9][0-9]_payments_merchant_deletion.sql)
+[[ ${#payments_merchant_files[@]} == 1 ]] || { bad 'one Payments merchant migration required'; exit 1; }
+PAYMENTS_MERCHANT_DB=upgrade_payments_merchant_$$
+admin -c "CREATE DATABASE $PAYMENTS_MERCHANT_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${payments_merchant_files[0]} ]] || break
+ apply_forward "$PAYMENTS_MERCHANT_DB" "$f"
+done
+db "$PAYMENTS_MERCHANT_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('mdel04-upgrade') RETURNING id AS t \gset
+SELECT set_config('app.tenant_id',:'t',false);
+INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment) VALUES(:'t','fake','mdel04-upgrade','test');
+SELECT app.admit_payment_inbox('mdel04-upgrade','before',sha256('before'::bytea)) AS e \gset
+INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency)
+ VALUES(:'t',:'e','mdel04-upgrade','ref',repeat('a',64),uuidv7(),1,'refunded',100,'USD');
+SELECT app.payments_retain_refund_case('{"account_id":"mdel04-upgrade","provider_ref":"ref","event_id":"case-before","payload_hash":"abababababababababababababababababababababababababababababababab","reason":"unmatched_refund"}');
+CREATE TABLE public.mdel04_before AS SELECT 'accounts' AS tab,to_jsonb(x) AS snapshot FROM app.payment_provider_accounts x
+ UNION ALL SELECT 'events',to_jsonb(x) FROM app.payment_events x
+ UNION ALL SELECT 'cases',to_jsonb(x) FROM app.payment_refund_cases x;
+SQL
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${payments_merchant_files[0]} ]] && continue
+ apply_forward "$PAYMENTS_MERCHANT_DB" "$f"
+done
+db "$PAYMENTS_MERCHANT_DB" <<'SQL' >/dev/null
+DO $check$ BEGIN
+ IF EXISTS(WITH actual AS(
+  SELECT 'accounts' AS tab,to_jsonb(x) AS snapshot FROM app.payment_provider_accounts x
+  UNION ALL SELECT 'events',to_jsonb(x) FROM app.payment_events x
+  UNION ALL SELECT 'cases',to_jsonb(x) FROM app.payment_refund_cases x)
+  SELECT FROM ((SELECT * FROM actual EXCEPT SELECT * FROM public.mdel04_before)
+   UNION ALL (SELECT * FROM public.mdel04_before EXCEPT SELECT * FROM actual)) delta) THEN
+  RAISE EXCEPTION 'MDEL04_UPGRADE_CHANGED_FINANCIAL_FACTS'; END IF;
+ PERFORM set_config('app.tenant_id',(SELECT id::text FROM app.tenants WHERE name='mdel04-upgrade'),true);
+ IF app.payments_deletion_obligations(current_setting('app.tenant_id')::uuid)<>'{"payment_refund":1,"refund_reconciliation":1}'::jsonb THEN
+  RAISE EXCEPTION 'MDEL04_UPGRADE_PENDING_WITNESS'; END IF;
+END $check$;
+SQL
+db "$PAYMENTS_MERCHANT_DB" -f tests/db_payments_merchant_deletion.sql >/dev/null
+db "$PAYMENTS_MERCHANT_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $PAYMENTS_MERCHANT_DB" >/dev/null; PAYMENTS_MERCHANT_DB=""
+pass 'MDEL04 populated upgrade preserves pending money/cases and adds fail-closed witness'
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1

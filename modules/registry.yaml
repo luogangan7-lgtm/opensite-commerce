@@ -925,11 +925,15 @@
         }
       ],
       "dependencies": [
+        "tenant",
         "money",
         "reliability",
         "ledger"
       ],
       "tests": [
+        "tests/db_payments_merchant_deletion.sql",
+        "internal/modules/payments/merchant_test.go",
+        "internal/db/payments_merchant_deletion_integration_test.go",
         "internal/db/refund_recovery_integration_test.go",
         "internal/modules/payments/reconciliation_http_test.go",
         "tests/db_refund_recovery.sql",
@@ -1936,6 +1940,7 @@
       ]
     },
     {"file":"migrations/pending/mdel02-tenant-guard_tenant_lifecycle_cancel_guard.sql","owner":"tenant","touches_tables":["tenant_lifecycles","tenant_lifecycle_receipts","tenant_lifecycle_events","tenant_memberships"]},
+    {"file":"migrations/pending/mdel04-payments_payments_merchant_deletion.sql","owner":"payments","touches_tables":["tenant_lifecycles","payment_provider_accounts","payment_events","payment_event_deliveries","payment_return_refunds","payment_refund_attempts","payment_refund_reversals","payment_refund_terminals","payment_refund_cases","payment_refund_case_deliveries","payment_refund_case_resolutions"]},
     {"file":"migrations/pending/mdel02-identity_identity_merchant_deletion.sql","owner":"identity","touches_tables":["identity_merchant_proofs","users","auth_sessions","tenant_memberships","tenant_lifecycles","tenant_lifecycle_events","tenant_lifecycle_receipts"]}
   ]
 }

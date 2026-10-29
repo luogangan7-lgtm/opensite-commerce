@@ -72,6 +72,8 @@ type Config struct {
 	// ReturnsCoordinator is an unconsumed trusted composition seam; it enables no HTTP operation.
 	ReturnsCoordinator returns.Config
 	PaymentTerminalRun paymentscontract.Run
+	// Dormant owner port; never registers a lifecycle route.
+	PaymentDeletion *payments.DeletionGate
 }
 
 func New(config Config) (server *http.Server, err error) {

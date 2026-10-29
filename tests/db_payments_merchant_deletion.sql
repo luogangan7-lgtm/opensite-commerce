@@ -14,7 +14,7 @@ INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id
  VALUES(:'ta','fake','mdel04-a','test'),(:'tb','fake','mdel04-b','test');
 DO $test$
 DECLARE t uuid:=current_setting('test.mdel04.a')::uuid; b uuid:=current_setting('test.mdel04.b')::uuid;
- event uuid; cid uuid; req uuid:=uuidv7(); counts jsonb; kind text; original jsonb; other_original jsonb; n bigint;
+ event uuid; drain_event uuid; cid uuid; req uuid:=uuidv7(); counts jsonb; kind text; original jsonb; other_original jsonb; n bigint;
 BEGIN
  PERFORM set_config('app.tenant_id',t::text,true);
  counts:=app.payments_deletion_obligations(t);
@@ -46,8 +46,14 @@ BEGIN
  PERFORM set_config('app.tenant_id',t::text,true);
  SELECT jsonb_agg(to_jsonb(e) ORDER BY id) INTO original FROM app.payment_events e WHERE tenant_id=t;
  SELECT to_jsonb(a) INTO other_original FROM app.payment_provider_accounts a WHERE tenant_id=b;
+ drain_event:=app.admit_payment_inbox('mdel04-a','drain-existing',sha256('drain'::bytea));
+ INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency)
+  VALUES(t,drain_event,'mdel04-a','existing',repeat('d',64),uuidv7(),1,'refunded',100,'USD');
+ event:=app.admit_payment_inbox('mdel04-a','new-obligation',sha256('new'::bytea));
  UPDATE app.tenant_lifecycles SET state='cooling_off',request_id=req,epoch=1,
   requested_at=clock_timestamp(),execute_after=clock_timestamp()+interval '720 hours' WHERE tenant_id=t;
+ UPDATE app.payment_events SET applied=true WHERE tenant_id=t AND id=drain_event;
+ SELECT jsonb_agg(to_jsonb(e) ORDER BY id) INTO original FROM app.payment_events e WHERE tenant_id=t;
  BEGIN
   INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency)
    VALUES(t,event,'mdel04-a','new-obligation',repeat('f',64),uuidv7(),1,'captured',100,'USD');
@@ -72,8 +78,10 @@ BEGIN
  UPDATE app.tenant_lifecycles SET state='active',phase='none' WHERE tenant_id=t;
  UPDATE app.payment_provider_accounts SET enabled=true WHERE tenant_id=t;
  UPDATE app.tenant_lifecycles SET state='executing',phase='executing' WHERE tenant_id=t;
- CREATE POLICY mdel04_predicate_witness ON app.payment_provider_accounts TO app_payments_service USING(true) WITH CHECK(true);
- PERFORM app.payments_erase_merchant_records(t,req,2);
+ CREATE POLICY mdel04_predicate_witness ON app.payment_provider_accounts TO app_payments_deletion_executor USING(true) WITH CHECK(true);
+ BEGIN
+  PERFORM app.payments_erase_merchant_records(t,req,2);
+ EXCEPTION WHEN insufficient_privilege THEN RAISE EXCEPTION 'MDEL04_ERASE_TENANT_PREDICATE'; END;
  IF (SELECT to_jsonb(a) FROM app.payment_provider_accounts a WHERE tenant_id=b) IS DISTINCT FROM other_original THEN RAISE EXCEPTION 'MDEL04_ERASE_TENANT_PREDICATE'; END IF;
  BEGIN
   PERFORM app.admit_payment_inbox('mdel04-a','late',sha256('late'::bytea));

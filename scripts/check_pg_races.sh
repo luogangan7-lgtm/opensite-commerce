@@ -2193,6 +2193,37 @@ for mode in owner terminal write; do
  echo "MDEL02_IDLE_POST_LOCK_$mode: checked configured DB deadline"
 done
 
+# MDEL04 gates164/165: statement fences precede module-row locks; admission
+# waits for prior Payments writers and re-reads their committed obligation.
+read -r MT MU MS MR MK <<<"$(mdel_fixture)"
+sql <<<"INSERT INTO app.payment_provider_accounts(tenant_id,provider,provider_account_id,environment) VALUES('$MT','fake','mdel04-$MT','test');" >/dev/null
+ME=$(sql <<<"BEGIN; SELECT set_config('app.tenant_id','$MT',true); SELECT app.admit_payment_inbox('mdel04-$MT','writer',sha256('writer'::bytea)); COMMIT;" | tail -1)
+gate_close 164
+tx mdel04_writer app_runtime "$MT" "INSERT INTO app.payment_events(tenant_id,id,provider_account_id,provider_ref,event_key,claimed_order_id,order_version,status,amount_minor,currency) VALUES('$MT','$ME','mdel04-$MT','ref',repeat('a',64),'$MR',1,'captured',100,'USD'); $(park 164)" &
+await mdel04_writer advisory
+tx mdel04_request postgres "$MT" "SELECT set_config('app.session_idle_seconds','1800',true); SELECT app.tenant_lifecycle_transition_fence('$MT'); SELECT 'MDEL04_REQUEST='||(app.tenant_lifecycle_transition('$MT','$MR','$MU','$MS','request','$MK',sha256('request'::bytea),0,'$MDEL_ZERO'::jsonb||app.payments_deletion_obligations('$MT'))->>'code');" &
+await mdel04_request "${ROWLOCK[@]}"
+gate_open 164; wait
+expect mdel04_writer ok; expect mdel04_request ok
+result mdel04_request 'MDEL04_REQUEST=tenant_deletion_blocked'
+[[ $(sql <<<"SELECT state FROM app.tenant_lifecycles WHERE tenant_id='$MT';") == active ]] || { echo 'FAIL: MDEL04_COMMITTED_WRITER_BLOCKS_REQUEST'; fail=1; }
+
+# Existing completion holds the share fence; execution waits and then revokes
+# drains. A late SQL/bulk writer waits for execution and is denied at statement
+# admission before taking any module row lock.
+sql <<<"UPDATE app.tenant_lifecycles SET state='cooling_off',request_id='$MR',epoch=1,requested_at=clock_timestamp()-interval '721 hours',execute_after=clock_timestamp()-interval '1 hour' WHERE tenant_id='$MT';" >/dev/null
+gate_close 165
+tx mdel04_drain app_runtime "$MT" "UPDATE app.payment_events SET applied=true WHERE tenant_id='$MT' AND id='$ME'; $(park 165)" &
+await mdel04_drain advisory
+tx mdel04_execute postgres "$MT" "SELECT app.tenant_lifecycle_transition_fence('$MT'); SELECT app.tenant_lifecycle_transition('$MT','$MR',NULL,NULL,'execute',NULL,NULL,1,'$MDEL_ZERO'::jsonb||app.payments_deletion_obligations('$MT'));" &
+await mdel04_execute "${ROWLOCK[@]}"
+gate_open 165; wait
+expect mdel04_drain ok; expect mdel04_execute ok
+[[ $(sql <<<"SELECT state FROM app.tenant_lifecycles WHERE tenant_id='$MT';") == executing ]] || { echo 'FAIL: MDEL04_DRAIN_EXECUTION'; fail=1; }
+tx mdel04_late_bulk app_runtime "$MT" "UPDATE app.payment_events SET applied=true WHERE tenant_id='$MT' AND id='$ME';"
+expect mdel04_late_bulk MDEL04_EXECUTION_FENCE
+echo 'PASS: MDEL04 lock-synchronized writer/request and drain/execution, late bulk denial'
+
 if [[ $fail -ne 0 ]]; then echo "FAIL: race end state differs from the sealing/reliability/inventory/pricing/shipping/tax/customers/ledger/catalog/cart/orders/notifications/quotes/cms/checkout/customer-auth/fulfillment/returns contract" >&2; exit 1; fi
 echo 'PASS: lock-synchronized sealing, disjoint outbox claims, lease fencing and same-key occupancy'
 echo 'PASS: inventory last-unit/key-replay/expiry-commit races preserve quantity and movement counts'

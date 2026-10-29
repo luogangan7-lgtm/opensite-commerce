@@ -71,6 +71,7 @@ sql:
       - "migrations/pending/mdel01-lifecycle_tenant_lifecycle.sql"
       - "migrations/pending/mdel02-tenant-guard_tenant_lifecycle_cancel_guard.sql"
       - "migrations/pending/mdel02-identity_identity_merchant_deletion.sql"
+      - "migrations/pending/mdel04-payments_payments_merchant_deletion.sql"
     queries: ["queries", "queries/reliability", "queries/identity", "queries/tenant", "queries/pricing", "queries/catalog"]
     gen:
       go:
