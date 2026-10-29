@@ -43,6 +43,9 @@ BEGIN
 END $$;
 -- Add the common prefix at the existing context boundary, before every module
 -- lock, including legacy/SQL/financial callers. Preserve exact OID/owner/ACL.
+-- Pure creation preflight/replay remains usable in a read-only transaction.
+-- PostgreSQL itself forbids persistent writes there; each actual mutation entry
+-- still takes its fence unconditionally, even if a caller later turns writes on.
 DO $prefix$ DECLARE f record; revised text; prefix text; BEGIN
  FOR f IN SELECT p.oid::regprocedure signature,p.proname,p.prosrc,pg_get_functiondef(p.oid) def
   FROM pg_proc p WHERE p.pronamespace='app'::regnamespace AND p.proname IN(
@@ -50,7 +53,8 @@ DO $prefix$ DECLARE f record; revised text; prefix text; BEGIN
    'orders_transition','orders_fulfillment_fence','orders_fulfillment_advance',
    'orders_refund_budget','orders_finish_return_refund','orders_compensate_refund') LOOP
   prefix:=CASE f.proname
-   WHEN 'orders_context' THEN 'PERFORM app.tenant_lifecycle_read_fence(t); RETURN t;'
+   WHEN 'orders_context' THEN 'IF NOT current_setting(''transaction_read_only'')::boolean THEN PERFORM app.tenant_lifecycle_read_fence(t); END IF; RETURN t;'
+   WHEN 'orders_check_creation' THEN 'IF NOT current_setting(''transaction_read_only'')::boolean THEN PERFORM app.orders_merchant_mutation_fence(false); END IF;'
    WHEN 'orders_transition' THEN 'PERFORM app.orders_merchant_mutation_fence(p_target IN(''paid'',''cancelled''));'
    WHEN 'orders_refund_budget' THEN 'PERFORM app.orders_merchant_mutation_fence(p_phase IN(''freeze'',''lock'',''fail'',''complete''));'
    WHEN 'orders_finish_return_refund' THEN 'PERFORM app.orders_merchant_mutation_fence(true);'
