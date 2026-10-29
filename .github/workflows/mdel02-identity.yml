@@ -1,0 +1,129 @@
+# Responsibility: isolated MDEL-02 causal mutations and CI-only formatting receipt.
+# Dependencies: pinned Go/PG18, normal forward migrations and Identity PG test.
+# Invariants: exact candidate SHA, assertion-specific probe failures, no secrets.
+name: mdel02-identity
+on:
+  pull_request:
+    paths:
+      - 'internal/modules/identity/**'
+      - 'migrations/pending/mdel02-identity_*'
+      - 'migrations/pending/mdel02-tenant-guard_*'
+      - 'internal/platform/httpapi/router.go'
+      - 'tests/db_identity_merchant_deletion.sql'
+      - '.github/workflows/mdel02-identity.yml'
+permissions:
+  contents: read
+jobs:
+  format-receipt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - name: Produce handwritten-source formatting patch in CI only
+        run: |
+          git rev-parse HEAD
+          gofmt -w internal/modules/identity/merchant.go internal/modules/identity/internal/{httpapi,login,store}/merchant*.go internal/modules/identity/internal/httpapi/authorization.go internal/modules/identity/internal/login/service.go
+          git diff --binary -- internal/modules/identity > format.patch
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mdel02-format-${{ github.run_id }}-${{ github.run_attempt }}
+          path: format.patch
+          retention-days: 7
+  pg-probes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GOTOOLCHAIN: local
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+      OPENSITE_ALLOW_PENDING_MIGRATIONS: '1'
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - run: ./scripts/ci_apt_install.sh --no-install-recommends postgresql-client
+      - name: Apply real predecessor and proposed migrations
+        run: |
+          git rev-parse HEAD
+          ./scripts/migrate_river.sh
+          ./scripts/migrate.sh
+      - name: Baseline and isolated assertion-specific mutations
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, subprocess
+          from pathlib import Path
+          psql = ['psql', os.environ['DATABASE_URL'], '-X', '-At', '-v', 'ON_ERROR_STOP=1']
+          def command(sql):
+              return subprocess.check_output(psql, input=sql, text=True, stderr=subprocess.STDOUT, timeout=90)
+          def test(marker=None):
+              r = subprocess.run(psql + ['-f', 'tests/db_identity_merchant_deletion.sql'], text=True,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
+              print(r.stdout, flush=True)
+              if marker is None:
+                  assert r.returncode == 0, 'baseline failed'
+              else:
+                  assert r.returncode != 0 and marker in r.stdout, 'mutation missed exact assertion: ' + marker
+                  print('CAUSAL_RED ' + marker, flush=True)
+          test()
+          mutations = [
+              ('auth_erase_merchant_proofs(uuid,uuid,bigint)', 'DELETE FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant;', 'DELETE FROM app.identity_merchant_proofs;', 'MDEL02_ERASE_TENANT_PREDICATE'),
+              ('auth_merchant_scope(uuid,text,text)', "IF st='active' THEN RETURN true; END IF;", 'RETURN true;', 'MDEL02_COOLING_WRITE'),
+              ('auth_merchant_scope(uuid,text,text)', "IF st='cooling_off' OR (st='failed' AND ph IN('none','preconditions')) THEN", "IF (st='cooling_off' OR st='failed') AND ph IN('none','preconditions') THEN", 'MDEL02_COOLING_PHASE_SCOPE'),
+              ('auth_erase_merchant_proofs(uuid,uuid,bigint)', 'DELETE FROM app.identity_merchant_proofs WHERE tenant_id=p_tenant;', 'PERFORM 1;', 'MDEL02_DERIVED_PROOF_SCRUB'),
+              ('auth_merchant_receipt(uuid,uuid,uuid,uuid)', 'IF EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id', 'IF false AND EXISTS(SELECT FROM app.tenant_lifecycles l JOIN app.tenants t ON t.id=l.tenant_id', 'MDEL02_EXECUTING_OWNER_STATUS'),
+              ('auth_merchant_receipt(uuid,uuid,uuid,uuid)', "OR sess.last_seen_at<=at_db-nullif(current_setting('app.session_idle_seconds',true),'')::bigint*interval '1 second'", '', 'MDEL02_RECEIPT_IDLE_REVALIDATION'),
+              ('auth_revalidate_tenant(uuid,uuid,text,uuid,text)', "s_seen>at_db-nullif(current_setting('app.session_idle_seconds',true),'')::bigint*interval '1 second'", 'true', 'MDEL02_WRITE_IDLE_REVALIDATION'),
+          ]
+          guard = (" IF p_operation='cancel' AND l.phase='executing' THEN\n"
+                   "  IF l.request_id IS DISTINCT FROM p_request OR l.epoch IS DISTINCT FROM p_epoch THEN\n"
+                   "   RAISE EXCEPTION 'stale lifecycle operation' USING ERRCODE='55000'; END IF;\n"
+                   "  RAISE EXCEPTION 'tenant deletion cancellation closed' USING ERRCODE='55000';\n"
+                   " END IF;")
+          mutations.append(('tenant_lifecycle_transition(uuid,uuid,uuid,uuid,text,uuid,bytea,bigint,jsonb)',
+                            guard, '', 'MDEL02_TENANT_CANCEL_GUARD'))
+          for function, old, new, marker in mutations:
+              source = command("SELECT pg_get_functiondef('app." + function + "'::regprocedure);")
+              assert source.count(old) == 1, 'mutation anchor drift'
+              try:
+                  command(source.replace(old, new))
+                  test(marker)
+              finally:
+                  command(source)
+          # Remove only the proof FK cascade, leaving the real parent/child
+          # schema in place. The empty-tenant witness must reject this defect.
+          constraint = json.loads(command("""
+              SELECT json_build_object(
+                'drop', format('ALTER TABLE app.identity_merchant_proofs DROP CONSTRAINT %I;', conname),
+                'add', format('ALTER TABLE app.identity_merchant_proofs ADD CONSTRAINT %I %s;', conname, pg_get_constraintdef(oid)))
+              FROM pg_constraint WHERE conrelid='app.identity_merchant_proofs'::regclass
+                AND confrelid='app.tenants'::regclass AND contype='f';
+          """))
+          assert constraint['add'].count('ON DELETE CASCADE') == 1, 'cascade mutation anchor drift'
+          try:
+              command(constraint['drop'] + constraint['add'].replace('ON DELETE CASCADE', 'ON DELETE NO ACTION'))
+              test('MDEL02_PROOF_TENANT_CASCADE')
+          finally:
+              command(constraint['drop'] + constraint['add'])
+          test()
+          PYTHON

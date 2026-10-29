@@ -328,6 +328,141 @@ func (q *Queries) LoginRotationSession(ctx context.Context, arg LoginRotationSes
 	return allowed, err
 }
 
+const loginSetTransactionIdle = `-- name: LoginSetTransactionIdle :exec
+SELECT set_config('app.session_idle_seconds',$1::bigint::text,true)
+`
+
+// The setting is transaction-local and comes from LoginConfig, never a DB default.
+func (q *Queries) LoginSetTransactionIdle(ctx context.Context, idleSeconds int64) error {
+	_, err := q.db.Exec(ctx, loginSetTransactionIdle, idleSeconds)
+	return err
+}
+
+const merchantConsumeProof = `-- name: MerchantConsumeProof :exec
+SELECT app.auth_consume_merchant_proof($1::uuid,$2::uuid,
+ $3::uuid,$4::text,$5::bytea)
+`
+
+type MerchantConsumeProofParams struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	UserID      pgtype.UUID `json:"user_id"`
+	SessionID   pgtype.UUID `json:"session_id"`
+	Action      string      `json:"action"`
+	ProofDigest []byte      `json:"proof_digest"`
+}
+
+func (q *Queries) MerchantConsumeProof(ctx context.Context, arg MerchantConsumeProofParams) error {
+	_, err := q.db.Exec(ctx, merchantConsumeProof,
+		arg.TenantID,
+		arg.UserID,
+		arg.SessionID,
+		arg.Action,
+		arg.ProofDigest,
+	)
+	return err
+}
+
+const merchantEraseProofs = `-- name: MerchantEraseProofs :one
+SELECT app.auth_erase_merchant_proofs($1::uuid,$2::uuid,
+ $3::bigint)::bigint AS erased
+`
+
+type MerchantEraseProofsParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	RequestID pgtype.UUID `json:"request_id"`
+	Epoch     int64       `json:"epoch"`
+}
+
+func (q *Queries) MerchantEraseProofs(ctx context.Context, arg MerchantEraseProofsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, merchantEraseProofs, arg.TenantID, arg.RequestID, arg.Epoch)
+	var erased int64
+	err := row.Scan(&erased)
+	return erased, err
+}
+
+const merchantIssueProof = `-- name: MerchantIssueProof :one
+SELECT app.auth_issue_merchant_proof($1::uuid,$2::uuid,
+ $3::uuid,$4::text,$5::bytea,
+ $6::text)::timestamptz AS expires_at
+`
+
+type MerchantIssueProofParams struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	UserID       pgtype.UUID `json:"user_id"`
+	SessionID    pgtype.UUID `json:"session_id"`
+	Action       string      `json:"action"`
+	ProofDigest  []byte      `json:"proof_digest"`
+	VerifiedHash string      `json:"verified_hash"`
+}
+
+func (q *Queries) MerchantIssueProof(ctx context.Context, arg MerchantIssueProofParams) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, merchantIssueProof,
+		arg.TenantID,
+		arg.UserID,
+		arg.SessionID,
+		arg.Action,
+		arg.ProofDigest,
+		arg.VerifiedHash,
+	)
+	var expires_at pgtype.Timestamptz
+	err := row.Scan(&expires_at)
+	return expires_at, err
+}
+
+const merchantReceiptAllowed = `-- name: MerchantReceiptAllowed :one
+SELECT app.auth_merchant_receipt($1::uuid,$2::uuid,
+ $3::uuid,$4::uuid)::boolean AS allowed
+`
+
+type MerchantReceiptAllowedParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	RequestID pgtype.UUID `json:"request_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+	SessionID pgtype.UUID `json:"session_id"`
+}
+
+func (q *Queries) MerchantReceiptAllowed(ctx context.Context, arg MerchantReceiptAllowedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, merchantReceiptAllowed,
+		arg.TenantID,
+		arg.RequestID,
+		arg.UserID,
+		arg.SessionID,
+	)
+	var allowed bool
+	err := row.Scan(&allowed)
+	return allowed, err
+}
+
+const merchantScopeAllowed = `-- name: MerchantScopeAllowed :one
+SELECT app.auth_merchant_scope($1::uuid,$2::text,
+ $3::text)::boolean AS allowed
+`
+
+type MerchantScopeAllowedParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	Kind     string      `json:"kind"`
+	Scope    string      `json:"scope"`
+}
+
+// Boolean lifecycle classification only; no membership/session authority grant.
+func (q *Queries) MerchantScopeAllowed(ctx context.Context, arg MerchantScopeAllowedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, merchantScopeAllowed, arg.TenantID, arg.Kind, arg.Scope)
+	var allowed bool
+	err := row.Scan(&allowed)
+	return allowed, err
+}
+
+const merchantStepUpIdentifier = `-- name: MerchantStepUpIdentifier :one
+SELECT email_normalized FROM app.users WHERE id=$1::uuid AND status='active'
+`
+
+func (q *Queries) MerchantStepUpIdentifier(ctx context.Context, userID pgtype.UUID) (pgtype.Text, error) {
+	row := q.db.QueryRow(ctx, merchantStepUpIdentifier, userID)
+	var email_normalized pgtype.Text
+	err := row.Scan(&email_normalized)
+	return email_normalized, err
+}
+
 const validateAuthConnection = `-- name: ValidateAuthConnection :one
 SELECT current_user=session_user
  AND EXISTS(SELECT FROM pg_catalog.pg_roles r WHERE r.rolname=current_user

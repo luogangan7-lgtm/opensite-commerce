@@ -161,10 +161,12 @@ func (q *Queries) TenantListAPIKeys(ctx context.Context, arg TenantListAPIKeysPa
 }
 
 const tenantMembership = `-- name: TenantMembership :one
-SELECT m.user_id,m.tenant_id,m.role FROM app.tenant_memberships m
+WITH context AS MATERIALIZED(SELECT set_config('app.tenant_id',$2::uuid::text,true) AS tenant_context)
+SELECT m.user_id,m.tenant_id,m.role FROM app.tenant_memberships m CROSS JOIN context
  JOIN app.users u ON u.id=m.user_id JOIN app.tenants t ON t.id=m.tenant_id
  WHERE m.user_id=$1::uuid AND m.tenant_id=$2::uuid
  AND m.status='active' AND u.status='active' AND t.status='active'
+ AND app.auth_merchant_scope(m.tenant_id,'session','catalog:read')
 `
 
 type TenantMembershipParams struct {

@@ -46,11 +46,11 @@ NON_STAFF_SCOPES = {
 def assert_contract(registry, source):
     identity = next(m for m in registry['modules'] if m['name'] == 'identity')
     assert identity['go_status'] == 'implemented', 'identity Go implementation missing'
-    assert set(identity['owns_tables']) == {'users', 'auth_sessions', 'auth_account_attempts', 'auth_login_attempts', 'known_devices'}
-    assert identity['scopes'] == [], 'global session routes must carry no tenant scopes'
+    assert set(identity['owns_tables']) == {'users', 'auth_sessions', 'auth_account_attempts', 'auth_login_attempts', 'known_devices', 'identity_merchant_proofs'}
+    assert identity['scopes'] == ['tenant:delete'], 'only dormant tenant-bound step-up has a scope'
     assert {o['operation_id']: o['status'] for o in identity['operations']} == {
         **{operation: 'implemented' for operation in EXPECTED.values()},
-        **{operation: 'planned' for operation in ['createAdminSession', 'deleteAdminSession', 'getCurrentActor', 'listAdminSessions', 'revokeAdminSession']}}
+        **{operation: 'planned' for operation in ['createAdminSession', 'deleteAdminSession', 'getCurrentActor', 'listAdminSessions', 'revokeAdminSession', 'merchantDeletionStepUp']}}
     api = yaml.safe_load(source)
     blocks = {(path, method): op for path, item in api['paths'].items()
               for method, op in item.items()
@@ -82,13 +82,27 @@ def assert_contract(registry, source):
     assert tenant['scopes'] == ['apikeys:write', 'tenant:delete']
     assert {o['operation_id']: o['status'] for o in tenant['operations']} == {
         **{operation: 'implemented' for operation in KEY_OPERATIONS.values()},
-        'requestMerchantDeletion': 'planned'}
+        'requestMerchantDeletion': 'planned', 'getMerchantDeletion': 'planned'}
     deletion = blocks[('/api/v1/t/{tenant_id}/merchant-deletion', 'post')]
     assert deletion['x-opensite-status'] == 'planned'
     assert deletion['x-opensite-access'] == 'AdminSession'
     assert deletion['security'] == [{'adminSession': []}]
     assert deletion['x-required-scope'] == 'tenant:delete'
     assert deletion['responses']['202'].get('content', {}).get('application/json', {}).get('schema') == {'$ref': '#/components/schemas/MerchantDeletionMetadata'}
+    receipt = blocks.get(('/api/v1/t/{tenant_id}/merchant-deletion/{request_id}', 'get'))
+    assert receipt is not None, 'MDEL02_RECEIPT_GET_CONTRACT'
+    assert receipt['operationId'] == 'getMerchantDeletion' and receipt['x-opensite-status'] == 'planned'
+    assert receipt['x-opensite-access'] == 'AdminSession' and receipt['security'] == [{'adminSession': []}]
+    assert receipt['x-required-scope'] == 'tenant:delete'
+    assert receipt['responses']['200']['content']['application/json']['schema'] == {'$ref': '#/components/schemas/MerchantDeletionMetadata'}
+    for status, response in [('401', 'Unauthorized'), ('403', 'Forbidden'), ('404', 'NotFound'), ('409', 'Conflict'), ('412', 'PreconditionFailed'), ('413', 'PayloadTooLarge'), ('415', 'UnsupportedMediaType'), ('422', 'UnprocessableEntity'), ('428', 'PreconditionRequired'), ('429', 'TooManyRequests')]:
+        assert receipt['responses'][status] == {'$ref': '#/components/responses/' + response}
+    step_up = blocks[('/api/v1/t/{tenant_id}/merchant-deletion/step-up', 'post')]
+    assert step_up['operationId'] == 'merchantDeletionStepUp' and step_up['x-opensite-status'] == 'planned'
+    assert step_up['x-opensite-access'] == 'AdminSession' and step_up['security'] == [{'adminSession': []}]
+    assert step_up['x-required-scope'] == 'tenant:delete'
+    assert set(components['schemas']['MerchantDeletionStepUpResult']['properties']) == {'proof', 'expires_at'}
+    assert deletion['requestBody']['content']['application/json']['schema']['properties']['step_up_proof'] == components['schemas']['MerchantDeletionStepUpResult']['properties']['proof']
     metadata = components['schemas']['MerchantDeletionMetadata']
     fields = {'request_id', 'state', 'phase', 'epoch', 'requested_at', 'execute_after', 'attempt', 'next_retry_at', 'categories'}
     assert metadata['type'] == 'object' and metadata['additionalProperties'] is False
@@ -160,6 +174,8 @@ def assert_contract(registry, source):
 
 registry = json.loads((ROOT / 'modules/registry.yaml').read_text())
 source = (ROOT / 'api/openapi.yaml').read_text()
+identity_migration = next((ROOT / 'migrations').rglob('*_identity_merchant_deletion.sql')).read_text()
+assert "p.proname='tenant_lifecycle_transition'" not in identity_migration, 'MDEL02_TENANT_GUARD_OWNERSHIP: Identity rewrites Tenant private transition'
 assert_contract(registry, source)
 check_operations(registry, ROOT / 'api/openapi.yaml')
 # Inject faults into in-memory/temporary copies, preserving the shared checkout.

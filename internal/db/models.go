@@ -359,6 +359,17 @@ type AppIdempotencyRecord struct {
 	CompletedAt           pgtype.Timestamptz `json:"completed_at"`
 }
 
+type AppIdentityMerchantProof struct {
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	ID          pgtype.UUID        `json:"id"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	SessionID   pgtype.UUID        `json:"session_id"`
+	Action      string             `json:"action"`
+	ProofDigest []byte             `json:"proof_digest"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+}
+
 type AppInquiry struct {
 	TenantID       pgtype.UUID        `json:"tenant_id"`
 	SiteID         pgtype.UUID        `json:"site_id"`

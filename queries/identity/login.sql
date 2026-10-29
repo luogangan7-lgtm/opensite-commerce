@@ -123,3 +123,32 @@ SELECT v.id,v.user_id,v.created_at,coalesce(t.last_seen_at,v.last_seen_at)::time
 WITH input AS MATERIALIZED (SELECT sqlc.arg(at)::timestamptz AS caller_at)
 UPDATE app.auth_sessions SET revoked_at=clock_timestamp()
  WHERE id=sqlc.arg(id)::uuid AND revoked_at IS NULL;
+
+-- name: MerchantStepUpIdentifier :one
+SELECT email_normalized FROM app.users WHERE id=sqlc.arg(user_id)::uuid AND status='active';
+
+-- name: MerchantIssueProof :one
+SELECT app.auth_issue_merchant_proof(sqlc.arg(tenant_id)::uuid,sqlc.arg(user_id)::uuid,
+ sqlc.arg(session_id)::uuid,sqlc.arg(action)::text,sqlc.arg(proof_digest)::bytea,
+ sqlc.arg(verified_hash)::text)::timestamptz AS expires_at;
+
+-- name: MerchantConsumeProof :exec
+SELECT app.auth_consume_merchant_proof(sqlc.arg(tenant_id)::uuid,sqlc.arg(user_id)::uuid,
+ sqlc.arg(session_id)::uuid,sqlc.arg(action)::text,sqlc.arg(proof_digest)::bytea);
+
+-- name: MerchantReceiptAllowed :one
+SELECT app.auth_merchant_receipt(sqlc.arg(tenant_id)::uuid,sqlc.arg(request_id)::uuid,
+ sqlc.arg(user_id)::uuid,sqlc.arg(session_id)::uuid)::boolean AS allowed;
+
+-- name: MerchantEraseProofs :one
+SELECT app.auth_erase_merchant_proofs(sqlc.arg(tenant_id)::uuid,sqlc.arg(request_id)::uuid,
+ sqlc.arg(epoch)::bigint)::bigint AS erased;
+
+-- name: MerchantScopeAllowed :one
+-- Boolean lifecycle classification only; no membership/session authority grant.
+SELECT app.auth_merchant_scope(sqlc.arg(tenant_id)::uuid,sqlc.arg(kind)::text,
+ sqlc.arg(scope)::text)::boolean AS allowed;
+
+-- name: LoginSetTransactionIdle :exec
+-- The setting is transaction-local and comes from LoginConfig, never a DB default.
+SELECT set_config('app.session_idle_seconds',sqlc.arg(idle_seconds)::bigint::text,true);

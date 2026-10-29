@@ -19,7 +19,7 @@ DECLARE
   'blog_post_revisions','site_release_routes','site_release_templates',
   'site_release_media','draft_operations','audit_events'];
  special_tables text[] := ARRAY[
-  'tenant_lifecycles','tenant_lifecycle_receipts','tenant_lifecycle_events',
+  'tenant_lifecycles','tenant_lifecycle_receipts','tenant_lifecycle_events','identity_merchant_proofs',
   'tenants','users','auth_sessions','api_keys','tenant_memberships','sites',
   'site_domains','media_uploads','media_blobs','media_assets','site_releases','outbox_events','webhook_inbox',
   'warehouses','stock_levels','inventory_reservations','inventory_movements','price_lists','price_entries',
@@ -77,7 +77,7 @@ BEGIN
     allowed_columns := ARRAY[]::text[];
     expected_table := false;
     IF role_name='app_runtime' THEN
-     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['tenant_lifecycle_receipts','tenant_lifecycle_events','payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals','payment_refund_cases','payment_refund_case_deliveries','payment_refund_case_resolutions','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures','data_rights_erased_orders']) THEN
+     IF privilege='SELECT' AND NOT t.relname=ANY(ARRAY['identity_merchant_proofs','tenant_lifecycle_receipts','tenant_lifecycle_events','payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals','payment_refund_cases','payment_refund_case_deliveries','payment_refund_case_resolutions','payment_provider_accounts','tenants','users','auth_sessions','api_keys','customer_credentials','customer_auth_tokens','customer_sessions','customer_guest_order_links','customer_auth_limits','customer_auth_global_limits','auth_account_attempts','auth_login_attempts','known_devices','data_rights_exports','data_rights_erasures','data_rights_erased_orders']) THEN
       allowed_columns := all_columns;
       expected_table := true;
      ELSIF privilege='SELECT' AND t.relname='customer_guest_order_links' THEN
@@ -310,7 +310,7 @@ BEGIN
  -- New capability roles cannot execute older business service functions either.
  FOR f IN SELECT p.oid,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND NOT p.proname=ANY(names)
   AND p.proname NOT IN ('auth_role_scopes','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key','auth_revalidate_tenant',
-   'tenant_lifecycle_read_fence','tenant_lifecycle_write_fence') LOOP
+   'tenant_lifecycle_read_fence','tenant_lifecycle_write_fence','auth_merchant_scope') LOOP
   IF has_function_privilege('app_admin_bootstrap',f.oid,'EXECUTE') OR has_function_privilege('app_credential_writer',f.oid,'EXECUTE') THEN
    RAISE EXCEPTION 'identity role has unrelated function authority: %',f.proname; END IF;
  END LOOP;
@@ -398,6 +398,7 @@ BEGIN
    'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts','auth_lock_login_user','auth_revoke_user_sessions',
    'auth_role_scopes','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key','auth_revalidate_tenant',
+   'auth_merchant_scope','auth_issue_merchant_proof','auth_consume_merchant_proof','auth_merchant_receipt','auth_erase_merchant_proofs',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
    'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
@@ -437,6 +438,7 @@ BEGIN
    'orders_fulfillment_fence','orders_fulfillment_advance','orders_finish_return_refund','orders_refund_budget','inventory_restore_return',
    'auth_record_failure','guard_known_device','auth_fail_known_device','bootstrap_admin','auth_prune_attempts','auth_lock_login_user','auth_revoke_user_sessions',
    'auth_role_scopes','auth_create_api_key','auth_revoke_api_key','auth_touch_api_key','auth_revalidate_tenant',
+   'auth_merchant_scope','auth_issue_merchant_proof','auth_consume_merchant_proof','auth_merchant_receipt','auth_erase_merchant_proofs',
    'orders_context','orders_guard','orders_child_guard','orders_create','orders_transition','orders_lock_reservations','orders_check_creation','outbox_active_tenants','outbox_metrics','notification_fanout','notification_quote_conversion_fanout','claim_notification_outbox','notification_begin','notification_finish','notification_redrive',
    'quote_actor_access','guard_quote','guard_quote_child','quote_outbox','create_quote','transition_quote','quote_conversion_guard','quote_conversion_lock','quote_conversion_bind','quote_conversion_get','checkout_guard',
    'customer_auth_context','customer_claim_guest_orders','customer_prepare_registration',
@@ -1385,7 +1387,8 @@ BEGIN
    expected:=role_name='app_credential_writer'
     OR role_name='app_auth' AND f.proname IN ('auth_create_api_key','auth_revoke_api_key','auth_touch_api_key')
     OR role_name IN ('app_runtime','app_auth','app_media_service','app_returns_service','app_payments_service') AND f.proname='auth_revalidate_tenant'
-    OR role_name='app_tenant_lifecycle_executor' AND f.proname IN ('auth_role_scopes','auth_revalidate_tenant');
+    OR role_name='app_tenant_lifecycle_executor' AND f.proname IN ('auth_role_scopes','auth_revalidate_tenant')
+    OR role_name='app_identity_merchant_executor' AND f.proname='auth_revalidate_tenant';
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR role_name<>'app_credential_writer' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'TENANT_AUTH_ROUTINE_ACL % %',role_name,f.proname; END IF;
@@ -1665,7 +1668,8 @@ BEGIN
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    expected:=role_name='app_tenant_lifecycle_executor'
     OR role_name IN ('app_runtime','app_auth','app_credential_writer') AND f.proname='tenant_lifecycle_read_fence'
-    OR role_name IN ('app_runtime','app_credential_writer') AND f.proname='tenant_lifecycle_write_fence';
+    OR role_name IN ('app_runtime','app_credential_writer') AND f.proname='tenant_lifecycle_write_fence'
+    OR role_name='app_identity_merchant_executor' AND f.proname IN('tenant_lifecycle_read_fence','tenant_lifecycle_transition_fence');
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
     OR role_name<>'app_tenant_lifecycle_executor' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
     RAISE EXCEPTION 'MDEL01_ROUTINE_ACL % %',role_name,f.proname; END IF;
@@ -1693,3 +1697,63 @@ BEGIN
    RAISE EXCEPTION 'MDEL01_EXECUTOR_FOREIGN_ROUTINE %',f.proname; END IF;
  END LOOP;
 END $lifecycle_acl$;
+
+-- Identity's merchant capability is exact and unassumable. This is a new
+-- family, never a wildcard exclusion from an older service-role audit.
+DO $identity_merchant_acl$
+DECLARE r record; f record; t record; a record; privilege text; role_name text;
+ expected boolean; allowed text[];
+ names text[]:=ARRAY['auth_merchant_scope','auth_issue_merchant_proof','auth_consume_merchant_proof','auth_merchant_receipt','auth_erase_merchant_proofs'];
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_identity_merchant_executor';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+  OR EXISTS(SELECT FROM pg_auth_members WHERE roleid=r.oid OR member=r.oid)
+  OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'MDEL02_UNSAFE_EXECUTOR'; END IF;
+ FOR t IN SELECT c.oid,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='app' AND c.relkind IN('r','p') LOOP
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected:=t.relname='identity_merchant_proofs' AND privilege IN('SELECT','INSERT','DELETE')
+    OR t.relname IN('tenant_lifecycles','tenant_lifecycle_events','tenant_lifecycle_receipts') AND privilege='SELECT';
+   allowed:=CASE
+    WHEN t.relname='tenants' AND privilege='SELECT' THEN ARRAY['id','status']
+    WHEN t.relname='users' AND privilege='SELECT' THEN ARRAY['id','status','password_hash']
+    WHEN t.relname='auth_sessions' AND privilege='SELECT' THEN ARRAY['id','user_id','created_at','last_seen_at','expires_at','revoked_at']
+    WHEN t.relname='tenant_memberships' AND privilege='SELECT' THEN ARRAY['tenant_id','user_id','role','status']
+    WHEN t.relname IN('users','auth_sessions','identity_merchant_proofs') AND privilege='UPDATE' THEN ARRAY['id']
+    ELSE ARRAY[]::text[] END;
+   IF has_table_privilege(r.oid,t.oid,privilege) IS DISTINCT FROM expected
+    OR has_table_privilege(r.oid,t.oid,privilege||' WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'MDEL02_EXECUTOR_TABLE_ACL % %',t.relname,privilege; END IF;
+   IF privilege IN('SELECT','INSERT','UPDATE','REFERENCES') THEN
+    FOR a IN SELECT attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+     IF has_column_privilege(r.oid,t.oid,a.attname,privilege) IS DISTINCT FROM (expected OR a.attname=ANY(allowed))
+      OR has_column_privilege(r.oid,t.oid,a.attname,privilege||' WITH GRANT OPTION') THEN
+      RAISE EXCEPTION 'MDEL02_EXECUTOR_COLUMN_ACL % % %',t.relname,a.attname,privilege; END IF;
+    END LOOP;
+   END IF;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names) LOOP
+  IF f.proowner<>r.oid OR NOT f.prosecdef OR cardinality(f.proconfig)<>1
+   OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
+   OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+   RAISE EXCEPTION 'MDEL02_UNSAFE_ROUTINE %',f.proname; END IF;
+  FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+   expected:=role_name='app_identity_merchant_executor'
+    OR role_name='app_auth' AND f.proname IN('auth_merchant_scope','auth_issue_merchant_proof','auth_merchant_receipt')
+    OR role_name='app_credential_writer' AND f.proname='auth_merchant_scope'
+    OR role_name='app_runtime' AND f.proname IN('auth_merchant_receipt','auth_merchant_scope');
+   IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
+    OR role_name<>'app_identity_merchant_executor' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+    RAISE EXCEPTION 'MDEL02_ROUTINE_ACL % %',role_name,f.proname; END IF;
+  END LOOP;
+ END LOOP;
+ IF(SELECT count(*) FROM pg_proc WHERE pronamespace='app'::regnamespace AND proname=ANY(names))<>cardinality(names) THEN
+  RAISE EXCEPTION 'MDEL02_ROUTINE_INVENTORY'; END IF;
+ FOR f IN SELECT oid,proname FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
+  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM
+   (f.proname=ANY(names) OR f.proname IN('tenant_lifecycle_read_fence','tenant_lifecycle_transition_fence','auth_revalidate_tenant')) THEN
+   RAISE EXCEPTION 'MDEL02_EXECUTOR_FOREIGN_ROUTINE %',f.proname; END IF;
+ END LOOP;
+END $identity_merchant_acl$;
+SELECT 'PASS: MDEL02 exact proof custody, receipt-only access and unassumable worker capability';

@@ -138,7 +138,7 @@ func (s *Router) registerWithContract(spec RouteSpec, handler http.Handler, cont
 		ctx = context.WithValue(ctx, authorizedTenantKey{}, "")
 		ctx = context.WithValue(ctx, authorizedActorKey{}, Actor{})
 		ctx = context.WithValue(ctx, transactionAuthorizationKey{}, (func(context.Context, *db.Queries) error)(nil))
-		if spec.Access == Storefront || spec.Access == BuyerCompany || spec.Access == CustomerSession {
+		if spec.Access == Storefront || spec.Access == BuyerCompany || spec.Access == CustomerSession || spec.Access == AdminSession && spec.Scope == "tenant:delete" {
 			w.Header().Set("Cache-Control", "no-store")
 		}
 		if spec.Access != Public {
@@ -178,7 +178,7 @@ func (s *Router) registerWithContract(spec RouteSpec, handler http.Handler, cont
 				ctx = context.WithValue(ctx, authorizedActorKey{}, actor)
 			}
 
-			if isWrite(spec.Method) && strings.Contains(spec.Pattern, "{tenant_id}") {
+			if (isWrite(spec.Method) || spec.OperationID == "getMerchantDeletion" && spec.Method == "GET") && strings.Contains(spec.Pattern, "{tenant_id}") {
 				if resolver, ok := s.auth.(TransactionAuthorizationResolver); ok {
 					check, err := resolver.ResolveTransactionAuthorization(ctx, r, spec)
 					if err != nil {

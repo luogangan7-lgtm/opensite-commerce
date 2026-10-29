@@ -11,9 +11,11 @@
         "auth_sessions",
         "auth_account_attempts",
         "auth_login_attempts",
-        "known_devices"
+        "known_devices",
+        "identity_merchant_proofs"
       ],
       "operations": [
+        {"operation_id":"merchantDeletionStepUp","status":"planned"},
         {
           "operation_id": "createAdminSession",
           "status": "planned"
@@ -61,10 +63,12 @@
         "tests/db_identity_clock.sql",
         "internal/modules/identity/h4_clock_pgx_test.go",
         "tests/db_identity_hardening.sql",
-        "internal/modules/identity/h4_fence_pgx_test.go"
+        "internal/modules/identity/h4_fence_pgx_test.go",
+        "tests/db_identity_merchant_deletion.sql",
+        "internal/modules/identity/internal/httpapi/merchant_test.go"
       ],
-      "scopes": [],
-      "note": "Global staff identity and sessions have no tenant_id. Offline bootstrap CLI and its Go service/store are implemented. Four staff login/challenge/session/logout HTTP operations are implemented; the five admin-session management operations remain planned."
+      "scopes": ["tenant:delete"],
+      "note": "Dormant merchant step-up owns the tenant deletion scope; global session routes remain unscoped. Global staff identity and sessions have no tenant_id. Offline bootstrap CLI and its Go service/store are implemented. Four staff login/challenge/session/logout HTTP operations are implemented; the five admin-session management operations remain planned."
     },
     {
       "name": "tenant",
@@ -91,6 +95,10 @@
         {
           "operation_id": "revokeAPIKey",
           "status": "implemented"
+        },
+        {
+          "operation_id": "getMerchantDeletion",
+          "status": "planned"
         },
         {
           "operation_id": "requestMerchantDeletion",
@@ -1926,6 +1934,8 @@
         "tenant_lifecycle_receipts",
         "tenant_lifecycle_events"
       ]
-    }
+    },
+    {"file":"migrations/pending/mdel02-tenant-guard_tenant_lifecycle_cancel_guard.sql","owner":"tenant","touches_tables":["tenant_lifecycles","tenant_lifecycle_receipts","tenant_lifecycle_events","tenant_memberships"]},
+    {"file":"migrations/pending/mdel02-identity_identity_merchant_deletion.sql","owner":"identity","touches_tables":["identity_merchant_proofs","users","auth_sessions","tenant_memberships","tenant_lifecycles","tenant_lifecycle_events","tenant_lifecycle_receipts"]}
   ]
 }

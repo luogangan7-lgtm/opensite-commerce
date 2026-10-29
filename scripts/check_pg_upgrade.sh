@@ -181,10 +181,11 @@ PRIVACY_HARDENING_DB=""
 AUDIT_DB=""
 CALLER_KEYS_DB=""
 LIFECYCLE_DB=""
+IDENTITY_MERCHANT_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB" "$CALLER_KEYS_DB" "$LIFECYCLE_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB" "$CALLER_KEYS_DB" "$LIFECYCLE_DB" "$IDENTITY_MERCHANT_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -2080,6 +2081,52 @@ db "$AUDIT_DB" -f tests/db_refund_recovery.sql >/dev/null
 admin -c "DROP DATABASE $AUDIT_DB" >/dev/null; AUDIT_DB=""
 pass 'B369 upgrade preserves manual verifier, evidence, outcome and DB timestamp verbatim'
 
+
+# MDEL-02: populated global identities, memberships, keys and lifecycle metadata
+# survive the complete forward upgrade byte-for-byte. Discover by stable suffix.
+identity_merchant_files=(migrations/[0-9][0-9][0-9]_identity_merchant_deletion.sql)
+[[ ${#identity_merchant_files[@]} == 1 ]] || { bad 'exactly one Identity merchant migration required'; exit 1; }
+IDENTITY_MERCHANT_DB=upgrade_identity_merchant_$$
+admin -c "CREATE DATABASE $IDENTITY_MERCHANT_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f == "${identity_merchant_files[0]}" ]] && break
+ apply_forward "$IDENTITY_MERCHANT_DB" "$f"
+done
+db "$IDENTITY_MERCHANT_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('mdel02-upgrade-a'),('mdel02-upgrade-b');
+INSERT INTO app.users(email,password_hash) VALUES('mdel02-upgrade@invalid.test','upgrade-password') RETURNING id AS u \gset
+INSERT INTO app.tenant_memberships(tenant_id,user_id,role) SELECT id,:'u','owner' FROM app.tenants;
+INSERT INTO app.auth_sessions(user_id,token_hash,expires_at) VALUES(:'u',sha256('upgrade-session'::bytea),clock_timestamp()+interval '1 day');
+INSERT INTO app.api_keys(tenant_id,issued_by,key_prefix,key_hash) SELECT id,:'u','upgrade',sha256(id::text::bytea) FROM app.tenants;
+CREATE TABLE public.mdel02_before AS
+ SELECT 'users' AS tab,to_jsonb(x) AS snapshot FROM app.users x UNION ALL
+ SELECT 'sessions',to_jsonb(x) FROM app.auth_sessions x UNION ALL
+ SELECT 'memberships',to_jsonb(x) FROM app.tenant_memberships x UNION ALL
+ SELECT 'keys',to_jsonb(x) FROM app.api_keys x UNION ALL
+ SELECT 'lifecycle',to_jsonb(x) FROM app.tenant_lifecycles x;
+SQL
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${identity_merchant_files[0]} ]] && continue
+ apply_forward "$IDENTITY_MERCHANT_DB" "$f"
+done
+db "$IDENTITY_MERCHANT_DB" <<'SQL' >/dev/null
+DO $check$
+BEGIN
+ IF EXISTS(WITH actual AS(
+  SELECT 'users' AS tab,to_jsonb(x) AS snapshot FROM app.users x UNION ALL
+  SELECT 'sessions',to_jsonb(x) FROM app.auth_sessions x UNION ALL
+  SELECT 'memberships',to_jsonb(x) FROM app.tenant_memberships x UNION ALL
+  SELECT 'keys',to_jsonb(x) FROM app.api_keys x UNION ALL
+  SELECT 'lifecycle',to_jsonb(x) FROM app.tenant_lifecycles x)
+  SELECT FROM ((SELECT * FROM actual EXCEPT SELECT * FROM public.mdel02_before)
+   UNION ALL (SELECT * FROM public.mdel02_before EXCEPT SELECT * FROM actual)) delta) THEN
+  RAISE EXCEPTION 'MDEL02_UPGRADE_CHANGED_GLOBAL_AUTHORITY'; END IF;
+END $check$;
+SQL
+db "$IDENTITY_MERCHANT_DB" -f tests/db_identity_merchant_deletion.sql >/dev/null
+db "$IDENTITY_MERCHANT_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $IDENTITY_MERCHANT_DB" >/dev/null; IDENTITY_MERCHANT_DB=""
+pass 'MDEL02 populated forward upgrade preserves global identities and all existing tenant authority'
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1

@@ -13,7 +13,9 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
@@ -37,6 +39,7 @@ type principal struct {
 type AuthorizationSnapshot struct {
 	UserID, TenantID, Kind, CredentialID string
 	Scopes                               []string
+	ReceiptOnly                          bool
 }
 
 func AuthorizationFromContext(ctx context.Context) (AuthorizationSnapshot, bool) {
@@ -170,6 +173,28 @@ func (h *Handler) Authenticate(ctx context.Context, r *http.Request, spec platfo
 		if keyCredential {
 			missing = unauthenticated()
 		}
+		if !keyCredential && merchantReceiptRoute(spec) {
+			if !tenanttx.ValidTenantID(r.PathValue("request_id")) {
+				return nil, apperrors.New(400, "invalid_request", "Request must be a canonical UUID")
+			}
+			if err != nil && !errors.Is(err, contract.ErrNotFound) {
+				return nil, authorityError(err, missing)
+			}
+			if err == nil && (membership.UserID != snapshot.UserID || membership.TenantID != tenant || membership.Role != "owner") {
+				return nil, scopeDenied()
+			}
+			actor, _ := login.ActorFromContext(ctx)
+			allowed, receiptErr := h.service.MerchantReceipt(ctx, tenant, r.PathValue("request_id"), actor)
+			if receiptErr != nil {
+				return nil, authUnavailable()
+			}
+			if !allowed {
+				return nil, tenantNotFound()
+			}
+			snapshot.ReceiptOnly = true
+			snapshot.Scopes = []string{"tenant:delete"}
+			return context.WithValue(ctx, principalKey{}, principal{owner: h, spec: spec, snapshot: snapshot, token: token, session: session}), nil
+		}
 		if err != nil {
 			return nil, authorityError(err, missing)
 		}
@@ -276,6 +301,33 @@ func (h *Handler) ResolveTransactionAuthorization(ctx context.Context, r *http.R
 	if err != nil {
 		return nil, err
 	}
+	if p.ReceiptOnly {
+		if !merchantReceiptRoute(spec) {
+			return nil, unauthenticated()
+		}
+		request := r.PathValue("request_id")
+		return func(ctx context.Context, q *db.Queries) error {
+			if q == nil {
+				return unauthenticated()
+			}
+			if err := q.LoginSetTransactionIdle(ctx, int64(h.idle/time.Second)); err != nil {
+				return authUnavailable()
+			}
+			var tenant, req, user, session pgtype.UUID
+			_ = tenant.Scan(p.TenantID)
+			_ = req.Scan(request)
+			_ = user.Scan(p.UserID)
+			_ = session.Scan(p.CredentialID)
+			ok, err := q.MerchantReceiptAllowed(ctx, db.MerchantReceiptAllowedParams{TenantID: tenant, RequestID: req, UserID: user, SessionID: session})
+			if err != nil {
+				return authUnavailable()
+			}
+			if !ok {
+				return scopeDenied()
+			}
+			return nil
+		}, nil
+	}
 	if h.authorization == nil {
 		return nil, authUnavailable()
 	}
@@ -289,7 +341,25 @@ func (h *Handler) ResolveTransactionAuthorization(ctx context.Context, r *http.R
 		if q == nil {
 			return authUnavailable()
 		}
+		if grant.Kind == contract.KindSession {
+			if err := q.LoginSetTransactionIdle(txctx, int64(h.idle/time.Second)); err != nil {
+				return authUnavailable()
+			}
+		}
 		if err := revalidator.Revalidate(txctx, q, tenant, grant); err != nil {
+			if errors.Is(err, contract.ErrNotFound) {
+				// Lifecycle denial is Forbidden; preserve the existing Unauthorized
+				// contract for role/session loss in an otherwise active tenant.
+				var target pgtype.UUID
+				_ = target.Scan(tenant)
+				allowed, scopeErr := q.MerchantScopeAllowed(txctx, db.MerchantScopeAllowedParams{TenantID: target, Kind: grant.Kind, Scope: grant.Scope})
+				if scopeErr != nil {
+					return authUnavailable()
+				}
+				if !allowed {
+					return scopeDenied()
+				}
+			}
 			return authorityError(err, unauthenticated())
 		}
 		return nil

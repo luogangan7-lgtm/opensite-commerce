@@ -110,6 +110,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/t/{tenant_id}/merchant-deletion/step-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Dormant owner password reauthentication contract. Explicit MDEL-26 composition and sender approval are required; this card registers no route. Existing login rate limits apply; no session rotation or idempotent secret replay. */
+        post: operations["merchantDeletionStepUp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/t/{tenant_id}/merchant-deletion": {
         parameters: {
             query?: never;
@@ -124,6 +144,27 @@ export interface paths {
         put?: never;
         /** @description Owner-only contract reservation. Activation requires MDEL-26 and sender approval; API keys are denied. */
         post: operations["requestMerchantDeletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/t/{tenant_id}/merchant-deletion/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Dormant metadata-only status contract for the current owner, or the authenticated frozen requester of a terminal receipt after detachment. The live session and exact tenant/request binding are revalidated inside the read transaction. No contact or export capability is returned. Explicit MDEL-26 composition is required. */
+        get: operations["getMerchantDeletion"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1548,6 +1589,16 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        MerchantDeletionStepUpInput: {
+            password: string;
+            /** @enum {string} */
+            action: "request" | "cancel";
+        };
+        MerchantDeletionStepUpResult: {
+            proof: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
         MerchantDeletionMetadata: {
             /** Format: uuid */
             request_id: string;
@@ -3394,6 +3445,51 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    merchantDeletionStepUp: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the dedicated admin origin; login also requires the anonymous pre-login CSRF token. */
+                Origin: components["parameters"]["Origin"];
+                /** @description Signed HMAC bound to the current session, or short-lived anonymous material before login. Unsigned double-submit is not accepted. */
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MerchantDeletionStepUpInput"];
+            };
+        };
+        responses: {
+            /** @description A single-use five-minute proof bound to the session, owner, tenant and action. Only its digest is persisted. */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDeletionStepUpResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            default: components["responses"]["Problem"];
+        };
+    };
     requestMerchantDeletion: {
         parameters: {
             query?: never;
@@ -3414,7 +3510,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: uuid */
                     step_up_proof: string;
                 };
             };
@@ -3422,6 +3517,43 @@ export interface operations {
         responses: {
             /** @description Deletion metadata only; no capability or personal data. */
             202: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDeletionMetadata"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["TooManyRequests"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getMerchantDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Closed deletion metadata only, with no personal data or capability. */
+            200: {
                 headers: {
                     "Cache-Control"?: "no-store";
                     [name: string]: unknown;
