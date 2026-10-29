@@ -148,7 +148,7 @@ test('VISUAL-230 committed PNGs cannot alias a different staff state', () => {
 test('VISUAL-REAL proxy and launcher match the reviewed no-DTO sources', () => {
   const approved: Record<string, string> = {
     'scripts/frontend/real-proxy.ts': '62e5f5f1c8d89a6b078a028276358d90cf6a56c7da60528c0c0e61ac0a976506',
-    'scripts/frontend/start-real-backend.py': '3172947dbf65576660dba3031f56a9cc3de619de7ad84ac6a3ebe105a6f03831',
+    'scripts/frontend/start-real-backend.py': '78ab157106ac920330a26effa6ae94b2072de9eeb05c88383a1ef9e84e5895c0',
   };
   for (const [path, digest] of Object.entries(approved)) expect(sha256(path), path).toBe(digest);
 });

@@ -1468,7 +1468,7 @@ test.describe('VISUAL-REAL #274', () => {
     await catalogHold(page, catalogBase + '/products', 'POST',
       () => page.getByRole('button', { name: 'Create product', exact: true }).click(), async () => {
         await expect(page.getByLabel('Product code', { exact: true })).toBeDisabled();
-        await expect(page.getByRole('button', { name: 'Create product', exact: true })).toBeDisabled();
+        await expect(page.locator('form').filter({ has: page.getByLabel('Product code', { exact: true }) }).locator('button[type=submit]')).toBeDisabled();
         await catalogSnapshot(page, 'create-busy', true);
       });
     await expect(page.getByRole('heading', { name: 'Edit product', exact: true })).toBeVisible();
@@ -1488,14 +1488,18 @@ test.describe('VISUAL-REAL #274', () => {
     });
     await expect(page.getByLabel('Product code', { exact: true })).toBeEnabled();
     await page.getByLabel('SKU code', { exact: true }).fill(`V274-${info.project.name}-VARIANT`);
-    await catalogHold(page, api + '/variants', 'POST', () => page.getByRole('button', { name: 'Create SKU', exact: true }).click(), async () => {
-      await expect(page.getByLabel('SKU code', { exact: true })).toBeDisabled();
-      await catalogSnapshot(page, 'variant-busy', true);
-    });
+    const creatingVariant = page.waitForResponse(r => new URL(r.url()).pathname === api + '/variants' && r.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Create SKU', exact: true }).click();
+    const createdVariant = await creatingVariant; expect(createdVariant.status()).toBe(201);
+    const variantID = (await createdVariant.json()).id;
     const variant = `V274-${info.project.name}-VARIANT`.toUpperCase();
     await page.getByRole('button', { name: `Edit ${variant}`, exact: true }).click();
     await page.getByLabel('SKU code', { exact: true }).fill(variant + '-SAVED');
-    await page.getByRole('button', { name: 'Save SKU', exact: true }).click();
+    await catalogHold(page, api + '/variants/' + variantID, 'PATCH', () => page.getByRole('button', { name: 'Save SKU', exact: true }).click(), async () => {
+      await expect(page.getByLabel('SKU code', { exact: true })).toBeDisabled();
+      await expect(page.locator('form').filter({ has: page.getByLabel('SKU code', { exact: true }) }).locator('button[type=submit]')).toBeDisabled();
+      await catalogSnapshot(page, 'variant-busy', true);
+    });
     await expect(page.getByRole('button', { name: `Edit ${variant}-SAVED`, exact: true })).toBeVisible();
     await catalogSnapshot(page, 'variant-saved');
   });
@@ -1506,7 +1510,7 @@ test.describe('VISUAL-REAL #274', () => {
     await expect(page.getByRole('status').filter({ hasText: 'Upload session:' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Upload media', exact: true })).toBeDisabled();
     await catalogSnapshot(page, 'empty-media');
-    // Fresh page context keeps the second product's domain state independent.
+    // Re-authenticate before constructing the independent upload-failure product.
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
     await catalogFixture(page, info.project.name, 'UPLOAD-FAILURE');
     await page.getByLabel('Media file').setInputFiles({ name: 'upload-failure.png', mimeType: 'image/png', buffer: catalogPNG });
@@ -1564,7 +1568,7 @@ test.describe('VISUAL-REAL #274', () => {
     await page.getByLabel('Body blocks JSON', { exact: true }).fill('[]');
     await catalogHold(page, f.api + '/content/en', 'PUT', () => page.getByRole('button', { name: 'Save content', exact: true }).click(), async () => {
       await expect(page.getByLabel('Title', { exact: true })).toBeDisabled();
-      await expect(page.getByRole('button', { name: 'Save content', exact: true })).toBeDisabled();
+      await expect(page.locator('form').filter({ has: page.getByLabel('Title', { exact: true }) }).locator('button[type=submit]')).toBeDisabled();
       await catalogSnapshot(page, 'content-saving', true);
     });
     await expect(page.getByText('Content saved.', { exact: true })).toBeVisible();
@@ -1574,7 +1578,7 @@ test.describe('VISUAL-REAL #274', () => {
     await catalogFixture(page, info.project.name, 'LONG-' + kind); await catalogContent(page, kind === 'title' ? 'Long staff product title '.repeat(24).trim() : 'Staff long ' + kind);
     if (kind === 'json') await page.getByLabel('Body blocks JSON', { exact: true }).fill(JSON.stringify([{ kind: 'paragraph', text: 'Long real staff content '.repeat(100) }]));
     await catalogSaveContent(page);
-    await catalogListing(page, kind === 'slug' ? 'long-staff-slug-'.repeat(16) + 'end' : `visual-274-${info.project.name}-long-${kind}`);
+    await catalogListing(page, kind === 'slug' ? 'long-staff-slug-'.repeat(15) + info.project.name + '-end' : `visual-274-${info.project.name}-long-${kind}`);
     await page.getByRole('button', { name: 'Save listing', exact: true }).click();
     await expect(page.getByText('Listing saved.', { exact: true })).toBeVisible();
     await catalogSnapshot(page, `long-${kind}`);
@@ -1596,7 +1600,7 @@ test.describe('VISUAL-REAL #274', () => {
       const b = await (await other.request.get(staffSite + '/api/v1/auth/session')).json(); expect(a.session_id).not.toBe(b.session_id);
       const list = await page.request.get(`${staffSite}${catalogBase}/price-lists/${catalogList}`);
       const pricePath = `${catalogBase}/price-lists/${catalogList}/variants/${variant.id}/prices/1`;
-      expect((await catalogWrite(other, headers, 'PUT', pricePath, { unit_amount: 7890 }, list.headers().etag)).status()).toBe(200);
+      expect((await catalogWrite(other, headers, 'PUT', pricePath, { unit_amount: 7890 }, `"${(await list.json()).version}"`)).status()).toBe(200);
       const priceConflict = page.waitForResponse(r => new URL(r.url()).pathname === pricePath && r.request().method() === 'PUT');
       await page.getByRole('button', { name: 'Save price', exact: true }).click(); expect((await priceConflict).status()).toBe(412);
       await expect(page.getByLabel('Price in minor units', { exact: true })).toHaveValue('3456');
@@ -1633,7 +1637,7 @@ test.describe('VISUAL-REAL #274', () => {
   });
 
   for (const step of ['reserve', 'content', 'complete'] as const) test(`real media ${step} failure retries the same stable step keys once`, async ({ page }, info) => {
-    const f = await catalogFixture(page, info.project.name, 'MEDIA-' + step);
+    await catalogFixture(page, info.project.name, 'MEDIA-' + step);
     const observed: { path: string; key: string; method: string }[] = [];
     page.on('request', r => { const path = new URL(r.url()).pathname;
       if (path.startsWith(catalogBase + '/media/uploads') && ['POST', 'PUT'].includes(r.method())) observed.push({ path, key: r.headers()['idempotency-key'] ?? '', method: r.method() }); });
@@ -1705,6 +1709,7 @@ test.describe('VISUAL-REAL #274', () => {
     await expect(page.getByRole('alert')).toHaveCount(3);
     for (const name of ['Save product', 'Create SKU', 'Save SKU', 'Save price', 'Save content', 'Save listing', 'Upload media', 'Attach media'])
       await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+    await expect(page.getByRole('main').locator('form')).toHaveCount(0);
     await catalogSnapshot(page, 'permission-denied');
   });
 

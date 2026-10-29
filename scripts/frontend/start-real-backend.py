@@ -110,7 +110,7 @@ def main():
                    OPENSITE_STOREFRONT_TENANT_ID=purchase.TENANT, OPENSITE_SERVING_REFRESH_TENANTS=purchase.TENANT,
                    OPENSITE_FAKE_PSP='1', OPENSITE_FAKE_WEBHOOK_KEY=secrets.token_urlsafe(32),
                    NOTIFICATIONS_SMTP_ENABLED='true', NOTIFICATIONS_SMTP_HOST='127.0.0.1', NOTIFICATIONS_SMTP_PORT='4183',
-                   OPENSITE_IDEMPOTENCY_ROOT=str(owned / database),
+                   OPENSITE_IDEMPOTENCY_ROOT=str(owned / database), OPENSITE_MEDIA_ROOT=str(owned / database / 'media'),
                    OPENSITE_CHECKOUT_RULE_METADATA=json.dumps({'Profiles': {purchase.TENANT: 'c2400014-0000-4000-8000-000000000001'},
                      'SKUs': {purchase.TENANT: {f'c2400008-0000-4000-8000-{n:012d}': {'TaxCategory': 'standard', 'WeightG': 100} for n in (1, 2)}}}))
         env.update({f'OPENSITE_{kind}_DB_PASSWORD': password for kind, password in passwords.items()})
