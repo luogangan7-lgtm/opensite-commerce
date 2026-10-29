@@ -412,6 +412,9 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 			// This is not a signed provider fact and creates no financial rows.
 			alias := "FIX433_test_only_alias"
 			err := f.runner.InMaintenance(ctx, func(ctx context.Context, tx pgx.Tx) error {
+				if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", f.tenant); err != nil {
+					return err
+				}
 				var inbox, event string
 				if err := tx.QueryRow(ctx, `INSERT INTO app.webhook_inbox(tenant_id,provider,provider_account_id,environment,provider_event_id,payload_hash,payload_reference,status,processed_at)
  SELECT tenant_id,provider,provider_account_id,environment,$3,payload_hash,'test-only alias fixture',status,processed_at

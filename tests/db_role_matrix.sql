@@ -385,6 +385,7 @@ BEGIN
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
   AND NOT starts_with(p.proname,'tenant_lifecycle_')
+  AND p.proname NOT IN('payments_deletion_obligations','payments_deletion_guard','payments_erase_merchant_records')
   AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('catalog_listing_version','pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
@@ -425,6 +426,7 @@ BEGIN
  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
   AND NOT starts_with(p.proname,'data_rights_')
   AND NOT starts_with(p.proname,'tenant_lifecycle_')
+  AND p.proname NOT IN('payments_deletion_obligations','payments_deletion_guard','payments_erase_merchant_records')
   AND p.proname NOT LIKE 'cms_%' AND p.proname NOT IN ('catalog_listing_version','pricing_currency','pricing_write_list','pricing_write_entry','cart_tenant_active','cart_guard_version','inventory_context','inventory_immutable_movement','inventory_adjust',
    'inventory_reserve','inventory_reserve_owned','inventory_reserve_non_order','inventory_finish','inventory_release','inventory_commit','inventory_expire_due',
    'inventory_finish_non_order','inventory_release_non_order','inventory_commit_non_order',
@@ -1194,7 +1196,7 @@ BEGIN
   END LOOP;
  END LOOP;
  FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
-  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM (f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account')) THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_FUNCTION %',f.proname; END IF;
+  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM (f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account','tenant_lifecycle_read_fence')) THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_FUNCTION %',f.proname; END IF;
   IF f.proname IN('resolve_fake_payment_account','resolve_stripe_payment_account') THEN
    IF NOT f.prosecdef OR f.proowner<>r.oid OR NOT f.proconfig @> ARRAY['search_path=pg_catalog, app, pg_temp'] THEN RAISE EXCEPTION 'PAYMENTS_MATRIX_RESOLVER'; END IF;
    FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
@@ -1553,7 +1555,7 @@ BEGIN
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
     IF has_column_privilege(role_name,'app.payment_return_refunds',col,privilege)
-      IS DISTINCT FROM (role_name='app_payments_service' AND privilege='SELECT') THEN
+      IS DISTINCT FROM (role_name IN('app_payments_service','app_payments_deletion_executor') AND privilege='SELECT') THEN
      RAISE EXCEPTION 'PAYMENT_RETURN_BINDING_ACL % % %',role_name,col,privilege; END IF;
    END LOOP;
   END LOOP;
@@ -1667,7 +1669,7 @@ BEGIN
    RAISE EXCEPTION 'MDEL01_UNSAFE_ROUTINE %',f.proname; END IF;
   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    expected:=role_name='app_tenant_lifecycle_executor'
-    OR role_name IN ('app_runtime','app_auth','app_credential_writer') AND f.proname='tenant_lifecycle_read_fence'
+    OR role_name IN ('app_runtime','app_auth','app_credential_writer','app_payment_resolver','app_payments_deletion_executor') AND f.proname='tenant_lifecycle_read_fence'
     OR role_name IN ('app_runtime','app_credential_writer') AND f.proname='tenant_lifecycle_write_fence'
     OR role_name='app_identity_merchant_executor' AND f.proname IN('tenant_lifecycle_read_fence','tenant_lifecycle_transition_fence');
    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
@@ -1757,3 +1759,49 @@ BEGIN
  END LOOP;
 END $identity_merchant_acl$;
 SELECT 'PASS: MDEL02 exact proof custody, receipt-only access and unassumable worker capability';
+
+-- MDEL04 owner port is read-only to runtime; erasure remains unprovisioned.
+DO $payments_deletion_acl$
+DECLARE r record; tab record; col record; f record; role_name text; privilege text; expected boolean;
+ reads text[]:=ARRAY['tenant_lifecycles','payment_provider_accounts','payment_events','payment_event_deliveries',
+  'payment_return_refunds','payment_refund_attempts','payment_refund_reversals','payment_refund_terminals',
+  'payment_refund_cases','payment_refund_case_deliveries','payment_refund_case_resolutions'];
+ names text[]:=ARRAY['payments_deletion_obligations','payments_deletion_guard','payments_erase_merchant_records'];
+BEGIN
+ SELECT * INTO STRICT r FROM pg_roles WHERE rolname='app_payments_deletion_executor';
+ IF r.rolcanlogin OR r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit
+  OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid OR roleid=r.oid)
+  OR has_schema_privilege(r.oid,'app','CREATE') THEN RAISE EXCEPTION 'MDEL04_EXECUTOR_UNSAFE'; END IF;
+ FOR tab IN SELECT oid,relname FROM pg_class WHERE relnamespace='app'::regnamespace AND relkind IN('r','p') LOOP
+  FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
+   expected:=tab.relname=ANY(reads) AND privilege='SELECT';
+   IF has_table_privilege(r.oid,tab.oid,privilege) IS DISTINCT FROM expected
+    OR has_table_privilege(r.oid,tab.oid,privilege||' WITH GRANT OPTION') THEN RAISE EXCEPTION 'MDEL04_TABLE_ACL % %',tab.relname,privilege; END IF;
+   IF privilege IN('SELECT','INSERT','UPDATE','REFERENCES') THEN
+    FOR col IN SELECT attname FROM pg_attribute WHERE attrelid=tab.oid AND attnum>0 AND NOT attisdropped LOOP
+     IF has_column_privilege(r.oid,tab.oid,col.attname,privilege) IS DISTINCT FROM
+      (expected OR tab.relname='payment_provider_accounts' AND privilege='UPDATE' AND col.attname='enabled')
+      OR has_column_privilege(r.oid,tab.oid,col.attname,privilege||' WITH GRANT OPTION') THEN
+      RAISE EXCEPTION 'MDEL04_COLUMN_ACL % % %',tab.relname,col.attname,privilege; END IF;
+    END LOOP;
+   END IF;
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT * FROM pg_proc WHERE pronamespace='app'::regnamespace LOOP
+  IF has_function_privilege(r.oid,f.oid,'EXECUTE') IS DISTINCT FROM
+   (f.proname=ANY(names) OR f.proname='tenant_lifecycle_read_fence') THEN RAISE EXCEPTION 'MDEL04_FOREIGN_FUNCTION %',f.proname; END IF;
+  IF f.proname=ANY(names) THEN
+   IF f.proowner<>r.oid OR NOT f.prosecdef OR cardinality(f.proconfig)<>1
+    OR replace(f.proconfig[1],' ','')<>'search_path=pg_catalog,app,pg_temp'
+    OR EXISTS(SELECT FROM aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') THEN
+    RAISE EXCEPTION 'MDEL04_FUNCTION_UNSAFE %',f.proname; END IF;
+   FOR role_name IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
+    expected:=role_name='app_payments_deletion_executor' OR role_name='app_runtime' AND f.proname='payments_deletion_obligations';
+    IF has_function_privilege(role_name,f.oid,'EXECUTE') IS DISTINCT FROM expected
+     OR role_name<>'app_payments_deletion_executor' AND has_function_privilege(role_name,f.oid,'EXECUTE WITH GRANT OPTION') THEN
+     RAISE EXCEPTION 'MDEL04_FUNCTION_ACL % %',role_name,f.proname; END IF;
+   END LOOP;
+  END IF;
+ END LOOP;
+END $payments_deletion_acl$;
+SELECT 'PASS: MDEL04 exact tenant-bound read witness and unprovisioned erase authority';

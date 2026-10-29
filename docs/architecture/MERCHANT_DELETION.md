@@ -65,6 +65,9 @@ Request admission and execution admission both require **zero**:
 Use Orders/Fulfillment quantities, Payments refund/case resolution witnesses and Ledger posted facts through owner ports, never a UI status or elapsed timeout.
 Provider payout/hold authority must be explicitly mapped before enabling the feature; absent/unknown authority is a blocker, never assumed settled. Deletion
 does not issue refunds/payouts or alter posted journals to satisfy this gate.
+**PAYOUT-AUTHORITY-UNMAPPED**: the default Payments provider-settlement adapter
+returns unknown for every tenant; no provider payout/balance settled witness is
+produced until this authority is explicitly mapped. This remains a launch blocker.
 Before acceptance return 409 `tenant_deletion_blocked` with category counts,
 bounded authorized object IDs and resolution links; tenant stays online. Owner
 settles via the existing workflows then submits again. During cooling-off only
