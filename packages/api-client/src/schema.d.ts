@@ -150,6 +150,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/t/{tenant_id}/merchant-deletion/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Dormant metadata-only status contract for the current owner, or the authenticated frozen requester of a terminal receipt after detachment. The live session and exact tenant/request binding are revalidated inside the read transaction. No contact or export capability is returned. Explicit MDEL-26 composition is required. */
+        get: operations["getMerchantDeletion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/t/{tenant_id}/api-keys": {
         parameters: {
             query?: never;
@@ -3515,6 +3536,36 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["TooManyRequests"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getMerchantDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target tenant UUID from the URL; credentials still require matching membership and scope. An API key must belong to this exact tenant. */
+                tenant_id: components["parameters"]["TenantId"];
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Closed deletion metadata only, with no personal data or capability. */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDeletionMetadata"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             default: components["responses"]["Problem"];
         };
     };
