@@ -423,6 +423,25 @@ func (q *Queries) MerchantReceiptAllowed(ctx context.Context, arg MerchantReceip
 	return allowed, err
 }
 
+const merchantScopeAllowed = `-- name: MerchantScopeAllowed :one
+SELECT app.auth_merchant_scope($1::uuid,$2::text,
+ $3::text)::boolean AS allowed
+`
+
+type MerchantScopeAllowedParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	Kind     string      `json:"kind"`
+	Scope    string      `json:"scope"`
+}
+
+// Boolean lifecycle classification only; no membership/session authority grant.
+func (q *Queries) MerchantScopeAllowed(ctx context.Context, arg MerchantScopeAllowedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, merchantScopeAllowed, arg.TenantID, arg.Kind, arg.Scope)
+	var allowed bool
+	err := row.Scan(&allowed)
+	return allowed, err
+}
+
 const merchantStepUpIdentifier = `-- name: MerchantStepUpIdentifier :one
 SELECT email_normalized FROM app.users WHERE id=$1::uuid AND status='active'
 `
