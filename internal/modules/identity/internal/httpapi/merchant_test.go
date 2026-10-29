@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,7 +18,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity/internal/login"
+	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	platform "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"golang.org/x/crypto/argon2"
 )
@@ -191,5 +196,118 @@ func TestMerchantRoutesRemainDormant(t *testing.T) {
 		if strings.Contains(route.Spec.Pattern, "merchant-deletion") {
 			t.Fatal("MDEL02_PREMATURE_ROUTE_ACTIVATION")
 		}
+	}
+}
+
+// A live admitted subject losing tenant write authority receives Forbidden.
+func TestMerchantCoolingWriteIsForbidden(t *testing.T) {
+	for _, state := range []string{"cooling_off", "failed"} {
+		t.Run(state, func(t *testing.T) {
+			f := c02cAuthFixture(t)
+			spec := c02cSpec(platform.AdminSession, "POST", "catalog:write")
+			r := f.request("POST", c02cTenant, true, false)
+			r.SetPathValue("tenant_id", c02cTenant)
+			r.Header.Set("Origin", c02cOrigin)
+			r.Header.Set("X-CSRF-Token", f.service.SessionCSRF(f.sessionToken))
+			ctx, err := f.handler.Authenticate(r.Context(), r, spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			check, err := f.handler.ResolveTransactionAuthorization(ctx, r, spec)
+			if err != nil || check == nil {
+				t.Fatal("missing transaction check", err)
+			}
+			f.authority.revalidationErr = contract.ErrNotFound
+			var public *apperrors.Error
+			if err := check(ctx, db.New(nil)); !errors.As(err, &public) || public.Status != 403 {
+				t.Fatalf("MDEL02_COOLING_HTTP_FORBIDDEN: %v", err)
+			}
+		})
+	}
+}
+
+type merchantReceiptDB struct {
+	db.DBTX
+	allowed bool
+	calls int
+	args []any
+}
+func (q *merchantReceiptDB) QueryRow(_ context.Context, _ string, args ...any) pgx.Row {
+	q.calls++
+	q.args = args
+	return q
+}
+func (q *merchantReceiptDB) Scan(dest ...any) error {
+	*dest[0].(*bool) = q.allowed
+	return nil
+}
+
+func TestMerchantReceiptRegisteredReadRevalidates(t *testing.T) {
+	for _, name := range []string{"requester", "revoked-after-admission", "other-request", "other-tenant", "admin", "key", "customer", "stale"} {
+		t.Run(name, func(t *testing.T) {
+			f, repo := merchantFixture(t)
+			repo.receipt = true
+			delete(f.authority.memberships, c02cTenant)
+			q := &merchantReceiptDB{allowed: true}
+			if name == "revoked-after-admission" {
+				q.allowed = false
+			}
+			if name == "other-request" || name == "other-tenant" {
+				repo.receipt = false
+			}
+			if name == "admin" {
+				f.authority.memberships[c02cTenant] = c02cMembership{UserID: c02cUser, TenantID: c02cTenant, Role: "admin"}
+			}
+			if name == "stale" {
+				f.sessions.dead = true
+			}
+			called := false
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := platform.RevalidateTransaction(r.Context(), db.New(q)); err != nil {
+					platform.WriteProblem(w, r, err)
+					return
+				}
+				called = true
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"request_id":"`+c02cKeyID+`","state":"deleted","phase":"complete","epoch":2,"requested_at":"2030-01-01T00:00:00Z","execute_after":"2030-01-31T00:00:00Z","attempt":1,"next_retry_at":null,"categories":{}}`)
+			})
+			port, ok := any(f.handler).(interface { MerchantReceiptRoute(http.Handler) platform.Route })
+			if !ok {
+				t.Fatal("MDEL02_RECEIPT_ROUTE_PORT_REQUIRED")
+			}
+			route := port.MerchantReceiptRoute(handler)
+			router := platform.New(f.handler, nil)
+			if err := router.Register(route.Spec, route.Handler); err != nil {
+				t.Fatal("MDEL02_RECEIPT_REGISTER", err)
+			}
+			r := httptest.NewRequest("GET", "/api/v1/t/"+c02cTenant+"/merchant-deletion/"+c02cKeyID, nil)
+			r.RemoteAddr = "192.0.2.8:12345"
+			r.AddCookie(&http.Cookie{Name: SessionCookie, Value: f.sessionToken})
+			if name == "key" {
+				r.Header.Del("Cookie")
+				r.Header.Set("Authorization", "Bearer "+f.bearer)
+			}
+			if name == "customer" {
+				r.Header.Del("Cookie")
+				r.AddCookie(&http.Cookie{Name: "customer_session", Value: f.sessionToken})
+			}
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, r)
+			expected := 200
+			switch name {
+			case "revoked-after-admission", "admin":
+				expected = 403
+			case "other-request", "other-tenant":
+				expected = 404
+			case "key", "customer", "stale":
+				expected = 401
+			}
+			if w.Code != expected || called != (expected == 200) || w.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("MDEL02_RECEIPT_READ: status=%d called=%v body=%s", w.Code, called, w.Body.String())
+			}
+			if name == "requester" && (q.calls != 1 || len(q.args) != 4) {
+				t.Fatal("MDEL02_RECEIPT_READ_NOT_REVALIDATED", q.calls)
+			}
+		})
 	}
 }

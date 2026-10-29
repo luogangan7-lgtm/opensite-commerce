@@ -25,7 +25,7 @@ DO $test$
 DECLARE t uuid:=current_setting('test.mdel02.a')::uuid; b uuid:=current_setting('test.mdel02.b')::uuid;
  u uuid:=current_setting('test.mdel02.owner')::uuid; s uuid:=current_setting('test.mdel02.sess')::uuid;
  d bytea:=sha256('proof-secret'::bytea); until_db timestamptz; before_db timestamptz;
- req uuid:=uuidv7(); e bigint; n bigint; key_id uuid:=uuidv7();
+ req uuid:=uuidv7(); e bigint; n bigint; key_id uuid:=uuidv7(); phase_value text;
 BEGIN
  PERFORM set_config('app.tenant_id',t::text,true);
  INSERT INTO app.api_keys(tenant_id,id,issued_by,key_prefix,key_hash,scopes) VALUES(t,key_id,u,'mdel02',sha256('mdel02-key'::bytea),ARRAY['catalog:read','tenant:delete']);
@@ -93,10 +93,26 @@ BEGIN
  IF app.auth_revalidate_tenant(t,u,'session',s,'catalog:write') THEN RAISE EXCEPTION 'MDEL02_COOLING_WRITE'; END IF;
  IF NOT app.auth_revalidate_tenant(t,u,'session',s,'catalog:read') THEN RAISE EXCEPTION 'MDEL02_COOLING_READ'; END IF;
  IF NOT app.auth_revalidate_tenant(t,u,'session',s,'tenant:delete') THEN RAISE EXCEPTION 'MDEL02_CANCEL_AUTHORITY'; END IF;
+ -- Every pre-destructive failure phase preserves read/cancel but denies writes.
+ FOREACH phase_value IN ARRAY ARRAY['none','preconditions','executing','completed'] LOOP
+  UPDATE app.tenant_lifecycles SET state='failed',phase=phase_value WHERE tenant_id=t;
+  IF app.auth_merchant_scope(t,'session','catalog:read') IS DISTINCT FROM (phase_value IN('none','preconditions'))
+   OR app.auth_merchant_scope(t,'session','catalog:write')
+   OR app.auth_merchant_scope(t,'api_key','catalog:read') THEN
+   RAISE EXCEPTION 'MDEL02_FAILED_PHASE_SCOPE'; END IF;
+ END LOOP;
+ UPDATE app.tenant_lifecycles SET state='cooling_off',phase='executing' WHERE tenant_id=t;
+ IF NOT app.auth_merchant_scope(t,'session','catalog:read') THEN RAISE EXCEPTION 'MDEL02_COOLING_PHASE_SCOPE'; END IF;
  UPDATE app.tenant_lifecycles SET state='executing',phase='executing',epoch=epoch+1 WHERE tenant_id=t RETURNING epoch INTO e;
  IF app.auth_revalidate_tenant(t,u,'session',s,'catalog:read') OR app.auth_revalidate_tenant(t,u,'session',s,'tenant:delete')
   OR app.auth_revalidate_tenant(t,u,'api_key',key_id,'catalog:read') THEN
   RAISE EXCEPTION 'MDEL02_EXECUTION_SESSION_FENCE'; END IF;
+ -- This guard belongs to Tenant and must precede Identity's interactive fence.
+ BEGIN
+  PERFORM app.tenant_lifecycle_transition(t,req,u,s,'cancel',uuidv7(),sha256('cancel'::bytea),e,'{}');
+  RAISE EXCEPTION 'MDEL02_TENANT_CANCEL_GUARD';
+ EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL;
+  WHEN insufficient_privilege THEN RAISE EXCEPTION 'MDEL02_TENANT_CANCEL_GUARD'; END;
  BEGIN
   PERFORM app.auth_erase_merchant_proofs(b,req,e);
   RAISE EXCEPTION 'MDEL02_ERASE_TENANT_PREDICATE';

@@ -82,13 +82,21 @@ def assert_contract(registry, source):
     assert tenant['scopes'] == ['apikeys:write', 'tenant:delete']
     assert {o['operation_id']: o['status'] for o in tenant['operations']} == {
         **{operation: 'implemented' for operation in KEY_OPERATIONS.values()},
-        'requestMerchantDeletion': 'planned'}
+        'requestMerchantDeletion': 'planned', 'getMerchantDeletion': 'planned'}
     deletion = blocks[('/api/v1/t/{tenant_id}/merchant-deletion', 'post')]
     assert deletion['x-opensite-status'] == 'planned'
     assert deletion['x-opensite-access'] == 'AdminSession'
     assert deletion['security'] == [{'adminSession': []}]
     assert deletion['x-required-scope'] == 'tenant:delete'
     assert deletion['responses']['202'].get('content', {}).get('application/json', {}).get('schema') == {'$ref': '#/components/schemas/MerchantDeletionMetadata'}
+    receipt = blocks.get(('/api/v1/t/{tenant_id}/merchant-deletion/{request_id}', 'get'))
+    assert receipt is not None, 'MDEL02_RECEIPT_GET_CONTRACT'
+    assert receipt['operationId'] == 'getMerchantDeletion' and receipt['x-opensite-status'] == 'planned'
+    assert receipt['x-opensite-access'] == 'AdminSession' and receipt['security'] == [{'adminSession': []}]
+    assert receipt['x-required-scope'] == 'tenant:delete'
+    assert receipt['responses']['200']['content']['application/json']['schema'] == {'$ref': '#/components/schemas/MerchantDeletionMetadata'}
+    for status, response in [('401', 'Unauthorized'), ('403', 'Forbidden'), ('404', 'NotFound')]:
+        assert receipt['responses'][status] == {'$ref': '#/components/responses/' + response}
     step_up = blocks[('/api/v1/t/{tenant_id}/merchant-deletion/step-up', 'post')]
     assert step_up['operationId'] == 'merchantDeletionStepUp' and step_up['x-opensite-status'] == 'planned'
     assert step_up['x-opensite-access'] == 'AdminSession' and step_up['security'] == [{'adminSession': []}]
@@ -166,6 +174,8 @@ def assert_contract(registry, source):
 
 registry = json.loads((ROOT / 'modules/registry.yaml').read_text())
 source = (ROOT / 'api/openapi.yaml').read_text()
+identity_migration = next((ROOT / 'migrations/pending').glob('mdel02-identity_*.sql')).read_text()
+assert "p.proname='tenant_lifecycle_transition'" not in identity_migration, 'MDEL02_TENANT_GUARD_OWNERSHIP: Identity rewrites Tenant private transition'
 assert_contract(registry, source)
 check_operations(registry, ROOT / 'api/openapi.yaml')
 # Inject faults into in-memory/temporary copies, preserving the shared checkout.
