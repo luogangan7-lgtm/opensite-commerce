@@ -32,13 +32,13 @@ func (MerchantDeletion) DeletionObligations(ctx context.Context, q *db.Queries, 
 		return nil, errors.New("Orders obligation authority unavailable")
 	}
 	var witness struct {
-		Count     int64    `json:"count"`
+		Count     *int64   `json:"count"`
 		ObjectIDs []string `json:"object_ids"`
 	}
-	if err := json.Unmarshal(raw, &witness); err != nil || witness.Count < int64(len(witness.ObjectIDs)) || len(witness.ObjectIDs) > 16 {
+	if err := json.Unmarshal(raw, &witness); err != nil || witness.Count == nil || witness.ObjectIDs == nil || *witness.Count < int64(len(witness.ObjectIDs)) || len(witness.ObjectIDs) > 16 {
 		return nil, errors.New("Orders obligation authority unavailable")
 	}
-	item := tenant.Obligation{Category: tenant.PaidUnfulfilled, Known: true, Count: witness.Count}
+	item := tenant.Obligation{Category: tenant.PaidUnfulfilled, Known: true, Count: *witness.Count}
 	for _, value := range witness.ObjectIDs {
 		if !tenanttx.ValidTenantID(value) {
 			return nil, errors.New("Orders obligation authority unavailable")
