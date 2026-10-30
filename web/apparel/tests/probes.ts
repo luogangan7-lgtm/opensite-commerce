@@ -15,7 +15,7 @@ for (const [name, mutation] of [['brand', '<p>mgoo</p>'], ['commercial', '<p>MOQ
     else appendFileSync(join(dir, 'index.html'), mutation);
     const red = Bun.spawnSync(['bun', 'web/apparel/tests/dist-gate.ts'], { env: { ...process.env, APPAREL_DIST: dir } });
     if (red.exitCode === 0) throw Error(`Gate missed ${name}`);
-    console.log(`RED proven: ${name}`);
+    console.log(`ISOLATED PR514 R3 RED proven: ${name}`);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 const green = Bun.spawnSync(['bun', 'web/apparel/tests/dist-gate.ts'], { stdout: 'inherit', stderr: 'inherit' });
