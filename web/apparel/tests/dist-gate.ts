@@ -4,6 +4,9 @@ import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import products from '../src/data/products.json';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
+// Pages decides whether to invoke the compiled Worker from this manifest, before dispatch.
+const routes = JSON.parse(readFileSync(join(root, '_routes.json'), 'utf8'));
+if (routes.version !== 1 || routes.exclude.length !== 0 || JSON.stringify([...routes.include].sort()) !== JSON.stringify(['/api/rfq', '/contact', '/contact/'])) throw Error('Pages route manifest must invoke RFQ and both contact paths');
 function files(path: string): string[] { return readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(join(path, e.name)) : [join(path, e.name)]); }
 const allowed = new Set(products.map(p => p.slug));
 const images = new Set(products.flatMap(p => [...p.images.map(i => i.src), ...p.size_chart]));
