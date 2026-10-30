@@ -7,7 +7,17 @@ export function getStaticPaths() { return products.map(product => ({ params: { s
 const { product } = Astro.props;
 ---
 <Shell title={product.name_en}>
-<section class="wrap"><a href={`/collections/${product.category}/`}>{categories[product.category]}</a><div class="pdp split"><div class="gallery">{product.images.map((image, index) => <img src={image.src} alt={`${product.name_en} — ${image.role} view ${index + 1}`} width="700" height="840" loading={index ? 'lazy' : 'eager'} />)}</div><div class="product-info"><p class="muted">{product.style_codes.join(' / ')}</p><h1>{product.name_en}</h1><p>{product.fabric_weight_fit}</p><p>{product.colourway_note}</p><table><caption>Commercial terms</caption><tbody>{['Price', 'MOQ', 'Lead time', 'Sample cost'].map(field => <tr><th scope="row">{field}</th><td>{quote}</td></tr>)}</tbody></table><div class="actions"><a class="button" href="#inquiry">Request a quote</a><a class="button secondary" href="#inquiry">Request a sample</a></div>{product.size_chart.length > 0 && <a href="#size-chart">View size chart</a>}<p class="muted">Confirm measurements, materials and final specifications in your inquiry.</p></div></div></section>
+<section class="wrap"><a href={`/collections/${product.category}/`}>{categories[product.category]}</a><div class="pdp split"><div class="gallery"><img data-gallery-main src={product.images[0].src} alt={product.name_en} width="700" height="840" /><nav class="gallery-thumbs" aria-label="Product views">{product.images.map((image, index) => <a href={image.src} aria-label={`View ${image.role} ${index + 1}`} aria-current={index === 0 ? 'true' : undefined}><img src={image.src} alt={`${image.role} view ${index + 1}`} width="80" height="96" loading="lazy" /></a>)}</nav></div><div class="product-info"><p class="muted">{product.style_codes.join(' / ')}</p><h1>{product.name_en}</h1><p>{product.fabric_weight_fit}</p><p>{product.colourway_note}</p><table><caption>Commercial terms</caption><tbody>{['Price', 'MOQ', 'Lead time', 'Sample cost'].map(field => <tr><th scope="row">{field}</th><td>{quote}</td></tr>)}</tbody></table><div class="actions"><a class="button" href="#inquiry">Request a quote</a><a class="button secondary" href="#inquiry">Request a sample</a></div>{product.size_chart.length > 0 && <a href="#size-chart">View size chart</a>}<p class="muted">Confirm measurements, materials and final specifications in your inquiry.</p></div></div></section>
 {product.size_chart.length > 0 && <section class="wrap" id="size-chart"><h2>Size chart</h2><p>Reference measurements shown in the supplied chart. Confirm the final specification in your quote.</p>{product.size_chart.map(src => <img class="size-chart" src={src} alt={`Size chart for ${product.style_codes.join(', ')}`} loading="lazy" />)}</section>}
 <section class="wrap split" id="inquiry"><div><h2>Make this style yours.</h2><p>Tell us about your fabric, fit, label and sampling requirements.</p></div><RFQ product={product.style_codes.join(' / ')} /></section>
 </Shell>
+
+<script>
+  const main = document.querySelector<HTMLImageElement>('[data-gallery-main]');
+  document.querySelectorAll<HTMLAnchorElement>('.gallery-thumbs a').forEach(link => link.addEventListener('click', event => {
+    if (!main) return; event.preventDefault(); main.src = link.href;
+    main.alt = link.querySelector('img')!.alt;
+    document.querySelectorAll('.gallery-thumbs a').forEach(item => item.removeAttribute('aria-current'));
+    link.setAttribute('aria-current', 'true');
+  }));
+</script>
