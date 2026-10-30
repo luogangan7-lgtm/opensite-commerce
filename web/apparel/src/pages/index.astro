@@ -1,0 +1,15 @@
+---
+/** Home composition; published product images and shared apparel components; no invented factory proof. */
+import Shell from '../layouts/Shell.astro';
+import Grid from '../components/Grid.astro';
+import RFQ from '../components/RFQ.astro';
+import { products, categories } from '../data/catalog';
+const featured = Object.keys(categories).map(category => products.find(p => p.category === category)!).filter(Boolean);
+---
+<Shell title="Apparel, made to your brief">
+<section class="hero wrap"><div><h1>Hoodies and sweatshirts,<br />made to your spec.</h1><p class="lead">Start with a style, a sample or a tech pack. Build your sourcing brief with Sourcyo Apparel.</p><div class="actions"><a class="button" href="/contact/">Request a quote</a><a class="button secondary" href="/collections/">Browse collections</a></div></div><img src={featured[0].images[0].src} alt={featured[0].name_en} width="700" height="840" fetchpriority="high" /></section>
+<div class="strip"><div class="wrap"><span>Cotton fleece</span><span>Sweatshirts & sets</span><span>OEM / ODM inquiries</span><span>Samples: Confirmed in quote</span></div></div>
+<section class="wrap"><h2>Find your starting point.</h2><p class="lead">Explore silhouettes and details, then confirm fabric, fit and finish in your quote.</p><div class="category-links">{Object.entries(categories).map(([key, name]) => <a href={`/collections/${key}/`}>{name}</a>)}</div><Grid products={featured.slice(0, 4)} /></section>
+<section class="wrap split" id="oem"><div><h2>Your brief.<br />Your next collection.</h2><p class="lead">Share a reference or tech pack. Tell us which details matter to your brand.</p><a href="/about/#oem">Explore OEM / ODM</a></div><div class="steps"><article><h3>Choose a starting style</h3><p>Save the style code and the details you would like to change.</p></article><article><h3>Discuss a sample</h3><p>Send fabric, fit and finish requirements for confirmation.</p></article><article><h3>Confirm the quote</h3><p>Price, MOQ, lead time and sample cost: Confirmed in quote.</p></article></div></section>
+<section class="wrap split"><div><h2>Tell us what<br />you need.</h2><p class="lead">Include your style, quantity range and intended timeline. Commercial terms are Confirmed in quote.</p></div><RFQ /></section>
+</Shell>

@@ -10,7 +10,7 @@ function fixture(body: unknown, fail = false) {
 test('valid RFQ persists one record before returning its id', async () => {
   const f = fixture(valid); const response = await f.run();
   expect(response.status).toBe(201); const { id } = await response.json();
-  expect(f.records.size).toBe(1); expect(JSON.parse(f.records.get(id)!)).toMatchObject({ ...valid, website: undefined });
+  expect(f.records.size).toBe(1); const record = JSON.parse(f.records.get(id)!); expect(record).toMatchObject({ name: valid.name, email: valid.email, company: valid.company, message: valid.message }); expect(record.website).toBeUndefined();
 });
 for (const [field, value] of Object.entries({ name: 'n'.repeat(101), company: 'c'.repeat(151), email: 'invalid', message: 'm'.repeat(2001) })) {
   test(`invalid ${field} returns field error without a write`, async () => {

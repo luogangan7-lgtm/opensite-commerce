@@ -1,0 +1,6 @@
+---
+/** Reusable static product grid; published data only; no commercial values on tiles. */
+import type { Product } from '../data/catalog';
+interface Props { products: Product[] }
+---
+<div class="product-grid">{Astro.props.products.map(product => <a class="tile" href={`/products/${product.slug}/`}><img src={product.images[0].src} alt={product.name_en} width="600" height="720" loading="lazy" /><p class="muted">{product.style_codes.join(' / ')}</p><h3>{product.name_en}</h3></a>)}</div>

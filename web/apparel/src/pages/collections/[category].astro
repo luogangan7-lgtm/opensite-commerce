@@ -1,0 +1,9 @@
+---
+/** Category route; static allow-list from published catalog; unknown categories have no page. */
+import Shell from '../../layouts/Shell.astro';
+import Grid from '../../components/Grid.astro';
+import { products, categories } from '../../data/catalog';
+export function getStaticPaths() { return Object.entries(categories).map(([category, title]) => ({ params: { category }, props: { title, category } })); }
+const { title, category } = Astro.props;
+---
+<Shell title={title}><section class="wrap"><a href="/collections/">All collections</a><h1>{title}</h1><p class="lead">A starting point for your sourcing brief. Select a style to explore its details.</p><Grid products={products.filter(p => p.category === category)} /></section></Shell>
