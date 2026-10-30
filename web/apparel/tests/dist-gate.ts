@@ -29,12 +29,27 @@ console.log('PASS: 68 allowed products; approved image references; no forbidden 
 
 // Exercise the exact compiled Pages dispatch, not just the TypeScript source handler.
 const worker = (await import(pathToFileURL(resolve(root, '_worker.js/index.js')).href)).default;
-const records = new Map<string, string>();
-const env = { RFQ: { put: async (id: string, record: string) => { records.set(id, record); } }, ASSETS: { fetch: () => new Response('not found', { status: 404 }) } };
+const records: object[] = [];
+const env = { SUPABASE_URL: 'https://database.example.invalid', SUPABASE_SECRET_KEY: 'ci-private-placeholder', ASSETS: { fetch: (request: Request) => {
+  const path = new URL(request.url).pathname;
+  if (path === '/contact/') return new Response('Contact RFQ', { status: 200 });
+  if (path === '/contact' || path === '/about') return new Response(null, { status: 308, headers: { Location: `${path}/` } });
+  return new Response('not found', { status: 404 });
+} } };
+globalThis.fetch = async (input, init) => {
+  const request = new Request(input, init);
+  if (request.url !== `${env.SUPABASE_URL}/rest/v1/apparel_rfq` || request.method !== 'POST' || request.headers.get('apikey') !== env.SUPABASE_SECRET_KEY || request.headers.get('Authorization') !== `Bearer ${env.SUPABASE_SECRET_KEY}` || request.headers.get('Prefer') !== 'return=representation') throw Error('Compiled PostgREST contract failed');
+  records.push(await request.json());
+  return Response.json([{ id: '524f5000-0000-4000-8000-000000000001' }], { status: 201 });
+};
 const context = { waitUntil: () => {}, passThroughOnException: () => {} };
-for (const [email, expected] of [['gate@example.com', 201], ['invalid', 400]] as const) {
-  const response = await worker.fetch(new Request('https://example.com/api/rfq', { method: 'POST', body: JSON.stringify({ name: 'CI Gate', company: 'Example', email, message: 'Synthetic compiled-worker inquiry.' }) }), env, context);
+for (const [email, website, expected] of [['gate@example.invalid', '', 201], ['invalid', '', 400], ['gate@example.invalid', 'bot', 201]] as const) {
+  const response = await worker.fetch(new Request('https://example.invalid/api/rfq', { method: 'POST', body: JSON.stringify({ name: 'CI Gate', company: 'Example', email, website, message: 'Synthetic compiled-worker inquiry.' }) }), env, context);
   if (response.status !== expected) throw Error('Compiled RFQ route failed');
 }
-if (records.size !== 1) throw Error('Compiled RFQ storage contract failed');
-console.log('PASS: compiled Pages worker dispatch, valid/invalid RFQ and one private write.');
+if (records.length !== 1) throw Error('Compiled RFQ storage contract failed');
+for (const [path, expected] of [['/contact', 200], ['/contact/', 200], ['/about', 308]] as const) {
+  const response = await worker.fetch(new Request(`https://example.invalid${path}`), env, context);
+  if (response.status !== expected) throw Error(`Compiled route ${path} expected ${expected}, got ${response.status}`);
+}
+console.log('PASS: compiled Pages dispatch, valid/invalid/honeypot RFQ, private PostgREST insert and contact 200.');
