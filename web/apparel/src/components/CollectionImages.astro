@@ -1,0 +1,10 @@
+---
+/** Shared collection introduction; layout slot aliases keep private source naming out of public HTML. */
+import Illustration from './Illustration.astro';
+import { dictionaries, pageLocale, type Key } from '../i18n';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+const locale = pageLocale(Astro.url), t = dictionaries[locale];
+const categories = ['crew-fleece', 'apparel', 'cotton430-hoodie', 'hoodie-set', 'pullover-hoodie'];
+---
+<Illustration id="collection/hero" sizes="100vw" />
+<nav class="category-previews" aria-label={t.collections}>{categories.map(category => <a href={getRelativeLocaleUrl(locale, `/collections/${category}/`)}><Illustration id={`collection/tile_${category}`} sizes="(max-width: 650px) 50vw, 20vw" /><span>{t[category as Key]}</span></a>)}</nav>

@@ -1,0 +1,22 @@
+---
+/** Closed static route inventory; Astro i18n uses one shared template per page kind. Unknown routes stay 404. */
+import { products, categories } from '../data/catalog';
+import { locales } from '../i18n';
+import Home from '../views/Home.astro';
+import About from '../views/About.astro';
+import Contact from '../views/Contact.astro';
+import Collections from '../views/Collections.astro';
+import Collection from '../views/Collection.astro';
+import Product from '../views/Product.astro';
+export function getStaticPaths() {
+  const paths = ['', 'about', 'contact', 'collections', ...Object.keys(categories).map(c => `collections/${c}`), ...products.map(p => `products/${p.slug}`)];
+  return locales.flatMap(locale => paths.map(route => ({ params: { path: [locale === 'en' ? '' : locale, route].filter(Boolean).join('/') || undefined }, props: { route } })));
+}
+const { route } = Astro.props;
+const [kind, id] = route.split('/');
+---
+{!kind && <Home />}
+{kind === 'about' && <About />}
+{kind === 'contact' && <Contact />}
+{kind === 'collections' && (id ? <Collection category={id} /> : <Collections />)}
+{kind === 'products' && <Product product={products.find(p => p.slug === id)!} />}

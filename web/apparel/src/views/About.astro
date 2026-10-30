@@ -1,0 +1,14 @@
+---
+/** About composition uses neutral illustrative scenes; no facility, identity or customer evidence is implied. */
+import Shell from '../layouts/Shell.astro';
+import Illustration from '../components/Illustration.astro';
+import { dictionaries, pageLocale } from '../i18n';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+const locale = pageLocale(Astro.url), t = dictionaries[locale];
+---
+<Shell title={t.factoryInfo}>
+<section class="wrap page-intro"><h1>{t.aboutTitle}</h1><p class="lead">{t.aboutText}</p><Illustration id="about/hero" sizes="100vw" /></section>
+<section class="wrap split"><Illustration id="about/founder" /><div><h2>{t.partnerTitle}</h2><p>{t.aboutText}</p><p class="muted">{t.illustrativeNotice}</p></div></section>
+<section class="wrap" id="oem"><div class="split"><Illustration id="oem/hero" /><div><h2>OEM / ODM</h2><p class="lead">{t.briefText}</p><p>{t.oemText}</p><a class="button" href={getRelativeLocaleUrl(locale, '/contact/')}>{t.request}</a></div></div><div class="split materials"><Illustration id="oem/fabric_swatches" /><Illustration id="oem/trims" /></div></section>
+<section class="wrap"><h2>{t.factoryInfo}</h2><p>{t.factoryText}</p><p class="muted">{t.illustrativeNotice}</p><div class="image-triptych"><Illustration id="about/facility_production" /><Illustration id="about/facility_inspection" /><Illustration id="about/facility_warehouse" /></div><p>{t.terms}: {t.quote}.</p></section>
+</Shell>

@@ -1,0 +1,28 @@
+---
+/** Shared static document; Astro locale URLs, reciprocal alternates and navigation. No backend state. */
+import '@opensite/design-tokens/css';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/outfit/300.css';
+import '@fontsource/outfit/500.css';
+import '../styles.css';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { pageLocale, pagePath, dictionaries, locales, languageNames } from '../i18n';
+import { imageSrcset, heroSizes } from '../data/imagery';
+interface Props { title: string }
+const { title } = Astro.props;
+const locale = pageLocale(Astro.url), t = dictionaries[locale], path = pagePath(Astro.url);
+const href = (route: string) => getRelativeLocaleUrl(locale, route);
+const origin = Astro.site!;
+---
+<!doctype html>
+<html lang={locale} dir={locale === 'ar' ? 'rtl' : 'ltr'}><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="robots" content="noindex" /><title>{title} | Sourcyo Apparel</title><meta name="description" content={t.heroText} />
+{path === '/' && <link rel="preload" as="image" type="image/avif" imagesrcset={imageSrcset('home/hero', 'avif')} imagesizes={heroSizes} />}
+{locales.map(lang => <link rel="alternate" hreflang={lang} href={new URL(getRelativeLocaleUrl(lang, path), origin)} />)}<link rel="alternate" hreflang="x-default" href={new URL('/', origin)} /></head>
+<body><a class="skip" href="#content">{t.skip}</a>
+<header><div class="wrap header-inner"><a class="brand" href={href('/')}>Sourcyo Apparel</a><nav aria-label={t.mainNav}><a href={href('/')}>{t.home}</a><a href={href('/collections/')}>{t.collections}</a><a href={href('/about/') + '#oem'}>OEM / ODM</a><a href={href('/about/')}>{t.factory}</a><a href={href('/contact/')}>{t.contact}</a></nav><a class="button" href={href('/contact/')}>{t.request}</a>
+<details class="language-switcher"><summary>{languageNames[locale]}</summary><nav aria-label={t.language}>{locales.map(lang => <a href={getRelativeLocaleUrl(lang, path)} lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'} aria-current={lang === locale ? 'page' : undefined}>{languageNames[lang]}</a>)}</nav></details></div></header>
+<main id="content"><slot /></main>
+<footer><div class="wrap footer"><div><a class="brand" href={href('/')}>Sourcyo Apparel</a><p>{t.footerText}</p></div><nav aria-label={t.footerNav}><a href={href('/collections/')}>{t.collections}</a><a href={href('/about/')}>{t.factoryInfo}</a><a href={href('/contact/')}>{t.contact}</a></nav><div><p>{t.terms}</p><p>{t.quote}</p><a href={href('/contact/')}>{t.request}</a></div></div></footer>
+<a class="quote-float button" href={href('/contact/')}>{t.request}</a>
+</body></html>

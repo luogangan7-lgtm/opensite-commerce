@@ -1,0 +1,13 @@
+---
+/** Category view receives only route-inventory categories; shared localized grid. */
+import Shell from '../layouts/Shell.astro';
+import Grid from '../components/Grid.astro';
+import CollectionImages from '../components/CollectionImages.astro';
+import { products, categories } from '../data/catalog';
+import { dictionaries, pageLocale, type Key } from '../i18n';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+interface Props { category: string }
+const { category } = Astro.props;
+const locale = pageLocale(Astro.url), t = dictionaries[locale];
+---
+<Shell title={t[category as Key]}><section class="wrap page-intro"><a href={getRelativeLocaleUrl(locale, '/collections/')}>{t.allCollections}</a><h1>{t[category as Key]}</h1><p class="lead">{t.categoryLead}</p><nav class="category-links" aria-label={t.collections}>{Object.keys(categories).map(key => <a href={getRelativeLocaleUrl(locale, `/collections/${key}/`)} aria-current={key === category ? 'page' : undefined}>{t[key as Key]}</a>)}</nav><CollectionImages /><Grid products={products.filter(p => p.category === category)} /></section></Shell>

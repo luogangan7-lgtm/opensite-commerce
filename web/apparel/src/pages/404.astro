@@ -1,0 +1,8 @@
+---
+/** Explicit static 404 prevents Pages SPA fallback for unpublished products. */
+import Shell from '../layouts/Shell.astro';
+import { dictionaries, pageLocale } from '../i18n';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+const locale = pageLocale(Astro.url), t = dictionaries[locale];
+---
+<Shell title={t.notFound}><section class="wrap"><h1>{t.notFound}</h1><a class="button" href={getRelativeLocaleUrl(locale, '/collections/')}>{t.browse}</a></section></Shell>
