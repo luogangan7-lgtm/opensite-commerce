@@ -22,7 +22,8 @@ const locale = pageLocale(Astro.url), t = dictionaries[locale], text = productTe
   const main = document.querySelector<HTMLImageElement>('[data-gallery-main]');
   document.querySelectorAll<HTMLAnchorElement>('.gallery-thumbs a').forEach(link => link.addEventListener('click', event => {
     if (!main) return; event.preventDefault(); main.src = link.getAttribute('href')!;
-    main.alt = link.querySelector('img')!.alt;
+    const thumbnail = link.querySelector('img')!;
+    main.alt = thumbnail.alt; main.width = thumbnail.width; main.height = thumbnail.height;
     document.querySelectorAll('.gallery-thumbs a').forEach(item => item.removeAttribute('aria-current'));
     link.setAttribute('aria-current', 'true');
   }));

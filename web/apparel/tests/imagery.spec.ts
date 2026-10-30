@@ -20,8 +20,12 @@ test('deployed slots, manifest, LCP budget, locale routes and image network allo
     }
   }
   const hero = manifest.files.find((file: { url: string }) => file.url === '/img/site/illustrative_home_hero-1024.avif');
+  await page.setViewportSize({ width: 1024, height: 844 });
+  await page.goto('/');
+  await expect.poll(() => page.locator('[data-slot="home/hero"] img').evaluate(node => new URL((node as HTMLImageElement).currentSrc).pathname)).toBe(hero.url);
   const heroResponse = await request.get(hero.url), heroBytes = (await heroResponse.body()).length;
   expect(heroBytes).toBe(hero.bytes); expect(heroBytes).toBeLessThan(300_000);
+  await page.setViewportSize({ width: 390, height: 844 });
   const network: Record<string, string[]> = {};
   for (const route of ['/', '/es/', '/collections/crew-fleece/', '/products/crew-fleece-8900-33/']) {
     const requests = new Set<string>();
