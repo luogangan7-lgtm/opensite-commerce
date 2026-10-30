@@ -1,8 +1,7 @@
 /** Preview-only live imagery receipts. Browser execution is confined to GitHub CI. */
 import { test, expect } from '@playwright/test';
 import { assertSlotReferences } from '../image-plan';
-import { dictionaries } from '../src/i18n';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 test.skip(!process.env.APPAREL_PREVIEW_URL, 'Requires the immutable, packaged Pages preview');
 test('deployed slots, manifest, LCP budget, locale routes and image network allow-list', async ({ page, request }) => {
   test.setTimeout(120_000);
@@ -11,7 +10,7 @@ test('deployed slots, manifest, LCP budget, locale routes and image network allo
   const manifest = await response.json();
   expect(manifest.sha).toBe(process.env.GITHUB_SHA);
   const reviewed = manifest.slotReviews as { id: string; pass: boolean }[];
-  const templateIds = Object.keys(dictionaries.en).filter(key => key.startsWith('alt.')).map(key => key.slice(4).replace('.', '/'));
+  const templateIds = Object.keys(JSON.parse(readFileSync('web/apparel/src/i18n/en.json', 'utf8'))).filter(key => key.startsWith('alt.')).map(key => key.slice(4).replace('.', '/'));
   expect(reviewed.map(row => row.id).sort()).toEqual(templateIds.sort());
   expect(reviewed.every(row => typeof row.pass === 'boolean')).toBe(true);
   expect(manifest.slots.map((row: { id: string }) => row.id).sort()).toEqual(reviewed.filter(row => row.pass).map(row => row.id).sort());
