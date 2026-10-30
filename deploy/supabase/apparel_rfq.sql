@@ -15,3 +15,4 @@ create table if not exists public.apparel_rfq (
 );
 alter table public.apparel_rfq enable row level security;
 -- Intentionally no policies. Only the private server-side secret may bypass RLS.
+alter table public.apparel_rfq add column if not exists locale text check (char_length(locale) <= 10);

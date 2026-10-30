@@ -1,27 +1,39 @@
 ---
-/** Shared RFQ form; same-origin Pages POST; status/errors remain accessible without PII logging. */
+/** Shared same-origin RFQ; preserves validation limits, maps server keys to locale strings. */
+import { dictionaries, pageLocale } from '../i18n';
 interface Props { product?: string }
 const { product = '' } = Astro.props;
+const locale = pageLocale(Astro.url), t = dictionaries[locale];
+const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.startsWith('error.') || ['sending', 'success'].includes(key)));
 ---
-<form class="rfq" action="/api/rfq" method="post">
-<label>Name<input name="name" autocomplete="name" required maxlength="100" /></label>
-<label>Company<input name="company" autocomplete="organization" required maxlength="150" /></label>
-<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" /></label>
-<label>Message<textarea name="message" rows="5" required maxlength="2000">{product ? `Style: ${product}\nPlease share quote and sample details.` : ''}</textarea></label>
+<form class="rfq" action="/api/rfq" method="post" data-messages={JSON.stringify(messages)}>
+<input type="hidden" name="locale" value={locale} />
+<label>{t.name}<input name="name" placeholder={t.namePlaceholder} autocomplete="name" required maxlength="100" /></label>
+<label>{t.company}<input name="company" placeholder={t.companyPlaceholder} autocomplete="organization" required maxlength="150" /></label>
+<label>{t.email}<input name="email" type="email" placeholder={t.emailPlaceholder} autocomplete="email" required maxlength="254" dir="ltr" /></label>
+<label>{t.message}<textarea name="message" placeholder={t.messagePlaceholder} rows="5" required maxlength="2000">{product ? `${t.style}: ${product}\n${t.messagePlaceholder}` : ''}</textarea></label>
 <div hidden><label>Website<input name="website" tabindex="-1" autocomplete="off" /></label></div>
-<p class="muted">Price, MOQ, lead time and sample cost: Confirmed in quote.</p>
-<button type="submit">Send inquiry</button><p class="form-status" role="status" aria-live="polite"></p>
+<p class="muted">{t.terms}: <span>{t.quote}</span>.</p>
+<button type="submit">{t.send}</button><p class="form-status" role="status" aria-live="polite"></p>
 </form>
 <script>
-  document.querySelectorAll<HTMLFormElement>('.rfq').forEach(form => form.addEventListener('submit', async event => {
-    event.preventDefault(); const button = form.querySelector('button')!; const status = form.querySelector<HTMLElement>('.form-status')!;
-    button.disabled = true; status.textContent = 'Sending inquiry…';
-    try {
-      const response = await fetch(form.action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
-      const result = await response.json();
-      status.textContent = response.ok ? 'Inquiry received. Your requirements have been saved.' : Object.values(result.errors || { error: result.error || 'Please try again.' }).join(' ');
-      if (response.ok) form.reset();
-    } catch { status.textContent = 'Inquiry not sent. Check your connection and try again.'; }
-    finally { button.disabled = false; }
-  }));
+  document.querySelectorAll<HTMLFormElement>('.rfq').forEach(form => {
+    const messages: Record<string, string> = JSON.parse(form.dataset.messages!);
+    form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input:not([type="hidden"]), textarea').forEach(input => {
+      input.addEventListener('invalid', () => input.setCustomValidity(messages[input.validity.typeMismatch ? 'error.email' : 'error.required']));
+      input.addEventListener('input', () => input.setCustomValidity(''));
+    });
+    form.addEventListener('submit', async event => {
+      event.preventDefault(); const button = form.querySelector('button')!; const status = form.querySelector<HTMLElement>('.form-status')!;
+      button.disabled = true; status.textContent = messages.sending;
+      try {
+        const response = await fetch(form.action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+        const result = await response.json();
+        const keys = Object.values(result.errors || { error: result.error || 'error.storage' });
+        status.textContent = response.ok ? messages.success : keys.map(key => messages[String(key)] || messages['error.storage']).join(' ');
+        if (response.ok) form.reset();
+      } catch { status.textContent = messages['error.network']; }
+      finally { button.disabled = false; }
+    });
+  });
 </script>

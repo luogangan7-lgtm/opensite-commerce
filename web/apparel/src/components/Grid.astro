@@ -1,6 +1,9 @@
 ---
-/** Reusable static product grid; published data only; no commercial values on tiles. */
+/** Shared image-first grid; static catalog allow-list and committed product translations. */
 import type { Product } from '../data/catalog';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { pageLocale, productText } from '../i18n';
 interface Props { products: Product[] }
+const locale = pageLocale(Astro.url);
 ---
-<div class="product-grid">{Astro.props.products.map(product => <a class="tile" href={`/products/${product.slug}/`}><img src={product.images[0].src} alt={product.name_en} width="600" height="720" loading="lazy" /><p class="muted">{product.style_codes.join(' / ')}</p><h3>{product.name_en}</h3></a>)}</div>
+<div class="product-grid">{Astro.props.products.map(product => <a class="tile" href={getRelativeLocaleUrl(locale, `/products/${product.slug}/`)}><img src={product.images[0].src} alt={productText[locale][product.slug].name} width="600" height="720" loading="lazy" /><p class="muted"><bdi>{product.style_codes.join(' / ')}</bdi></p><h3>{productText[locale][product.slug].name}</h3></a>)}</div>

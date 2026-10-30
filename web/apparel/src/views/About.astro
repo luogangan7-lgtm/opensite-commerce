@@ -1,0 +1,9 @@
+---
+/** About uses source-supported product images only; facility evidence has not been supplied. */
+import Shell from '../layouts/Shell.astro';
+import { products } from '../data/catalog';
+import { dictionaries, pageLocale, productText } from '../i18n';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+const locale = pageLocale(Astro.url), t = dictionaries[locale];
+---
+<Shell title={t.factoryInfo}><section class="wrap page-intro"><h1>{t.aboutTitle}</h1><p class="lead">{t.aboutText}</p></section><section class="wrap split" id="oem"><div><h2>OEM / ODM</h2><img src={products[0].images[0].src} alt={productText[locale][products[0].slug].name} width="600" height="720" loading="lazy" /></div><div><p class="lead">{t.briefText}</p><p>{t.oemText}</p><a class="button" href={getRelativeLocaleUrl(locale, '/contact/')}>{t.request}</a></div></section><section class="wrap split"><h2>{t.factoryInfo}</h2><div><p class="lead">{t.factoryText}</p><p>{t.terms}: {t.quote}.</p></div></section></Shell>

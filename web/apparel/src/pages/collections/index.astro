@@ -1,7 +1,0 @@
----
-/** Collection index; shared category/grid modules; all published products grouped without prices. */
-import Shell from '../../layouts/Shell.astro';
-import Grid from '../../components/Grid.astro';
-import { products, categories } from '../../data/catalog';
----
-<Shell title="Collections"><section class="wrap"><h1>Find your next collection.</h1><p class="lead">Explore apparel styles, then make the brief your own.</p><nav class="category-links" aria-label="Categories">{Object.entries(categories).map(([key, title]) => <a href={`#${key}`}>{title}</a>)}</nav></section>{Object.entries(categories).map(([key, title]) => <section class="wrap" id={key}><div class="section-heading"><h2>{title}</h2><a href={`/collections/${key}/`}>View collection</a></div><Grid products={products.filter(p => p.category === key)} /></section>)}</Shell>
