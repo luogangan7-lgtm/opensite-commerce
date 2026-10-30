@@ -45,12 +45,12 @@ jobs:
         run: bun run --cwd web/apparel check
       - name: Static build
         run: bun run --cwd web/apparel build
+      - name: Package Pages Function in CI
+        run: cd web/apparel && bunx wrangler@4.156.0 pages functions build functions --outfile dist/_worker.js
       - name: Distribution gates
         run: |
           bun web/apparel/tests/dist-gate.ts
           bun web/apparel/tests/probes.ts
-      - name: Package Pages Function in CI
-        run: cd web/apparel && bunx wrangler@4.156.0 pages functions build functions --outfile dist/_worker.js
       - run: bunx playwright install --with-deps chromium
       - name: Playwright 390px
         run: bunx playwright test --config web/apparel/playwright.config.ts
