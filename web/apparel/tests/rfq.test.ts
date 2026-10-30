@@ -8,6 +8,8 @@ afterEach(() => mock.restore());
 function fixture(body: unknown, upstream: Response | Error = Response.json([{ id }], { status: 201 })) {
   const writes: Request[] = [];
   spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    // Workers supports manual/follow, but throws before network I/O for redirect:error.
+    if (init?.redirect === 'error') throw new TypeError('Unsupported redirect mode');
     writes.push(new Request(input, init));
     if (upstream instanceof Error) throw upstream;
     return upstream;
@@ -23,6 +25,7 @@ test('valid RFQ inserts validated fields through private PostgREST and returns t
   const write = f.writes[0];
   expect(write.url).toBe(`${env.SUPABASE_URL}/rest/v1/apparel_rfq`);
   expect(write.method).toBe('POST');
+  expect(write.redirect).toBe('manual');
   expect(write.headers.get('apikey')).toBe(env.SUPABASE_SECRET_KEY);
   expect(write.headers.get('Authorization')).toBe(`Bearer ${env.SUPABASE_SECRET_KEY}`);
   expect(write.headers.get('Prefer')).toBe('return=representation');
@@ -40,7 +43,7 @@ for (const body of [null, [], { ...valid, name: 42 }, { ...valid, email: 'a'.rep
   test(`reject malformed input ${JSON.stringify(body).slice(0, 30)}`, async () => { const f = fixture(body); expect((await f.run()).status).toBe(400); expect(f.writes).toHaveLength(0); });
 }
 test('honeypot looks successful and makes no PostgREST call', async () => { const f = fixture({ ...valid, website: 'bot' }); expect((await f.run()).status).toBe(201); expect(f.writes).toHaveLength(0); });
-for (const upstream of [new Error('network'), Response.json({ error: 'private upstream details' }, { status: 403 }), Response.json([], { status: 201 }), Response.json([{ id: 'bad-id' }], { status: 201 }), new Response('not JSON', { status: 201 })]) {
+for (const upstream of [new Error('network'), new Response(null, { status: 302, headers: { Location: 'https://untrusted.example.invalid/' } }), Response.json({ error: 'private upstream details' }, { status: 403 }), Response.json([], { status: 201 }), Response.json([{ id: 'bad-id' }], { status: 201 }), new Response('not JSON', { status: 201 })]) {
   test(`storage failure or missing DB receipt does not acknowledge success (${upstream instanceof Error ? 'network' : upstream.status})`, async () => {
     const response = await fixture(valid, upstream).run(); expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ error: 'Inquiry not saved. Please try again.' });

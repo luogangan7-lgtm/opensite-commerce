@@ -40,8 +40,9 @@ const env = { SUPABASE_URL: 'https://database.example.invalid', SUPABASE_SECRET_
   return new Response('not found', { status: 404 });
 } } };
 globalThis.fetch = async (input, init) => {
+  if (init?.redirect === 'error') throw new TypeError('Unsupported redirect mode');
   const request = new Request(input, init);
-  if (request.url !== `${env.SUPABASE_URL}/rest/v1/apparel_rfq` || request.method !== 'POST' || request.headers.get('apikey') !== env.SUPABASE_SECRET_KEY || request.headers.get('Authorization') !== `Bearer ${env.SUPABASE_SECRET_KEY}` || request.headers.get('Prefer') !== 'return=representation') throw Error('Compiled PostgREST contract failed');
+  if (request.url !== `${env.SUPABASE_URL}/rest/v1/apparel_rfq` || request.method !== 'POST' || request.redirect !== 'manual' || request.headers.get('apikey') !== env.SUPABASE_SECRET_KEY || request.headers.get('Authorization') !== `Bearer ${env.SUPABASE_SECRET_KEY}` || request.headers.get('Prefer') !== 'return=representation') throw Error('Compiled PostgREST contract failed');
   records.push(await request.json());
   return Response.json([{ id: '524f5000-0000-4000-8000-000000000001' }], { status: 201 });
 };
