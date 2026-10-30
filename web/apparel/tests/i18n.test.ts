@@ -20,6 +20,7 @@ test('each published product has reviewed name and descriptions in every languag
     expect(Object.keys(translated).sort()).toEqual(products.map(p => p.slug).sort());
     for (const product of products) {
       expect(Object.keys(translated[product.slug]).sort()).toEqual(['colourway_note', 'fabric_weight_fit', 'name']);
+      if (locale === 'ar') expect(translated[product.slug].name).toContain(`\u2068${product.style_codes.join(' / ')}\u2069`);
       for (const value of Object.values(translated[product.slug])) expect(typeof value === 'string' && value.trim().length > 0).toBe(true);
     }
   }
