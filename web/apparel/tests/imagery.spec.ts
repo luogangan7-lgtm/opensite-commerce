@@ -1,5 +1,7 @@
 /** Preview-only live imagery receipts. Browser execution is confined to GitHub CI. */
 import { test, expect } from '@playwright/test';
+import { assertSlotReferences } from '../image-plan';
+import { dictionaries } from '../src/i18n';
 import { mkdirSync, writeFileSync } from 'node:fs';
 test.skip(!process.env.APPAREL_PREVIEW_URL, 'Requires the immutable, packaged Pages preview');
 test('deployed slots, manifest, LCP budget, locale routes and image network allow-list', async ({ page, request }) => {
@@ -8,17 +10,32 @@ test('deployed slots, manifest, LCP budget, locale routes and image network allo
   expect(response.status()).toBe(200);
   const manifest = await response.json();
   expect(manifest.sha).toBe(process.env.GITHUB_SHA);
-  expect(manifest.slots).toHaveLength(26);
+  const reviewed = manifest.slotReviews as { id: string; pass: boolean }[];
+  const templateIds = Object.keys(dictionaries.en).filter(key => key.startsWith('alt.')).map(key => key.slice(4).replace('.', '/'));
+  expect(reviewed.map(row => row.id).sort()).toEqual(templateIds.sort());
+  expect(reviewed.every(row => typeof row.pass === 'boolean')).toBe(true);
+  expect(manifest.slots.map((row: { id: string }) => row.id).sort()).toEqual(reviewed.filter(row => row.pass).map(row => row.id).sort());
   expect(JSON.stringify(manifest)).not.toMatch(/dh-legacy|model_front\.png|\/hd\//);
   for (const slot of manifest.slots) expect(slot.rights).toBe('ai-generated-illustrative');
   const target: Record<string, string> = { home: '/', collection: '/collections/', about: '/about/', oem: '/about/', pdp: '/products/crew-fleece-8900-32/', contact: '/contact/' };
   for (const [kind, route] of Object.entries(target)) {
     const html = await (await request.get(route)).text();
+    assertSlotReferences(html, manifest.slots, kind);
     for (const slot of manifest.slots.filter((s: { id: string }) => s.id.startsWith(kind + '/'))) {
       expect(html).toContain(`data-slot="${slot.id}"`);
       expect(html).toContain(`width="${slot.w}" height="${slot.h}"`);
     }
   }
+  await page.goto('/contact/');
+  const banner = page.locator('.contact-banner');
+  await expect(banner).toBeVisible();
+  const contactPass = reviewed.find(row => row.id === 'contact/banner')!.pass;
+  await expect(banner.locator('img')).toHaveCount(contactPass ? 1 : 0);
+  const contactImages = await banner.locator('img').count();
+  const cream = await banner.evaluate(node => ({ actual: getComputedStyle(node).backgroundColor, token: getComputedStyle(node).getPropertyValue('--sy-color-placeholder').trim(), height: node.getBoundingClientRect().height }));
+  expect(cream.actual).toBe('rgb(231, 226, 214)');
+  expect(cream.token).toBe('#e7e2d6');
+  expect(cream.height).toBeGreaterThan(0);
   const hero = manifest.files.find((file: { url: string }) => file.url === '/img/site/illustrative_home_hero-1024.avif');
   await page.setViewportSize({ width: 1024, height: 844 });
   await page.goto('/');
@@ -39,12 +56,17 @@ test('deployed slots, manifest, LCP budget, locale routes and image network allo
     expect(network[route].some(path => path.includes('/hd/'))).toBe(false);
     for (const path of network[route].filter(path => path.startsWith('/img/'))) expect(manifest.files.some((file: { url: string }) => file.url === path)).toBe(true);
   }
-  for (const locale of ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) for (const route of ['/', '/collections/crew-fleece/', '/products/crew-fleece-8900-33/', '/contact/']) expect((await request.get(`${locale === 'en' ? '' : `/${locale}`}${route}`)).status()).toBe(200);
+  const statuses: Record<string, number> = {};
+  for (const locale of ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) for (const route of ['/', '/collections/crew-fleece/', '/products/crew-fleece-8900-33/', '/contact/']) {
+    const path = `${locale === 'en' ? '' : `/${locale}`}${route}`, response = await request.get(path);
+    statuses[path] = response.status(); expect(response.status()).toBe(200);
+  }
   for (const route of ['/', '/collections/crew-fleece/', '/products/crew-fleece-8900-33/']) {
     await page.goto('/ar' + route);
+    await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
-  const result = { sha: manifest.sha, slots: manifest.slots.length, packshots: manifest.packshots.map((p: { slug: string }) => p.slug), hero1024: { file: hero.url, bytes: heroBytes }, network };
+  const result = { contact: { published: contactPass, images: contactImages, cream }, statuses, arabic390: 'home/collection/PDP rtl and no horizontal scroll', sha: manifest.sha, slots: manifest.slots.length, packshots: manifest.packshots.map((p: { slug: string }) => p.slug), hero1024: { file: hero.url, bytes: heroBytes }, network };
   mkdirSync('evidence', { recursive: true }); writeFileSync('evidence/live-imagery.json', JSON.stringify(result, null, 2));
   console.log('LIVE IMAGERY', JSON.stringify(result));
 });

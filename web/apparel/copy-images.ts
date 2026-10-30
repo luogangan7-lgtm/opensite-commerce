@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import products from './src/data/products.json';
-import { imagePlan, type Review, type Approved } from './image-plan';
+import { imagePlan, publishSlotMarkup, assertSlotReferences, type Review, type Approved } from './image-plan';
 import { widths, imageBase } from './src/data/imagery';
 const sharp = createRequire(import.meta.resolve('astro/package.json'))('sharp');
 const common = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
@@ -64,7 +64,7 @@ const replacements = new Map(plan.packshots.map(image => [products.find(p => p.s
 function htmlFiles(dir: string): string[] { return readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? htmlFiles(join(dir, entry.name)) : entry.name.endsWith('.html') ? [join(dir, entry.name)] : []); }
 const html = htmlFiles(destination);
 for (const file of html) {
-  let text = readFileSync(file, 'utf8');
+  let text = publishSlotMarkup(readFileSync(file, 'utf8'), plan.slots);
   for (const [fallback, approved] of replacements) text = text.replaceAll(`"${fallback}"`, `"${approved}"`);
   text = text.replace(/<img\b[^>]*>/g, tag => {
     const src = tag.match(/\bsrc="([^"]+)"/)?.[1], size = src && dimensions.get(src);
@@ -76,12 +76,11 @@ for (const file of html) {
 }
 // The external inventory, not a copied build-time list, determines deploy completeness.
 const targets: Record<string, string[]> = { home: [''], collection: ['collections', ...new Set(products.map(p => `collections/${p.category}`))], about: ['about'], oem: ['about'], pdp: products.map(p => `products/${p.slug}`), contact: ['contact'] };
-for (const locale of ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) for (const image of plan.slots) {
-  const page = image.id!.split('/')[0];
+for (const locale of ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) for (const page of Object.keys(slotInput)) {
   if (!targets[page]) throw Error('Unknown page slot');
-  for (const route of targets[page]) if (!readFileSync(join(destination, locale === 'en' ? '' : locale, route, 'index.html'), 'utf8').includes(`data-slot="${image.id}"`)) throw Error(`Unwired slot: ${image.id}`);
+  for (const route of targets[page]) assertSlotReferences(readFileSync(join(destination, locale === 'en' ? '' : locale, route, 'index.html'), 'utf8'), plan.slots, page);
 }
 const receipt = (image: Approved) => ({ id: image.id, slug: image.slug, role: image.id ? 'illustrative' : image.role, src: image.src, sha256: image.sha256, w: image.w, h: image.h, rights: image.rights });
-const manifest = { schema: 1, sha: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), slots: plan.slots.map(receipt), packshots: plan.packshots.map(receipt), files };
+const manifest = { schema: 1, sha: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), files };
 writeFileSync(join(destination, 'deploy-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 console.log(JSON.stringify({ sha: manifest.sha, slots: plan.slots.length, packshots: plan.packshots.map(p => p.slug), files: files.length, hero1024: files.filter(p => p.url.includes('illustrative_home_hero-1024')) }));
