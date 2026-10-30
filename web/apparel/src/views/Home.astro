@@ -2,9 +2,10 @@
 /** Home composition follows the supplied layout rhythm; all imagery is approved catalog content. */
 import Shell from '../layouts/Shell.astro';
 import Grid from '../components/Grid.astro';
+import Illustration from '../components/Illustration.astro';
 import RFQ from '../components/RFQ.astro';
 import { products, categories } from '../data/catalog';
-import { dictionaries, pageLocale, productText, type Key } from '../i18n';
+import { dictionaries, pageLocale, type Key } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 const href = (route: string) => getRelativeLocaleUrl(locale, route);
@@ -12,9 +13,11 @@ const featured = Object.keys(categories).map(category => products.find(p => p.ca
 const benefits = [['styleFirst', 'styleText'], ['fabricFirst', 'fabricText'], ['sampleFirst', 'sampleText'], ['confirmFirst', 'confirmText']] as const;
 ---
 <Shell title={t.heroTitle}>
-<section class="hero"><img class="hero-image" src={featured[0].images[0].src} alt={productText[locale][featured[0].slug].name} width="1600" height="1200" fetchpriority="high" /><div class="hero-shade"></div><div class="wrap hero-content"><h1>{t.heroTitle}</h1><p class="lead">{t.heroText}</p><div class="actions"><a class="button" href={href('/contact/')}>{t.request}</a><a class="button secondary" href={href('/collections/')}>{t.browse}</a></div></div><div class="strip"><div class="wrap"><span>{t.cotton}</span><span>{t.sets}</span><span>OEM / ODM</span><span>{t.samples}: {t.quote}</span></div></div></section>
+<section class="hero"><Illustration id="home/hero" hero sizes="100vw" class="hero-picture" /><div class="hero-shade"></div><div class="wrap hero-content"><h1>{t.heroTitle}</h1><p class="lead">{t.heroText}</p><div class="actions"><a class="button" href={href('/contact/')}>{t.request}</a><a class="button secondary" href={href('/collections/')}>{t.browse}</a></div></div><div class="strip"><div class="wrap"><span>{t.cotton}</span><span>{t.sets}</span><span>OEM / ODM</span><span>{t.samples}: {t.quote}</span></div></div></section>
 <section class="wrap"><h2>{t.partnerTitle}</h2><div class="benefits">{benefits.map(([title, body]) => <article><h3>{t[title]}</h3><p>{t[body]}</p></article>)}</div></section>
-<section class="wrap"><div class="section-heading"><div><h2>{t.makeTitle}</h2><p class="lead">{t.collectionLead}</p></div><a href={href('/collections/')}>{t.allCollections}</a></div><div class="product-lines">{featured.slice(0, 2).map(product => <a href={href(`/collections/${product.category}/`)}><img src={product.images[0].src} alt={productText[locale][product.slug].name} width="700" height="840" loading="lazy" /><div><h3>{t[product.category as Key]}</h3><span>{t.viewCollection}</span></div></a>)}</div><nav class="category-links" aria-label={t.collections}>{Object.keys(categories).map(key => <a href={href(`/collections/${key}/`)}>{t[key as Key]}</a>)}</nav><Grid products={featured.slice(0, 4)} /></section>
-<section class="wrap split" id="oem"><div><h2>{t.briefTitle}</h2><p class="lead">{t.briefText}</p><a href={href('/about/') + '#oem'}>{t.exploreOem}</a><img class="process-image" src={featured[2].images[0].src} alt={productText[locale][featured[2].slug].name} width="600" height="720" loading="lazy" /></div><div class="steps">{benefits.slice(1).map(([title, body]) => <article><h3>{t[title]}</h3><p>{t[body]}</p></article>)}<p>{t.terms}: {t.quote}.</p></div></section>
+<section class="wrap"><div class="section-heading"><div><h2>{t.makeTitle}</h2><p class="lead">{t.collectionLead}</p></div><a href={href('/collections/')}>{t.allCollections}</a></div><div class="product-lines"><a href={href("/collections/")}><Illustration id="home/line_collections" /><div><h3>{t.collections}</h3><span>{t.viewCollection}</span></div></a><a href={href("/about/") + "#oem"}><Illustration id="home/line_oem" /><div><h3>OEM / ODM</h3><span>{t.exploreOem}</span></div></a></div><nav class="category-links" aria-label={t.collections}>{Object.keys(categories).map(key => <a href={href(`/collections/${key}/`)}>{t[key as Key]}</a>)}</nav><Grid products={featured.slice(0, 4)} /></section>
+<section class="wrap"><h2>{t.partnerTitle}</h2><div class="split"><article><Illustration id="home/track_stock" /><h3>{t.styleFirst}</h3><p>{t.styleText}</p></article><article><Illustration id="home/track_custom" /><h3>{t.fabricFirst}</h3><p>{t.fabricText}</p></article></div></section>
+<section class="wrap split" id="oem"><div><h2>{t.briefTitle}</h2><p class="lead">{t.briefText}</p><a href={href('/about/') + '#oem'}>{t.exploreOem}</a></div><div class="steps">{benefits.slice(1).map(([title, body]) => <article><h3>{t[title]}</h3><p>{t[body]}</p></article>)}<p>{t.terms}: {t.quote}.</p></div></section>
+<section class="wrap"><div class="image-triptych"><Illustration id="home/process_pattern" /><Illustration id="home/process_sewing" /><Illustration id="home/process_qc" /></div></section>
 <section class="wrap split"><div><h2>{t.tellTitle}</h2><p class="lead">{t.tellText}</p></div><RFQ /></section>
 </Shell>

@@ -6,4 +6,4 @@ import { pageLocale, productText } from '../i18n';
 interface Props { products: Product[] }
 const locale = pageLocale(Astro.url);
 ---
-<div class="product-grid">{Astro.props.products.map(product => <a class="tile" href={getRelativeLocaleUrl(locale, `/products/${product.slug}/`)}><img src={product.images[0].src} alt={productText[locale][product.slug].name} width="600" height="720" loading="lazy" /><p class="muted"><bdi>{product.style_codes.join(' / ')}</bdi></p><h3>{productText[locale][product.slug].name}</h3></a>)}</div>
+<div class="product-grid">{Astro.props.products.map(product => <a class="tile" href={getRelativeLocaleUrl(locale, `/products/${product.slug}/`)}><img src={product.images[0].src} alt={productText[locale][product.slug].name} width="600" height="720" loading="lazy" decoding="async" /><p class="muted"><bdi>{product.style_codes.join(' / ')}</bdi></p><h3>{productText[locale][product.slug].name}</h3></a>)}</div>

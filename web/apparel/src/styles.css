@@ -34,6 +34,16 @@ button:disabled { opacity: .6; cursor: wait; }
 .hero { position: relative; isolation: isolate; display: grid; align-items: center; min-height: min(86vw, 1235px); padding-block: var(--sy-space-section); color: var(--sy-color-on-ink); }
 .hero-image, .hero-shade { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -2; }
 .hero-image { object-fit: cover; object-position: center 35%; }
+.hero-picture { position: absolute; inset: 0; z-index: -2; }
+.hero-picture img { width: 100%; height: 100%; object-fit: cover; object-position: center 35%; }
+picture { display: block; min-width: 0; }
+picture img { width: 100%; }
+.image-triptych { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sy-space-grid-x); }
+.image-triptych img { aspect-ratio: 3 / 2; object-fit: cover; }
+.materials { margin-block-start: var(--sy-space-grid-y); }
+.category-previews { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sy-space-grid-x); margin-block: var(--sy-space-grid-y); }
+.category-previews a { min-width: 0; text-decoration: none; }
+.category-previews img { aspect-ratio: 3 / 2; object-fit: cover; }
 .hero-shade { z-index: -1; background: var(--sy-color-overlay); }
 .hero-content { padding-block: var(--sy-space-section); }
 .hero h1 { max-width: 18ch; }
@@ -100,6 +110,8 @@ footer { padding-block-end: var(--sy-space-section-sm); }
 .skip:focus { transform: none; background: var(--sy-color-canvas); }
 @media (max-width: 1100px) { .product-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .header-inner > nav { order: 3; flex-basis: 100%; } .header-inner > .button { margin-inline-start: auto; } }
 @media (max-width: 650px) {
+ .image-triptych { grid-template-columns: minmax(0, 1fr); }
+ .category-previews { grid-template-columns: repeat(2, minmax(0, 1fr)); }
  .wrap { width: calc(100% - 2 * var(--sy-space-gutter-mobile)); }
  section { padding-block: var(--sy-space-section-sm); }
  h1 { font-size: var(--sy-text-h1-mobile); } h2 { font-size: var(--sy-text-h2-mobile); }

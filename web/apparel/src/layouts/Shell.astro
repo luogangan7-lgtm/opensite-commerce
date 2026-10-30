@@ -8,6 +8,7 @@ import '@fontsource/outfit/500.css';
 import '../styles.css';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { pageLocale, pagePath, dictionaries, locales, languageNames } from '../i18n';
+import { imageSrcset, heroSizes } from '../data/imagery';
 interface Props { title: string }
 const { title } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale], path = pagePath(Astro.url);
@@ -16,6 +17,7 @@ const origin = Astro.site!;
 ---
 <!doctype html>
 <html lang={locale} dir={locale === 'ar' ? 'rtl' : 'ltr'}><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="robots" content="noindex" /><title>{title} | Sourcyo Apparel</title><meta name="description" content={t.heroText} />
+{path === '/' && <link rel="preload" as="image" type="image/avif" imagesrcset={imageSrcset('home/hero', 'avif')} imagesizes={heroSizes} />}
 {locales.map(lang => <link rel="alternate" hreflang={lang} href={new URL(getRelativeLocaleUrl(lang, path), origin)} />)}<link rel="alternate" hreflang="x-default" href={new URL('/', origin)} /></head>
 <body><a class="skip" href="#content">{t.skip}</a>
 <header><div class="wrap header-inner"><a class="brand" href={href('/')}>Sourcyo Apparel</a><nav aria-label={t.mainNav}><a href={href('/')}>{t.home}</a><a href={href('/collections/')}>{t.collections}</a><a href={href('/about/') + '#oem'}>OEM / ODM</a><a href={href('/about/')}>{t.factory}</a><a href={href('/contact/')}>{t.contact}</a></nav><a class="button" href={href('/contact/')}>{t.request}</a>

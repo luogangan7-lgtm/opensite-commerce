@@ -4,6 +4,7 @@ import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import products from '../src/data/products.json';
 import { dictionaries, locales, type Locale } from '../src/i18n';
+import { imageBase, widths } from '../src/data/imagery';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 // Pages decides whether to invoke the compiled Worker from this manifest, before dispatch.
 const routes = JSON.parse(readFileSync(join(root, '_routes.json'), 'utf8'));
@@ -11,6 +12,8 @@ if (routes.version !== 1 || routes.exclude.length !== 0 || JSON.stringify([...ro
 function files(path: string): string[] { return readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(join(path, e.name)) : [join(path, e.name)]); }
 const allowed = new Set(products.map(p => p.slug));
 const images = new Set(products.flatMap(p => [...p.images.map(i => i.src), ...p.size_chart]));
+// Dictionary-backed slot references only; source review stays deploy-only.
+for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.'))) for (const width of widths) for (const format of ['avif', 'webp']) images.add(`${imageBase(key.slice(4).replace('.', '/'))}-${width}.${format}`);
 if (products.length !== 68 || allowed.size !== 68) throw Error('Published catalog count changed');
 const source = JSON.stringify(products);
 if (/"(?:original|web|rights|name_zh|collection_zh)"/.test(source) || source.includes('/' + 'Volumes/')) throw Error('Private catalog field');
@@ -24,6 +27,7 @@ for (const file of files(root)) {
   const text = readFileSync(file, 'utf8');
   if (/mgoo/i.test(text) || /\baston\b/i.test(text) || text.includes('/' + 'Volumes/')) throw Error('Forbidden published text');
   for (const image of text.matchAll(/(?:src|href)="(\/img\/[^"?#]+)/g)) if (!images.has(image[1])) throw Error('Unpublished image reference');
+  for (const srcset of text.matchAll(/(?:imagesrcset|srcset)="([^"]+)"/g)) for (const candidate of srcset[1].split(',')) if (!images.has(candidate.trim().split(/\s+/)[0])) throw Error('Unpublished responsive image');
   if (/tryon-|数字人形象|assets\/tryon/.test(text)) throw Error('Forbidden image provenance');
   if (path.endsWith('.html')) {
     const html = text.match(/<html\b[^>]*>/)?.[0] || '';
