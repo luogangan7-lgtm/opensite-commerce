@@ -5,7 +5,7 @@ const id = '524f5000-0000-4000-8000-000000000001';
 const env = { SUPABASE_URL: 'https://database.example.invalid', SUPABASE_SECRET_KEY: 'ci-private-placeholder' };
 const valid = { name: 'CI Buyer', company: 'CI Example', email: 'buyer@example.invalid', message: 'Please quote a sample.', website: '' };
 afterEach(() => mock.restore());
-function fixture(body: unknown, upstream: Response | Error = Response.json([{ id }], { status: 201 })) {
+function fixture(body: unknown, upstream: Response | Error = Response.json([{ id }], { status: 201 }), path = '/api/rfq') {
   const writes: Request[] = [];
   spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     // Workers supports manual/follow, but throws before network I/O for redirect:error.
@@ -14,7 +14,7 @@ function fixture(body: unknown, upstream: Response | Error = Response.json([{ id
     if (upstream instanceof Error) throw upstream;
     return upstream;
   });
-  const request = new Request('https://example.invalid/api/rfq', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json', 'User-Agent': 'CI RFQ gate' } });
+  const request = new Request(`https://example.invalid${path}`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json', 'User-Agent': 'CI RFQ gate' } });
   return { writes, run: (bindings = env) => onRequestPost({ request, env: bindings }) };
 }
 test('valid RFQ inserts validated fields through private PostgREST and returns the DB id', async () => {
@@ -30,7 +30,7 @@ test('valid RFQ inserts validated fields through private PostgREST and returns t
   expect(write.headers.get('Authorization')).toBe(`Bearer ${env.SUPABASE_SECRET_KEY}`);
   expect(write.headers.get('Prefer')).toBe('return=representation');
   expect(write.headers.get('Content-Type')).toBe('application/json');
-  expect(await write.json()).toEqual({ name: valid.name, company: valid.company, email: valid.email, message: valid.message, country: 'Test', product_slug: 'crew-fleece-8900-32', quantity_note: 'Sample request', source_page: '/contact', user_agent: 'CI RFQ gate' });
+  expect(await write.json()).toEqual({ name: valid.name, company: valid.company, email: valid.email, message: valid.message, country: 'Test', product_slug: 'crew-fleece-8900-32', quantity_note: 'Sample request', source_page: '/contact', user_agent: 'CI RFQ gate', locale: null });
   expect(response.headers.get('Cache-Control')).toBe('no-store');
 });
 for (const [field, value] of Object.entries({ name: 'n'.repeat(101), company: 'c'.repeat(151), email: 'invalid', message: 'm'.repeat(2001), country: 'c'.repeat(81), product_slug: 'p'.repeat(121), quantity_note: 'q'.repeat(201), source_page: 's'.repeat(301) })) {
@@ -46,9 +46,21 @@ test('honeypot looks successful and makes no PostgREST call', async () => { cons
 for (const upstream of [new Error('network'), new Response(null, { status: 302, headers: { Location: 'https://untrusted.example.invalid/' } }), Response.json({ error: 'private upstream details' }, { status: 403 }), Response.json([], { status: 201 }), Response.json([{ id: 'bad-id' }], { status: 201 }), new Response('not JSON', { status: 201 })]) {
   test(`storage failure or missing DB receipt does not acknowledge success (${upstream instanceof Error ? 'network' : upstream.status})`, async () => {
     const response = await fixture(valid, upstream).run(); expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: 'Inquiry not saved. Please try again.' });
+    expect(await response.json()).toEqual({ error: 'error.storage' });
   });
 }
 test('missing private configuration makes no request', async () => {
   const f = fixture(valid); expect((await f.run({ ...env, SUPABASE_SECRET_KEY: '' })).status).toBe(503); expect(f.writes).toHaveLength(0);
+});
+for (const [locale, path, expected] of [['es', '/api/rfq', 'es'], [undefined, '/ar/api/rfq', 'ar'], ['de', '/es/api/rfq', 'de'], ['xx', '/es/api/rfq', null], [42, '/api/rfq', null], ['', '/api/rfq', null]] as const) {
+  test(`locale ${locale} at ${path} stores ${expected} without changing validation`, async () => {
+    const f = fixture({ ...valid, locale }, undefined, path);
+    expect((await f.run()).status).toBe(201);
+    expect((await f.writes[0].json()).locale).toBe(expected);
+  });
+}
+test('validation returns a stable message key, not English prose', async () => {
+  const f = fixture({ ...valid, email: 'bad', locale: 'es' });
+  expect((await (await f.run()).json()).errors.email).toBe('error.email');
+  expect(f.writes).toHaveLength(0);
 });

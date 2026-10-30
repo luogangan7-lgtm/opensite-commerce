@@ -40,7 +40,7 @@ jobs:
       - name: tokens:check
         run: bun packages/design-tokens/generate.ts --check
       - name: RFQ validation and private PostgREST contract
-        run: bun test web/apparel/tests/rfq.test.ts
+        run: bun test web/apparel/tests/rfq.test.ts web/apparel/tests/i18n.test.ts
       - name: Typecheck
         run: bun run --cwd web/apparel check
       - name: Static build
