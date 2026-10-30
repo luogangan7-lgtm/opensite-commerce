@@ -8,9 +8,9 @@ const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.star
 ---
 <form class="rfq" action="/api/rfq" method="post" data-messages={JSON.stringify(messages)}>
 <input type="hidden" name="locale" value={locale} />
-<label>{t.name}<input name="name" placeholder={t.namePlaceholder} autocomplete="name" required maxlength="100" /></label>
+<div class="form-pair"><label>{t.name}<input name="name" placeholder={t.namePlaceholder} autocomplete="name" required maxlength="100" /></label>
+<label>{t.email}<input name="email" type="email" placeholder={t.emailPlaceholder} autocomplete="email" required maxlength="254" dir="ltr" /></label></div>
 <label>{t.company}<input name="company" placeholder={t.companyPlaceholder} autocomplete="organization" required maxlength="150" /></label>
-<label>{t.email}<input name="email" type="email" placeholder={t.emailPlaceholder} autocomplete="email" required maxlength="254" dir="ltr" /></label>
 <label>{t.message}<textarea name="message" placeholder={t.messagePlaceholder} rows="5" required maxlength="2000">{product ? `${t.style}: ${product}\n${t.messagePlaceholder}` : ''}</textarea></label>
 <div hidden><label>Website<input name="website" tabindex="-1" autocomplete="off" /></label></div>
 <p class="muted">{t.terms}: <span>{t.quote}</span>.</p>

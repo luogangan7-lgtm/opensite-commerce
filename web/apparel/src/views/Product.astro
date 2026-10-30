@@ -2,7 +2,8 @@
 /** PDP consumes static product facts plus committed translations; commercial fields always use quote text. */
 import Shell from '../layouts/Shell.astro';
 import RFQ from '../components/RFQ.astro';
-import type { Product } from '../data/catalog';
+import { products, type Product } from '../data/catalog';
+import Grid from '../components/Grid.astro';
 import { dictionaries, pageLocale, productText, type Key } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 interface Props { product: Product }
@@ -10,9 +11,10 @@ const { product } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale], text = productText[locale][product.slug];
 ---
 <Shell title={text.name}>
-<section class="wrap"><a href={getRelativeLocaleUrl(locale, `/collections/${product.category}/`)}>{t[product.category as Key]}</a><div class="pdp split"><div class="gallery"><img data-gallery-main src={product.images[0].src} alt={text.name} width="700" height="840" /><nav class="gallery-thumbs" aria-label={t.productViews}>{product.images.map((image, index) => <a href={image.src} aria-label={`${t.view} ${t[image.role as Key]} ${index + 1}`} aria-current={index === 0 ? 'true' : undefined}><img src={image.src} alt={`${t[image.role as Key]} ${index + 1}`} width="80" height="96" loading="lazy" /></a>)}</nav></div><div class="product-info"><p class="muted"><bdi>{product.style_codes.join(' / ')}</bdi></p><h1>{text.name}</h1><p>{text.fabric_weight_fit}</p><p>{text.colourway_note}</p><table><caption>{t.commercial}</caption><tbody>{['price', 'moq', 'leadTime', 'sampleCost'].map(field => <tr data-commercial><th scope="row">{t[field as Key]}</th><td>{t.quote}</td></tr>)}</tbody></table><div class="actions"><a class="button" href="#inquiry">{t.request}</a><a class="button secondary" href="#inquiry">{t.requestSample}</a></div>{product.size_chart.length > 0 && <a href="#size-chart">{t.sizeChart}</a>}<p class="muted">{t.specText}</p></div></div></section>
+<section class="wrap pdp-section"><a href={getRelativeLocaleUrl(locale, `/collections/${product.category}/`)}>{t[product.category as Key]}</a><div class="pdp split"><div class="gallery"><img data-gallery-main src={product.images[0].src} alt={text.name} width="700" height="840" /><nav class="gallery-thumbs" aria-label={t.productViews}>{product.images.map((image, index) => <a href={image.src} aria-label={`${t.view} ${t[image.role as Key]} ${index + 1}`} aria-current={index === 0 ? 'true' : undefined}><img src={image.src} alt={`${t[image.role as Key]} ${index + 1}`} width="80" height="96" loading="lazy" /></a>)}</nav></div><div class="product-info"><p class="muted"><bdi>{product.style_codes.join(' / ')}</bdi></p><h1>{text.name}</h1><p>{text.fabric_weight_fit}</p><p>{text.colourway_note}</p><table><caption>{t.commercial}</caption><tbody>{['price', 'moq', 'leadTime', 'sampleCost'].map(field => <tr data-commercial><th scope="row">{t[field as Key]}</th><td>{t.quote}</td></tr>)}</tbody></table><div class="actions"><a class="button" href="#inquiry">{t.request}</a><a class="button secondary" href="#inquiry">{t.requestSample}</a></div>{product.size_chart.length > 0 && <a href="#size-chart">{t.sizeChart}</a>}<p class="muted">{t.specText}</p></div></div></section>
 {product.size_chart.length > 0 && <section class="wrap" id="size-chart"><h2>{t.sizeChart}</h2><p>{t.sizeText}</p>{product.size_chart.map(src => <img class="size-chart" src={src} alt={`${t.sizeChart}: ${product.style_codes.join(', ')}`} loading="lazy" />)}</section>}
 <section class="wrap split" id="inquiry"><div><h2>{t.makeYours}</h2><p>{t.briefText}</p></div><RFQ product={product.style_codes.join(' / ')} /></section>
+<section class="wrap"><div class="section-heading"><h2>{t.collections}</h2><a href={getRelativeLocaleUrl(locale, `/collections/${product.category}/`)}>{t.viewCollection}</a></div><Grid products={products.filter(p => p.category === product.category && p.slug !== product.slug).slice(0, 4)} /></section>
 </Shell>
 <script>
   const main = document.querySelector<HTMLImageElement>('[data-gallery-main]');

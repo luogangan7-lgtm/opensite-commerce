@@ -26,7 +26,8 @@ for (const file of files(root)) {
   for (const image of text.matchAll(/(?:src|href)="(\/img\/[^"?#]+)/g)) if (!images.has(image[1])) throw Error('Unpublished image reference');
   if (/tryon-|数字人形象|assets\/tryon/.test(text)) throw Error('Forbidden image provenance');
   if (path.endsWith('.html')) {
-    if (!text.includes(`lang="${locale}"`) || !text.includes(`dir="${locale === 'ar' ? 'rtl' : 'ltr'}"`)) throw Error('Wrong document locale');
+    const html = text.match(/<html\b[^>]*>/)?.[0] || '';
+    if (!html.includes(`lang="${locale}"`) || !html.includes(`dir="${locale === 'ar' ? 'rtl' : 'ltr'}"`)) throw Error('Wrong document locale');
     const alternates = [...text.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g)];
     if (alternates.length !== 8 || new Set(alternates.map(row => row[1])).size !== 8 || ![...locales, 'x-default'].every(lang => alternates.some(row => row[1] === lang))) throw Error('Incomplete hreflang');
     for (const row of text.matchAll(/<tr data-commercial[^>]*>[\s\S]*?<td[^>]*>(.*?)<\/td>/g)) if (row[1] !== dictionaries[locale].quote) throw Error('Localized commercial value');

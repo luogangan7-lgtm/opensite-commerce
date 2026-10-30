@@ -124,3 +124,13 @@ footer { padding-block-end: var(--sy-space-section-sm); }
 
 [dir="rtl"] body { font-family: Tahoma, Arial, sans-serif; }
 [dir="rtl"] h1, [dir="rtl"] h2, [dir="rtl"] h3 { font-family: inherit; line-height: 1.45; }
+
+/* Measured shared geometry from the design frames; factual form fields remain the existing contract. */
+.contact-heading { padding-block: var(--sy-space-section-sm) var(--sy-space-grid-x); border: 0; }
+.contact-form { grid-template-columns: 19fr 11fr; padding-block-start: var(--sy-space-grid-x); }
+.contact-form .rfq { padding: var(--sy-space-gutter-md); border: 1px solid var(--sy-color-hairline); border-radius: var(--sy-radius-card); background: var(--sy-color-surface); }
+.form-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-grid-x); }
+.pdp-section { padding-block-start: var(--sy-space-grid-x); }
+.gallery > img { border-radius: var(--sy-radius-card); }
+.product-info .actions { display: grid; }
+@media (max-width: 650px) { .contact-form, .form-pair { grid-template-columns: minmax(0, 1fr); } .contact-form .rfq { padding: var(--sy-space-grid-x); } }
