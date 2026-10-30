@@ -38,7 +38,8 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
       headers: { apikey: env.SUPABASE_SECRET_KEY, Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
       body: JSON.stringify(record),
       signal: AbortSignal.timeout(10000),
-      redirect: 'error',
+      // Workers rejects redirect:error; manual also prevents forwarding the secret to redirects.
+      redirect: 'manual',
     });
     if (response.status !== 201) throw Error('storage');
     const rows = await response.json();
