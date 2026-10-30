@@ -1,7 +1,7 @@
 name: apparel
 on:
   pull_request:
-    paths: ['web/apparel/**', 'packages/design-tokens/**', 'bun.lock', '.github/workflows/apparel.yml']
+    paths: ['web/apparel/**', 'deploy/supabase/apparel_rfq.sql', 'packages/design-tokens/**', 'bun.lock', '.github/workflows/apparel.yml']
   push:
     branches: [feat/apparel-b2b-v1]
 permissions:
@@ -39,7 +39,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: tokens:check
         run: bun packages/design-tokens/generate.ts --check
-      - name: RFQ validation
+      - name: RFQ validation and private PostgREST contract
         run: bun test web/apparel/tests/rfq.test.ts
       - name: Typecheck
         run: bun run --cwd web/apparel check
