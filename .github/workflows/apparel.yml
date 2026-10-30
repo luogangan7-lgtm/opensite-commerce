@@ -1,5 +1,11 @@
 name: apparel
 on:
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: 'Optional immutable Sourcyo pages.dev preview URL for live browser verification'
+        required: false
+        type: string
   pull_request:
     paths: ['web/apparel/**', 'deploy/supabase/apparel_rfq.sql', 'packages/design-tokens/**', 'bun.lock', '.github/workflows/apparel.yml']
   push:
@@ -53,6 +59,8 @@ jobs:
           bun web/apparel/tests/probes.ts
       - run: bunx playwright install --with-deps chromium
       - name: Playwright 390px
+        env:
+          APPAREL_PREVIEW_URL: ${{ inputs.preview_url || '' }}
         run: bunx playwright test --config web/apparel/playwright.config.ts
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
