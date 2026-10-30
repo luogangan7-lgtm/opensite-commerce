@@ -63,6 +63,8 @@ jobs:
           bun web/apparel/tests/slots-gate.ts || status=1
           bun test web/apparel/tests/imagery.test.ts || status=1
           exit "$status"
+      - name: Isolated round4b fault probes
+        run: bun web/apparel/tests/r4b-probes.ts
       - run: bunx playwright install --with-deps chromium
       - name: Playwright 390px
         env:
