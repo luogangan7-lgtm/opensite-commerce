@@ -1,6 +1,7 @@
 /** Output allow-list and text gates; CI only; any unlisted product route or image reference fails closed. */
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import products from '../src/data/products.json';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 function files(path: string): string[] { return readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(join(path, e.name)) : [join(path, e.name)]); }
@@ -25,3 +26,15 @@ for (const file of files(root)) {
 }
 for (const slug of allowed) if (!files(root).includes(join(root, 'products', slug, 'index.html'))) throw Error('Missing published page');
 console.log('PASS: 68 allowed products; approved image references; no forbidden brand/local paths/numeric commercial terms.');
+
+// Exercise the exact compiled Pages dispatch, not just the TypeScript source handler.
+const worker = (await import(pathToFileURL(resolve(root, '_worker.js/index.js')).href)).default;
+const records = new Map<string, string>();
+const env = { RFQ: { put: async (id: string, record: string) => { records.set(id, record); } }, ASSETS: { fetch: () => new Response('not found', { status: 404 }) } };
+const context = { waitUntil: () => {}, passThroughOnException: () => {} };
+for (const [email, expected] of [['gate@example.com', 201], ['invalid', 400]] as const) {
+  const response = await worker.fetch(new Request('https://example.com/api/rfq', { method: 'POST', body: JSON.stringify({ name: 'CI Gate', company: 'Example', email, message: 'Synthetic compiled-worker inquiry.' }) }), env, context);
+  if (response.status !== expected) throw Error('Compiled RFQ route failed');
+}
+if (records.size !== 1) throw Error('Compiled RFQ storage contract failed');
+console.log('PASS: compiled Pages worker dispatch, valid/invalid RFQ and one private write.');

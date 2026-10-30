@@ -46,7 +46,7 @@ jobs:
       - name: Static build
         run: bun run --cwd web/apparel build
       - name: Package Pages Function in CI
-        run: cd web/apparel && bunx wrangler@4.156.0 pages functions build functions --outfile dist/_worker.js
+        run: cd web/apparel && bunx wrangler@4.156.0 pages functions build functions --outdir dist/_worker.js --build-output-directory dist
       - name: Distribution gates
         run: |
           bun web/apparel/tests/dist-gate.ts
