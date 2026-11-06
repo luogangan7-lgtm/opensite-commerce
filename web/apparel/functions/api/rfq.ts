@@ -32,7 +32,7 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
   if (Object.keys(errors).length) return reply(400, { errors });
   record.user_agent = (request.headers.get('User-Agent') || '').slice(0, 300);
   const locale = input.locale === undefined ? new URL(request.url).pathname.split('/')[1] : input.locale;
-  record.locale = typeof locale === 'string' && ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar'].includes(locale) ? locale : null;
+  record.locale = typeof locale === 'string' && ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'].includes(locale) ? locale : null;
   try {
     if (!env.SUPABASE_URL || !env.SUPABASE_SECRET_KEY) throw Error('configuration');
     const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/apparel_rfq`, {

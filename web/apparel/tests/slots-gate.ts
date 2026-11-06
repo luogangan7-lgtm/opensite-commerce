@@ -20,7 +20,7 @@ const ids = Object.entries(inventory).flatMap(([page, slots]) => slots.map(slot 
 const passing: string[] = manifest ? manifest.slotReviews.filter((row: { pass: boolean }) => row.pass === true).map((row: { id: string }) => row.id) : ids;
 if (manifest && (JSON.stringify(manifest.slotReviews.map((row: { id: string }) => row.id).sort()) !== JSON.stringify([...ids].sort()) || JSON.stringify(manifest.slots.map((row: { id: string }) => row.id).sort()) !== JSON.stringify([...passing].sort()))) throw Error('Review inventory and published slots disagree');
 const errors: string[] = [];
-for (const locale of ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
+for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   const dictionary = JSON.parse(readFileSync(`web/apparel/src/i18n/${locale}.json`, 'utf8'));
   for (const [page, slots] of Object.entries(inventory)) for (const route of routes[page]) {
     const html = readFileSync(join(root, locale === 'en' ? '' : locale, route, 'index.html'), 'utf8');
@@ -38,4 +38,4 @@ for (const locale of ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   }
 }
 if (errors.length) throw Error(errors.join('\n'));
-console.log(`PASS: ${passing.length} ${manifest ? 'review-passing published slots' : 'build templates; publication filtered at packaging'}, seven localized alts, responsive sources, geometry and home LCP priority.`);
+console.log(`PASS: ${passing.length} ${manifest ? 'review-passing published slots' : 'build templates; publication filtered at packaging'}, eight localized alts, responsive sources, geometry and home LCP priority.`);

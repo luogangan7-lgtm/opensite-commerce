@@ -7,10 +7,12 @@ import About from '../views/About.astro';
 import Contact from '../views/Contact.astro';
 import Collections from '../views/Collections.astro';
 import Collection from '../views/Collection.astro';
+import Placeholder from '../views/Placeholder.astro';
+import NotFound from '../views/NotFound.astro';
 import Product from '../views/Product.astro';
 export function getStaticPaths() {
-  const paths = ['', 'about', 'contact', 'collections', ...Object.keys(categories).map(c => `collections/${c}`), ...products.map(p => `products/${p.slug}`)];
-  return locales.flatMap(locale => paths.map(route => ({ params: { path: [locale === 'en' ? '' : locale, route].filter(Boolean).join('/') || undefined }, props: { route } })));
+  const paths = ['', 'about', 'contact', 'collections', 'oem-odm', 'sampling', 'shipping', 'privacy', 'terms', '404', ...Object.keys(categories).map(c => `collections/${c}`), ...products.map(p => `products/${p.slug}`)];
+  return locales.flatMap(locale => paths.filter(route => locale !== 'en' || route !== '404').map(route => ({ params: { path: [locale === 'en' ? '' : locale, route].filter(Boolean).join('/') || undefined }, props: { route } })));
 }
 const { route } = Astro.props;
 const [kind, id] = route.split('/');
@@ -20,3 +22,6 @@ const [kind, id] = route.split('/');
 {kind === 'contact' && <Contact />}
 {kind === 'collections' && (id ? <Collection category={id} /> : <Collections />)}
 {kind === 'products' && <Product product={products.find(p => p.slug === id)!} />}
+
+{['oem-odm', 'sampling', 'shipping', 'privacy', 'terms'].includes(kind) && <Placeholder kind={kind} />}
+{kind === '404' && <NotFound />}

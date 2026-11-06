@@ -52,7 +52,7 @@ for (const upstream of [new Error('network'), new Response(null, { status: 302, 
 test('missing private configuration makes no request', async () => {
   const f = fixture(valid); expect((await f.run({ ...env, SUPABASE_SECRET_KEY: '' })).status).toBe(503); expect(f.writes).toHaveLength(0);
 });
-for (const [locale, path, expected] of [['es', '/api/rfq', 'es'], [undefined, '/ar/api/rfq', 'ar'], ['de', '/es/api/rfq', 'de'], ['xx', '/es/api/rfq', null], [42, '/api/rfq', null], ['', '/api/rfq', null]] as const) {
+for (const [locale, path, expected] of [['zh', '/api/rfq', 'zh'], ['es', '/api/rfq', 'es'], [undefined, '/ar/api/rfq', 'ar'], ['de', '/es/api/rfq', 'de'], ['xx', '/es/api/rfq', null], [42, '/api/rfq', null], ['', '/api/rfq', null]] as const) {
   test(`locale ${locale} at ${path} stores ${expected} without changing validation`, async () => {
     const f = fixture({ ...valid, locale }, undefined, path);
     expect((await f.run()).status).toBe(201);

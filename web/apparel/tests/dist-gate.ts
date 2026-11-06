@@ -33,7 +33,7 @@ for (const file of files(root)) {
     const html = text.match(/<html\b[^>]*>/)?.[0] || '';
     if (!html.includes(`lang="${locale}"`) || !html.includes(`dir="${locale === 'ar' ? 'rtl' : 'ltr'}"`)) throw Error('Wrong document locale');
     const alternates = [...text.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g)];
-    if (alternates.length !== 8 || new Set(alternates.map(row => row[1])).size !== 8 || ![...locales, 'x-default'].every(lang => alternates.some(row => row[1] === lang))) throw Error('Incomplete hreflang');
+    if (alternates.length !== 9 || new Set(alternates.map(row => row[1])).size !== 9 || ![...locales.map(l => l === 'zh' ? 'zh-Hans' : l), 'x-default'].every(lang => alternates.some(row => row[1] === lang))) throw Error('Incomplete hreflang');
     for (const row of text.matchAll(/<tr data-commercial[^>]*>[\s\S]*?<td[^>]*>(.*?)<\/td>/g)) if (row[1] !== dictionaries[locale].quote) throw Error('Localized commercial value');
     const plain = text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
     if (/(?:price|moq|lead time|sample cost)\s*:?\s*(?:[$€£¥]|\d)|(?:[$€£¥]|\b(?:USD|EUR|GBP|CNY))\s*\d/i.test(plain)) throw Error('Numeric commercial term');
@@ -41,7 +41,7 @@ for (const file of files(root)) {
   }
 }
 for (const locale of locales) for (const slug of allowed) if (!files(root).includes(join(root, locale === 'en' ? '' : locale, 'products', slug, 'index.html'))) throw Error('Missing published locale page');
-console.log('PASS: 68 allowed products in seven locales; approved image references; localized commercial terms.');
+console.log('PASS: 68 allowed products in eight locales; approved image references; localized commercial terms.');
 
 // Exercise the exact compiled Pages dispatch, not just the TypeScript source handler.
 const worker = (await import(pathToFileURL(resolve(root, '_worker.js/index.js')).href)).default;

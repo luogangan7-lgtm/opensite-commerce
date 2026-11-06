@@ -8,7 +8,7 @@ const locale = pageLocale(Astro.url), t = dictionaries[locale];
 const code = locale === 'ar' ? `\u2068${product}\u2069` : product;
 const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.startsWith('error.') || ['sending', 'success'].includes(key)));
 ---
-<form class="rfq" action="/api/rfq" method="post" data-messages={JSON.stringify(messages)}>
+<form id="rfq-form" class="rfq" action="/api/rfq" method="post" data-messages={JSON.stringify(messages)}>
 <input type="hidden" name="locale" value={locale} />
 <div class="form-pair"><label>{t.name}<input name="name" placeholder={t.namePlaceholder} autocomplete="name" required maxlength="100" /></label>
 <label>{t.email}<input name="email" type="email" placeholder={t.emailPlaceholder} autocomplete="email" required maxlength="254" dir="ltr" /></label></div>
@@ -16,26 +16,47 @@ const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.star
 <label>{t.message}<textarea name="message" placeholder={t.messagePlaceholder} rows="5" required maxlength="2000">{product ? `${t.style}: ${code}\n${t.messagePlaceholder}` : ''}</textarea></label>
 <div hidden><label>Website<input name="website" tabindex="-1" autocomplete="off" /></label></div>
 <p class="muted">{t.terms}: <span>{t.quote}</span>.</p>
-<button type="submit">{t.send}</button><p class="form-status" role="status" aria-live="polite"></p>
+<button type="submit">{t.send}</button><p class="form-status" tabindex="-1" role="status" aria-live="polite"></p>
 </form>
 <script>
+  import { parseRfqPrefill } from '../data/rfq-prefill';
   document.querySelectorAll<HTMLFormElement>('.rfq').forEach(form => {
     const messages: Record<string, string> = JSON.parse(form.dataset.messages!);
     form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input:not([type="hidden"]), textarea').forEach(input => {
       input.addEventListener('invalid', () => input.setCustomValidity(messages[input.validity.typeMismatch ? 'error.email' : 'error.required']));
       input.addEventListener('input', () => input.setCustomValidity(''));
     });
-    form.addEventListener('submit', async event => {
+    if (/\/contact\/?$/.test(window.location.pathname)) {
+      const query = new URLSearchParams(window.location.search);
+      const prefill = parseRfqPrefill(query);
+      const message = form.querySelector<HTMLTextAreaElement>('[name="message"]')!;
+      const lines = [
+        prefill.product ? `${prefill.product.slug} (${prefill.product.style_codes.join(' / ')})` : '',
+        prefill.type || '', prefill.subject || '',
+      ].filter(Boolean);
+      if (lines.length) message.value = lines.join('\n');
+      if (prefill.product) {
+        const input = document.createElement('input');
+        input.type = 'hidden'; input.name = 'product_slug'; input.value = prefill.product.slug;
+        form.append(input);
+      }
+      if (query.get('sent') === '1') form.querySelector<HTMLElement>('.form-status')!.textContent = messages.success;
+    }
+    form.addEventListener('submit' , async event => {
       event.preventDefault(); const button = form.querySelector('button')!; const status = form.querySelector<HTMLElement>('.form-status')!;
+      if (button.disabled) return;
       button.disabled = true; status.textContent = messages.sending;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
       try {
-        const response = await fetch(form.action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+        const response = await fetch(form.action, { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
         const result = await response.json();
         const keys = Object.values(result.errors || { error: result.error || 'error.storage' });
         status.textContent = response.ok ? messages.success : keys.map(key => messages[String(key)] || messages['error.storage']).join(' ');
-        if (response.ok) form.reset();
-      } catch { status.textContent = messages['error.network']; }
-      finally { button.disabled = false; }
+        if (response.ok) window.location.assign(`${window.location.pathname.replace(/contact\/?$/, '')}contact/?sent=1`);
+        else status.focus();
+      } catch { status.textContent = messages['error.network']; status.focus(); }
+      finally { clearTimeout(timeout); button.disabled = false; }
     });
   });
 </script>

@@ -4,5 +4,5 @@ export default defineConfig({
   output: 'static',
   site: 'https://feat-apparel-b2b-v1.sourcyo-apparel.pages.dev',
   trailingSlash: 'always',
-  i18n: { locales: ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar'], defaultLocale: 'en', routing: { prefixDefaultLocale: false } },
+  i18n: { locales: ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'], defaultLocale: 'en', routing: { prefixDefaultLocale: false } },
 });
