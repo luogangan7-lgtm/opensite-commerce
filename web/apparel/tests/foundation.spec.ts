@@ -76,3 +76,17 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
     }
   }
 });
+
+ test('fallback image names use English language throughout gallery and grid', async ({ page }) => {
+  await page.goto(`/zh/products/${slug}/`);
+  await expect(page.locator('[data-gallery-main]')).toHaveAttribute('lang', 'en');
+  for (const link of await page.locator('.gallery-thumbs a').all()) {
+    await expect(link).toHaveAttribute('lang', 'en');
+    await expect(link).not.toHaveAttribute('aria-label', /视图/);
+    await expect(link.locator('img')).not.toHaveAttribute('alt', /视图/);
+  }
+  await page.locator('.gallery-thumbs a').last().click();
+  await expect(page.locator('[data-gallery-main]')).not.toHaveAttribute('alt', /视图/);
+  await page.goto('/zh/collections/');
+  for (const image of await page.locator('.tile img').all()) await expect(image).toHaveAttribute('lang', 'en');
+});
