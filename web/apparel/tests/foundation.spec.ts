@@ -47,3 +47,32 @@ test('15s timeout disables duplicates and allows retry without clearing fields',
   await expect(button).toBeEnabled();
   await expect(page.locator('textarea')).toHaveValue('Synthetic sample request');
 });
+
+for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
+  const prefix = locale === 'en' ? '' : `/${locale}`;
+  for (const route of [`products/${slug}`, 'shipping']) {
+    test(`non-contact success ${locale} ${route}`, async ({ page }) => {
+      await page.route('**/api/rfq', route => route.fulfill({ status: 201, contentType: 'application/json', body: '{}' }));
+      await page.goto(`${prefix}/${route}/`);
+      await fill(page);
+      await page.locator('button[type="submit"]').click();
+      await expect(page).toHaveURL(`${prefix}/contact/?sent=1`);
+      await expect(page.locator('.form-status')).not.toBeEmpty();
+    });
+  }
+}
+
+ test('English fallback is disclosed and language tagged', async ({ page }) => {
+  await page.goto(`/zh/products/${slug}/`);
+  await expect(page.locator('[data-english-fallback]').first()).toContainText('英文');
+  await expect(page.locator('h1').locator('..')).toHaveAttribute('lang', 'en');
+  await page.goto('/zh/collections/');
+  await expect(page.locator('.tile h3').first()).toHaveAttribute('lang', 'en');
+  for (const locale of ['zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
+    for (const route of ['shipping', 'privacy', 'terms']) {
+      await page.goto(`/${locale}/${route}/`);
+      await expect(page.locator('[data-english-fallback]')).toBeVisible();
+      await expect(page.locator('h1')).toHaveAttribute('lang', 'en');
+    }
+  }
+});

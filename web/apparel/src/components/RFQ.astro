@@ -1,5 +1,6 @@
 ---
 /** Shared same-origin RFQ; preserves validation limits, maps server keys to locale strings. */
+import { getRelativeLocaleUrl } from 'astro:i18n';
 import { dictionaries, pageLocale } from '../i18n';
 interface Props { product?: string }
 const { product = '' } = Astro.props;
@@ -8,7 +9,7 @@ const locale = pageLocale(Astro.url), t = dictionaries[locale];
 const code = locale === 'ar' ? `\u2068${product}\u2069` : product;
 const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.startsWith('error.') || ['sending', 'success'].includes(key)));
 ---
-<form id="rfq-form" class="rfq" action="/api/rfq" method="post" data-messages={JSON.stringify(messages)}>
+<form id="rfq-form" class="rfq" action="/api/rfq" method="post" data-success-url={getRelativeLocaleUrl(locale, "/contact/") + "?sent=1"} data-messages={JSON.stringify(messages)}>
 <input type="hidden" name="locale" value={locale} />
 <div class="form-pair"><label>{t.name}<input name="name" placeholder={t.namePlaceholder} autocomplete="name" required maxlength="100" /></label>
 <label>{t.email}<input name="email" type="email" placeholder={t.emailPlaceholder} autocomplete="email" required maxlength="254" dir="ltr" /></label></div>
@@ -53,7 +54,7 @@ const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.star
         const result = await response.json();
         const keys = Object.values(result.errors || { error: result.error || 'error.storage' });
         status.textContent = response.ok ? messages.success : keys.map(key => messages[String(key)] || messages['error.storage']).join(' ');
-        if (response.ok) window.location.assign(`${window.location.pathname.replace(/contact\/?$/, '')}contact/?sent=1`);
+        if (response.ok) window.location.assign(form.dataset.successUrl!);
         else status.focus();
       } catch { status.textContent = messages['error.network']; status.focus(); }
       finally { clearTimeout(timeout); button.disabled = false; }

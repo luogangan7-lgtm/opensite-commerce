@@ -1,11 +1,13 @@
 ---
 /** Foundation routes reuse existing RFQ and copy; legal content awaits owner approval. */
+import EnglishFallback from '../components/EnglishFallback.astro';
 import Shell from '../layouts/Shell.astro';
 import RFQ from '../components/RFQ.astro';
 import { dictionaries, pageLocale } from '../i18n';
 const { kind } = Astro.props;
-const t = dictionaries[pageLocale(Astro.url)];
+const locale = pageLocale(Astro.url), t = dictionaries[locale];
+const englishTitle = ['shipping', 'privacy', 'terms'].includes(kind);
 const titles: Record<string, string> = { 'oem-odm': 'OEM / ODM', sampling: t.samples, shipping: 'Shipping', privacy: 'Privacy', terms: 'Terms' };
 const text = kind === 'oem-odm' ? t.oemText : kind === 'sampling' ? t.sampleText : t.confirmText;
 ---
-<Shell title={titles[kind]}><section class="wrap"><h1>{titles[kind]}</h1><p class="lead">{text}</p><div id={kind === 'privacy' ? 'cookies' : undefined}></div><RFQ /></section></Shell>
+<Shell title={titles[kind]}><section class="wrap">{englishTitle && <EnglishFallback />}<h1 lang={englishTitle ? "en" : undefined}>{titles[kind]}</h1><p class="lead">{text}</p><div id={kind === 'privacy' ? 'cookies' : undefined}></div><RFQ /></section></Shell>
