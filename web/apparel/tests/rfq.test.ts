@@ -1,4 +1,5 @@
 /** RFQ contract gate; Bun stubs PostgREST, never contacts external storage or records real PII. */
+import { fileURLToPath } from 'node:url';
 import { afterEach, test, expect, mock, spyOn } from 'bun:test';
 import { onRequestPost } from '../functions/api/rfq';
 const id = '524f5000-0000-4000-8000-000000000001';
@@ -63,4 +64,33 @@ test('validation returns a stable message key, not English prose', async () => {
   const f = fixture({ ...valid, email: 'bad', locale: 'es' });
   expect((await (await f.run()).json()).errors.email).toBe('error.email');
   expect(f.writes).toHaveLength(0);
+});
+test('storage deadline is 10s, abort failure stays private and logs no payload', async () => {
+  const deadline = spyOn(AbortSignal, 'timeout').mockReturnValue(AbortSignal.abort());
+  const logs = ['log', 'warn', 'error', 'info', 'debug'].map(method => spyOn(console, method as 'log').mockImplementation(() => {}));
+  const f = fixture(valid, new DOMException('private payload ci@example.invalid', 'TimeoutError'));
+  const response = await f.run();
+  expect(deadline).toHaveBeenCalledWith(10000);
+  expect(f.writes[0].signal.aborted).toBe(true);
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ error: 'error.storage' });
+  for (const log of logs) expect(log).not.toHaveBeenCalled();
+});
+
+test('static RLS and client privacy boundary', async () => {
+  const sql = await Bun.file(new URL('../../../deploy/supabase/apparel_rfq.sql', import.meta.url)).text();
+  expect(sql).toMatch(/alter table public.apparel_rfq enable row level security/i);
+  expect(sql).not.toMatch(/create policy/i);
+  const component = await Bun.file(new URL('../src/components/RFQ.astro', import.meta.url)).text();
+  expect(component).not.toMatch(/SUPABASE_|service_role|console\.(log|warn|error|info|debug)/);
+  const server = await Bun.file(new URL('../functions/api/rfq.ts', import.meta.url)).text();
+  expect(server).not.toMatch(/console\.(log|warn|error|info|debug)/);
+  const assets = new Bun.Glob('**/*.{html,js}');
+  let scanned = 0;
+  for await (const path of assets.scan(fileURLToPath(new URL('../dist/', import.meta.url)))) {
+    const text = await Bun.file(new URL(`../dist/${path}`, import.meta.url)).text();
+    expect(text).not.toMatch(/SUPABASE_SECRET_KEY|ci-private-placeholder|service_role/);
+    scanned++;
+  }
+  expect(scanned).toBeGreaterThan(0);
 });

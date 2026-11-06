@@ -47,6 +47,7 @@ const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.star
       event.preventDefault(); const button = form.querySelector('button')!; const status = form.querySelector<HTMLElement>('.form-status')!;
       if (button.disabled) return;
       button.disabled = true; status.textContent = messages.sending;
+      let navigating = false;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
       try {
@@ -54,10 +55,10 @@ const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.star
         const result = await response.json();
         const keys = Object.values(result.errors || { error: result.error || 'error.storage' });
         status.textContent = response.ok ? messages.success : keys.map(key => messages[String(key)] || messages['error.storage']).join(' ');
-        if (response.ok) window.location.assign(form.dataset.successUrl!);
+        if (response.ok) { navigating = true; window.location.assign(form.dataset.successUrl!); }
         else status.focus();
       } catch { status.textContent = messages['error.network']; status.focus(); }
-      finally { clearTimeout(timeout); button.disabled = false; }
+      finally { clearTimeout(timeout); button.disabled = navigating; }
     });
   });
 </script>
