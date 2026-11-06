@@ -23,3 +23,14 @@ for (const locale of languages) for (const route of routes) {
   checked++;
 }
 console.log(`PASS: ${checked} generated routes (${languages.length} × ${routes.length}); zh-Hans, EN x-default, AR RTL. Contact sent/query states use the same static page and browser gate.`);
+
+// RFQ client privacy boundary belongs after the static build.
+let scanned = 0;
+for await (const path of new Bun.Glob('**/*.{html,js}').scan(root)) {
+  if (path.startsWith('_worker.js/')) continue; // compiled server bundle: names the secret env var, never served as an asset
+  const text = await Bun.file(join(root, path)).text();
+  if (/SUPABASE_SECRET_KEY|ci-private-placeholder|service_role/.test(text)) throw Error(`RFQ private configuration in client asset: ${path}`);
+  scanned++;
+}
+if (scanned === 0) throw Error('RFQ privacy scan found no client assets');
+console.log(`PASS: RFQ privacy boundary scanned ${scanned} client assets`);
