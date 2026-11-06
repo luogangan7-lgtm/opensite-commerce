@@ -25,8 +25,13 @@ for (const mode of ['success', 'validation', 'timeout', 'duplicate'] as const) {
         await route.fulfill({ status: response.status, contentType: 'application/json', body: await response.text() });
       } finally { globalThis.fetch = original; }
     });
-    // Hold success navigation: repeat submits must remain blocked until page departure.
-    if (mode === 'duplicate') await page.route('**/contact/?sent=1', route => route.fulfill({ status: 204 }));
+    // Hold success navigation: repeat submits must remain blocked until page departure. The Navigation API
+    // cancels the departure inside the page; a route-fulfilled 204 raced Playwright's pending-navigation wait.
+    if (mode === 'duplicate') await page.addInitScript(() => {
+      (window as any).navigation.addEventListener('navigate', (e: any) => {
+        if (e.destination.url.includes('sent=1')) { e.preventDefault(); (window as any).__sentNav = e.destination.url; }
+      });
+    });
     await page.goto('/contact/');
     await page.locator('[name="name"]').fill('CI');
     await page.locator('[name="company"]').fill('Example');
@@ -35,6 +40,7 @@ for (const mode of ['success', 'validation', 'timeout', 'duplicate'] as const) {
     await page.locator('button[type="submit"]').click();
     if (mode === 'success') await expect(page).toHaveURL(/\/contact\/\?sent=1$/);
     else if (mode === 'duplicate') {
+      await expect.poll(() => page.evaluate(() => (window as any).__sentNav)).toContain('sent=1');
       await expect(page.locator('.form-status')).toHaveText(/received/);
       expect(await page.evaluate(() => document.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled)).toBe(true);
       await page.evaluate(() => document.querySelector('form.rfq')!.dispatchEvent(new Event('submit', { cancelable: true })));
