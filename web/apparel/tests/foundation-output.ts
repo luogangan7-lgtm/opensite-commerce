@@ -1,6 +1,7 @@
 /** Independent output matrix: eight locales × every catalog/static route, including 404. */
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { seoOrigin } from '../seo/published';
 import { products, categories } from '../src/data/catalog';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 const languages = ['en','zh','es','fr','de','pt','ru','ar'];
@@ -16,10 +17,10 @@ for (const locale of languages) for (const route of routes) {
   for (const language of languages) {
     const hreflang = language === 'zh' ? 'zh-Hans' : language;
     const target = '/' + [language === 'en' ? '' : language,route].filter(Boolean).join('/') + (language !== 'en' || route ? '/' : '');
-    if (!html.includes(`hreflang="${hreflang}" href="https://feat-apparel-b2b-v1.sourcyo-apparel.pages.dev${target}"`)) throw Error(`Alternate ${pathname} ${hreflang}`);
+    if (!html.includes(`hreflang="${hreflang}" href="${seoOrigin}${target}"`)) throw Error(`Alternate ${pathname} ${hreflang}`);
   }
   const english = '/' + route + (route ? '/' : '');
-  if (!html.includes(`hreflang="x-default" href="https://feat-apparel-b2b-v1.sourcyo-apparel.pages.dev${english}"`)) throw Error(`x-default ${file}`);
+  if (!html.includes(`hreflang="x-default" href="${seoOrigin}${english}"`)) throw Error(`x-default ${file}`);
   checked++;
 }
 console.log(`PASS: ${checked} generated routes (${languages.length} × ${routes.length}); zh-Hans, EN x-default, AR RTL. Contact sent/query states use the same static page and browser gate.`);

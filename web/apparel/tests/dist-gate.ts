@@ -23,6 +23,7 @@ for (const file of files(root)) {
   const parts = path.split('/');
   const locale: Locale = locales.includes(parts[0] as Locale) ? parts.shift() as Locale : 'en';
   if (parts[0] === 'products' && path.endsWith('/index.html') && !allowed.has(parts[1])) throw Error('Unpublished product route');
+  if (path.startsWith('_worker.js/')) continue; // Server bundle is not a client asset.
   if (!/\.(?:html|js|css|json)$/.test(path)) continue;
   const text = readFileSync(file, 'utf8');
   if (/mgoo/i.test(text) || /\baston\b/i.test(text) || text.includes('/' + 'Volumes/')) throw Error('Forbidden published text');

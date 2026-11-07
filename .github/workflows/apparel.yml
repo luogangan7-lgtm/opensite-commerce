@@ -58,6 +58,8 @@ jobs:
           bun web/apparel/tests/foundation-output.ts
           bun web/apparel/tests/dist-gate.ts
           bun web/apparel/tests/probes.ts
+          bun web/apparel/tests/seo-output.ts
+          bun web/apparel/tests/seo-probes.ts
       - name: Imagery slots and deploy manifest contract
         run: |
           status=0
