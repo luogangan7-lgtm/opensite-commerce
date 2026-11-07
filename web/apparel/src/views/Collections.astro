@@ -1,0 +1,11 @@
+---
+/** Collection index; shared category/grid patterns, no unsupported commercial claims. */
+import Shell from '../layouts/Shell.astro';
+import Grid from '../components/Grid.astro';
+import CollectionImages from '../components/CollectionImages.astro';
+import { products, categories } from '../data/catalog';
+import { dictionaries, pageLocale, type Key } from '../i18n';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+const locale = pageLocale(Astro.url), t = dictionaries[locale];
+---
+<Shell title={t.collections}><section class="wrap page-intro"><h1>{t.collectionTitle}</h1><p class="lead">{t.collectionLead}</p><nav class="category-links" aria-label={t.collections}>{Object.keys(categories).map(key => <a href={`#${key}`}>{t[key as Key]}</a>)}</nav><div class="benefits">{['styleFirst', 'fabricFirst', 'sampleFirst', 'confirmFirst'].map(key => <p>{t[key as Key]}</p>)}</div><CollectionImages /></section>{Object.keys(categories).map(key => <section class="wrap" id={key}><div class="section-heading"><h2>{t[key as Key]}</h2><a href={getRelativeLocaleUrl(locale, `/collections/${key}/`)}>{t.viewCollection}</a></div><Grid products={products.filter(p => p.category === key)} /></section>)}</Shell>
