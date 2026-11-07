@@ -3,5 +3,5 @@
  */
 import { products } from '../src/data/catalog';
 import { factPaths } from './contract';
-export const seoOrigin = 'https://sourcyowear.example.invalid';
+export { buildOrigin as seoOrigin } from './mode';
 export const publishedPaths = ['/', '/collections/', '/contact/', ...products.map(p => `/products/${p.slug}/`).filter(p => factPaths.includes(p))];

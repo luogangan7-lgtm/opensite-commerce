@@ -8,6 +8,7 @@ import '@fontsource/outfit/500.css';
 import '../styles.css';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { pageLocale, pagePath, dictionaries, locales, languageNames } from '../i18n';
+import { isProduction } from '../../seo/mode';
 import { seoOrigin, publishedPaths } from '../../seo/published';
 import { page } from '../../seo/contract';
 import { imageSrcset, heroSizes } from '../data/imagery';
@@ -20,7 +21,7 @@ const seo = publishedPaths.includes(path) ? page(seoOrigin, path, locale) : null
 const canonical = new URL(getRelativeLocaleUrl(locale, path), origin).href;
 ---
 <!doctype html>
-<html lang={locale} dir={locale === 'ar' ? 'rtl' : 'ltr'}><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="robots" content="noindex" /><title>{title} | Sourcyo Apparel</title><meta name="description" content={t.heroText} />
+<html lang={locale} dir={locale === 'ar' ? 'rtl' : 'ltr'}><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />{!isProduction && <meta name="robots" content="noindex" />}<title>{title} | Sourcyo Apparel</title><meta name="description" content={t.heroText} />
 <link rel="canonical" href={canonical} /><meta property="og:title" content={`${title} | Sourcyo Apparel`} /><meta property="og:description" content={t.heroText} /><meta property="og:type" content={seo?.structuredData ? 'product' : 'website'} /><meta property="og:url" content={canonical} /><meta property="og:site_name" content="Sourcyo Apparel" />
 {seo?.structuredData && <script type="application/ld+json" set:html={JSON.stringify(seo.structuredData)} />}
 {path === '/' && <link rel="preload" as="image" type="image/avif" imagesrcset={imageSrcset('home/hero', 'avif')} imagesizes={heroSizes} />}
