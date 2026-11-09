@@ -131,17 +131,17 @@ import { execFileSync } from 'node:child_process';
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const commonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
 const sourceRoot = process.env.APPAREL_SOURCE_DIR || resolve(dirname(resolve(commonDir)), 'work/apparel-b2b');
-test('115 licensed catalog identities; all 619 digital models join by exact style and role', async () => {
+test('115 licensed catalog identities; all 668 digital models join by exact style and role', async () => {
   const { imagePlan } = await load();
   expect(approval.products.length).toBe(115);
   expect(products.map(p => p.slug).sort()).toEqual(approval.products.map(p => publicId(p.slug)).sort());
   for (const p of approval.products) expect(['ok','owner-licensed']).toContain(p.rights);
-  expect(digital.length).toBe(619);
-  expect(digital.filter(p => p.wave === 'W3').length).toBe(105);
+  expect(digital.length).toBe(668);
+  expect(digital.filter(p => p.wave === 'W3').length).toBe(154);
   expect(digital.filter(p => p.wave !== 'W3').length).toBe(514);
   const plan = imagePlan({ ...fixture(), published: products.map(p => p.slug), digital });
-  expect(plan.digital.length).toBe(619);
-  expect(new Set(digital.map(p => p.key)).size).toBe(619);
+  expect(plan.digital.length).toBe(668);
+  expect(new Set(digital.map(p => p.key)).size).toBe(668);
   expect(digitalImages.map(p => p.src).sort()).toEqual(digital.map(p => p.src).sort());
   for (const image of digital) {
     expect(publicId(image.key.split(/--|__/)[0])).toBe(image.slug);
@@ -169,7 +169,7 @@ test('changed bytes, wrong style, traversal and duplicate views fail closed then
   expect(() => imagePlan({ ...input, digital: [digital[0], digital[0]] })).toThrow('Duplicate');
   expect(imagePlan(input).digital.length).toBe(1);
 });
-test.skipIf(!existsSync(sourceRoot))('local originals: 105 W3 and 514 W1/W2 hashes match accepted sources and current catalog', async () => {
+test.skipIf(!existsSync(sourceRoot))('local originals: 154 W3 and 514 W1/W2 hashes match accepted sources and current catalog', async () => {
   const { assertDigitalDigest } = await load();
   const catalogPath = resolve(sourceRoot, '../../docs/apparel-b2b/catalog.json');
   expect(digest(readFileSync(catalogPath))).toBe(approval.sha256);
@@ -198,6 +198,43 @@ test('actual eight-language PDP output contains every reviewed view and matching
 });
 
 test('public imagery metadata loads under the Node ESM runtime used by Playwright', () => {
-  const result = Bun.spawnSync(['node', '--experimental-strip-types', '--input-type=module', '-e', "import('./web/apparel/src/data/imagery.ts').then(m => { if (m.digitalImages.length !== 619) process.exit(1); })"]);
+  const result = Bun.spawnSync(['node', '--experimental-strip-types', '--input-type=module', '-e', "import('./web/apparel/src/data/imagery.ts').then(m => { if (m.digitalImages.length !== 668) process.exit(1); })"]);
   expect(result.exitCode).toBe(0);
+});
+
+// Regression: every accepted W3 slot, including nested final.png, must be connected.
+test.skipIf(!existsSync(sourceRoot))('all accepted W3 tables resolve to exactly 154 SHA-bound catalog slots', () => {
+  const { readdirSync } = require('node:fs');
+  const fleet = join(sourceRoot, 'fleet-20261104');
+  const accepted = new Map<string, string>();
+  for (const dir of readdirSync(fleet).filter((name: string) => name.startsWith('w3-fin'))) {
+    const file = join(fleet, dir, 'accepted.tsv');
+    if (!existsSync(file)) continue;
+    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+      const [, path, sha] = line.split('\t');
+      if (!sha || !/^[a-f0-9]{64}$/.test(sha)) continue;
+      const name = path.split('/').at(-1)!;
+      const key = name === 'final.png' ? path.split('/').at(-2)! : name.replace(/\.png$/, '');
+      if (accepted.has(key)) expect(accepted.get(key)).toBe(sha);
+      accepted.set(key, sha);
+      expect(digest(readFileSync(path))).toBe(sha);
+    }
+  }
+  expect(accepted.size).toBe(154);
+  expect(digital.filter(row => row.wave === 'W3').map(row => row.key).sort()).toEqual([...accepted.keys()].sort());
+  for (const [key, sha] of accepted) expect(digital.find(row => row.key === key)?.sha256).toBe(sha);
+});
+test('back descriptions name the back angle in all eight languages without invented print details', () => {
+  const backs = ['back view', '背面', 'vista posterior', 'vue de dos', 'Rückansicht', 'vista de costas', 'вид сзади', 'منظر خلفي'];
+  for (const image of digitalImages.filter(row => row.view === 'back')) {
+    expect(locales.map(locale => digitalAlt(image.src, locale)!.split('; ').at(-1)).sort()).toEqual([...backs].sort());
+  }
+});
+
+test('all back sources distinguish same-colour, owner plain and colour-swapped references', () => {
+  const backs = digital.filter(row => row.role === 'digital-back');
+  expect(backs.filter(row => row.backReference === 'same-color').length).toBe(25);
+  expect(backs.filter(row => row.backReference === 'owner-plain').length).toBe(45);
+  expect(backs.filter(row => row.backReference === 'other-color-ink').length).toBe(4);
+  for (const row of backs) expect(['same-color', 'owner-plain', 'other-color-ink']).toContain(row.backReference);
 });
