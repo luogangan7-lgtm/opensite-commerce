@@ -2,7 +2,7 @@
 import { basename } from 'node:path';
 import { imageBase, publicId } from './src/data/imagery';
 export interface Review { slug: string; role: string; path: string; sha256: string; w: number; h: number; pass: boolean }
-export interface DigitalSource { key: string; slug: string; role: string; source: string; src: string; sha256: string; wave: string; acceptance: string }
+export interface DigitalSource { key: string; slug: string; role: string; source: string; src: string; sha256: string; wave: string; acceptance: string; backReference?: string; reviewEvidence?: string }
 interface Input { digital?: DigitalSource[]; slots: Record<string, Record<string, string>>; review: Review[]; provenance: Record<string, { rights: string }>; published: string[] }
 export interface Approved { slug: string; role: string; source: string; src: string; sha256: string; w: number; h: number; id?: string; rights?: string }
 export function imagePlan({ slots, review, provenance, published, digital = [] }: Input) {
