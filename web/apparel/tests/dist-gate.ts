@@ -14,7 +14,7 @@ const allowed = new Set(products.map(p => p.slug));
 const images = new Set(products.flatMap(p => [...p.images.map(i => i.src), ...p.size_chart]));
 // Dictionary-backed slot references only; source review stays deploy-only.
 for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.'))) for (const width of widths) for (const format of ['avif', 'webp']) images.add(`${imageBase(key.slice(4).replace('.', '/'))}-${width}.${format}`);
-if (products.length !== 68 || allowed.size !== 68) throw Error('Published catalog count changed');
+if (products.length !== 115 || allowed.size !== 115) throw Error('Published catalog count changed');
 const source = JSON.stringify(products);
 if (/"(?:original|web|rights|name_zh|collection_zh)"/.test(source) || source.includes('/' + 'Volumes/')) throw Error('Private catalog field');
 for (const p of products) for (const key of ['price', 'moq', 'lead_time'] as const) if (p[key] !== 'Confirmed in quote') throw Error('Commercial value');
@@ -42,7 +42,7 @@ for (const file of files(root)) {
   }
 }
 for (const locale of locales) for (const slug of allowed) if (!files(root).includes(join(root, locale === 'en' ? '' : locale, 'products', slug, 'index.html'))) throw Error('Missing published locale page');
-console.log('PASS: 68 allowed products in eight locales; approved image references; localized commercial terms.');
+console.log('PASS: 115 allowed products in eight locales; approved image references; localized commercial terms.');
 
 // Exercise the exact compiled Pages dispatch, not just the TypeScript source handler.
 const worker = (await import(pathToFileURL(resolve(root, '_worker.js/index.js')).href)).default;

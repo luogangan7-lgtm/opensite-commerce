@@ -2,9 +2,10 @@
 import { basename } from 'node:path';
 import { imageBase, publicId } from './src/data/imagery';
 export interface Review { slug: string; role: string; path: string; sha256: string; w: number; h: number; pass: boolean }
-interface Input { slots: Record<string, Record<string, string>>; review: Review[]; provenance: Record<string, { rights: string }>; published: string[] }
+export interface DigitalSource { key: string; slug: string; role: string; source: string; src: string; sha256: string; wave: string; acceptance: string }
+interface Input { digital?: DigitalSource[]; slots: Record<string, Record<string, string>>; review: Review[]; provenance: Record<string, { rights: string }>; published: string[] }
 export interface Approved { slug: string; role: string; source: string; src: string; sha256: string; w: number; h: number; id?: string; rights?: string }
-export function imagePlan({ slots, review, provenance, published }: Input) {
+export function imagePlan({ slots, review, provenance, published, digital = [] }: Input) {
   const eligible = review.filter(row => row.pass === true && row.role !== 'dh-legacy' && !row.path.split(/[\\/]/).includes('dh-legacy') && basename(row.path) !== 'model_front.png');
   const checked = (row: Review, source: string, src: string): Approved => {
     if (!/^[a-z0-9_-]+\/[a-z0-9_-]+\.png$/.test(source) || !row.path.replaceAll('\\', '/').endsWith(`/${source}`) || !/^[a-f0-9]{64}$/.test(row.sha256) || !Number.isInteger(row.w) || !Number.isInteger(row.h) || row.w <= 0 || row.h <= 0) throw Error('Invalid reviewed source');
@@ -28,7 +29,12 @@ export function imagePlan({ slots, review, provenance, published }: Input) {
     return checked(row, `${row.slug}/packshot.png`, `/img/${row.slug}/packshot.webp`);
   }).sort((a, b) => a.slug.localeCompare(b.slug));
   if (new Set(packshots.map(row => row.slug)).size !== packshots.length) throw Error('Duplicate packshot review');
-  return { slots: illustrations, slotReviews, packshots };
+  const models = digital.map(row => {
+    if (publicId(row.key.split(/--|__/)[0]) !== row.slug || !published.includes(row.slug) || !/^[a-z0-9-]+$/.test(row.slug) || !/^digital-(?:front|turn|back|model-\d+)$/.test(row.role) || row.src !== `/img/${row.slug}/${row.role}.webp` || !/^[a-f0-9]{64}$/.test(row.sha256) || row.source.startsWith('/') || row.source.split(/[\\/]/).some(p => p === '..') || !row.source.endsWith('.png')) throw Error('Invalid digital model source or catalog identity');
+    return row;
+  });
+  if (new Set(models.map(row => row.src)).size !== models.length) throw Error('Duplicate digital model view');
+  return { slots: illustrations, slotReviews, packshots, digital: models };
 }
 
 /** Packaging is the sole publication writer; omitted reviews remove the entire picture, never only src. */
@@ -47,4 +53,9 @@ export function assertSlotReferences(html: string, slots: { id?: string }[], pag
     if (!picture || !picture.includes(`<img `) || !picture.includes(`src="${imageBase(id)}-1024.webp"`)) throw Error(`missing slot or localized alt ${id}`);
   }
   for (const picture of pictures) if (picture[1].startsWith(page + '/') && !expected.includes(picture[1])) throw Error(`Unpublished slot: ${picture[1]}`);
+}
+
+/** A changed source is a publication failure, even if it passed an earlier visual review. */
+export function assertDigitalDigest(image: DigitalSource, actual: string): void {
+  if (actual !== image.sha256) throw Error(`Digital model source changed: ${image.key}`);
 }

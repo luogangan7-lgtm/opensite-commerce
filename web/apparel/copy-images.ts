@@ -5,7 +5,8 @@ import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import products from './src/data/products.json';
-import { imagePlan, publishSlotMarkup, assertSlotReferences, type Review, type Approved } from './image-plan';
+import digital from './digital-sources.json';
+import { assertDigitalDigest, imagePlan, publishSlotMarkup, assertSlotReferences, type Review, type Approved } from './image-plan';
 import { widths, imageBase } from './src/data/imagery';
 const sharp = createRequire(import.meta.resolve('astro/package.json'))('sharp');
 const common = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
@@ -15,7 +16,7 @@ if (!process.argv[2] || !existsSync(join(destination, 'index.html')) || existsSy
 const json = (file: string) => JSON.parse(readFileSync(file, 'utf8'));
 const slotInput = json(join(hd, '_site/slots.json'));
 const review: Review[] = readFileSync(join(hd, 'review.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-const plan = imagePlan({ slots: slotInput, review, provenance: json(join(hd, '_site/provenance.json')), published: products.map(p => p.slug) });
+const plan = imagePlan({ slots: slotInput, review, provenance: json(join(hd, '_site/provenance.json')), digital, published: products.map(p => p.slug) });
 const hash = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
 const safeInput = (root: string, path: string) => {
   const input = realpathSync(resolve(root, path));
@@ -27,6 +28,13 @@ const dimensions = new Map<string, { w: number; h: number }>();
 function record(url: string, sourceSha256: string) {
   const data = readFileSync(join(destination, url));
   files.push({ url, bytes: data.length, sha256: hash(data), sourceSha256 });
+}
+// All digital models share the existing SHA-bound, isolated packaging pipeline.
+for (const image of plan.digital) {
+  const input = safeInput(sourceRoot, image.source), metadata = await sharp(input).metadata();
+  assertDigitalDigest(image, hash(readFileSync(input)));
+  if (!metadata.width || !metadata.height) throw Error(`Missing digital model geometry: ${image.key}`);
+  dimensions.set(image.src, { w: metadata.width, h: metadata.height });
 }
 // Validate all review-bound originals before writing any deploy images.
 for (const image of [...plan.slots, ...plan.packshots]) {
@@ -45,6 +53,13 @@ for (const product of products) for (const image of [...product.images, ...produ
   mkdirSync(dirname(output), { recursive: true }); copyFileSync(input, output);
   dimensions.set(image.src, { w: metadata.width, h: metadata.height }); record(image.src, digest);
 }
+for (const image of plan.digital) {
+  mkdirSync(dirname(join(destination, image.src)), { recursive: true });
+  await sharp(safeInput(sourceRoot, image.source)).resize({ width: 1024 }).webp({ quality: 82 }).toFile(join(destination, image.src));
+  const outputMetadata = await sharp(join(destination, image.src)).metadata();
+  dimensions.set(image.src, { w: outputMetadata.width!, h: outputMetadata.height! });
+  record(image.src, image.sha256);
+}
 for (const image of [...plan.slots, ...plan.packshots]) {
   const input = safeInput(hd, image.source);
   mkdirSync(dirname(join(destination, image.src)), { recursive: true });
@@ -60,7 +75,7 @@ for (const image of [...plan.slots, ...plan.packshots]) {
   }
   dimensions.set(image.src, { w: image.w, h: image.h });
 }
-const replacements = new Map(plan.packshots.map(image => [products.find(p => p.slug === image.slug)!.images[0].src, image.src]));
+const replacements = new Map(plan.packshots.filter(image => !products.find(p => p.slug === image.slug)!.images[0].src.includes("/digital-")).map(image => [products.find(p => p.slug === image.slug)!.images[0].src, image.src]));
 function htmlFiles(dir: string): string[] { return readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? htmlFiles(join(dir, entry.name)) : entry.name.endsWith('.html') ? [join(dir, entry.name)] : []); }
 const html = htmlFiles(destination);
 for (const file of html) {
@@ -81,6 +96,6 @@ for (const locale of ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) for (const page
   for (const route of targets[page]) assertSlotReferences(readFileSync(join(destination, locale === 'en' ? '' : locale, route, 'index.html'), 'utf8'), plan.slots, page);
 }
 const receipt = (image: Approved) => ({ id: image.id, slug: image.slug, role: image.id ? 'illustrative' : image.role, src: image.src, sha256: image.sha256, w: image.w, h: image.h, rights: image.rights });
-const manifest = { schema: 1, sha: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), files };
+const manifest = { schema: 1, sha: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), digital: plan.digital.map(({ slug, role, src, sha256 }) => ({ slug, role, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src) })), files };
 writeFileSync(join(destination, 'deploy-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 console.log(JSON.stringify({ sha: manifest.sha, slots: plan.slots.length, packshots: plan.packshots.map(p => p.slug), files: files.length, hero1024: files.filter(p => p.url.includes('illustrative_home_hero-1024')) }));

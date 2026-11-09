@@ -62,12 +62,12 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   }
 }
 
- test('English fallback is disclosed and language tagged', async ({ page }) => {
+ test('Chinese product facts are localized; editorial English fallback remains disclosed', async ({ page }) => {
   await page.goto(`/zh/products/${slug}/`);
-  await expect(page.locator('[data-english-fallback]').first()).toContainText('英文');
-  await expect(page.locator('h1').locator('..')).toHaveAttribute('lang', 'en');
+  await expect(page.locator('[data-english-fallback]')).toHaveCount(0);
+  await expect(page.locator('h1')).toContainText('卫衣');
   await page.goto('/zh/collections/');
-  await expect(page.locator('.tile h3').first()).toHaveAttribute('lang', 'en');
+  await expect(page.locator('.tile h3').first()).toContainText('卫衣');
   for (const locale of ['zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
     for (const route of ['shipping', 'privacy', 'terms']) {
       await page.goto(`/${locale}/${route}/`);
@@ -77,16 +77,18 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   }
 });
 
- test('fallback image names use English language throughout gallery and grid', async ({ page }) => {
-  await page.goto(`/zh/products/${slug}/`);
-  await expect(page.locator('[data-gallery-main]')).toHaveAttribute('lang', 'en');
-  for (const link of await page.locator('.gallery-thumbs a').all()) {
-    await expect(link).toHaveAttribute('lang', 'en');
-    await expect(link).not.toHaveAttribute('aria-label', /视图/);
-    await expect(link.locator('img')).not.toHaveAttribute('alt', /视图/);
-  }
+ test('Chinese digital alt and disclosure follow gallery selection', async ({ page }) => {
+  // Catalog order is not a promise that the first style has a reviewed side view.
+  const modelProduct = products.find(product => product.images.some(image => image.src.endsWith('/digital-turn.webp')));
+  expect(modelProduct, 'requires a catalog style with an approved W3 turn view').toBeDefined();
+  await page.goto(`/zh/products/${modelProduct!.slug}/`);
+  await expect(page.locator('[data-gallery-main]')).toHaveAttribute('alt', /数字模特示意/);
+  const turn = page.locator('.gallery-thumbs a[href$="digital-turn.webp"]');
+  await turn.click();
+  await expect(page.locator('[data-gallery-main]')).toHaveAttribute('alt', /侧转/);
+  await expect(page.locator('[data-digital-label]')).toHaveText('数字模特示意');
   await page.locator('.gallery-thumbs a').last().click();
-  await expect(page.locator('[data-gallery-main]')).not.toHaveAttribute('alt', /视图/);
+  await expect(page.locator('[data-digital-label]')).toBeEmpty();
   await page.goto('/zh/collections/');
-  for (const image of await page.locator('.tile img').all()) await expect(image).toHaveAttribute('lang', 'en');
+  await expect(page.locator('.tile img').first()).toHaveAttribute('alt', /数字模特示意/);
 });
