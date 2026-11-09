@@ -6,7 +6,7 @@ export const imageSrcset = (id: string, format: string) => widths.map(w => `${im
 export const heroSizes = '100vw';
 
 /** Reviewed model metadata only. Source paths and review receipts stay in the packaging module. */
-import digital from './digital-imagery.json';
+import digital from './digital-imagery.json' with { type: 'json' };
 import type { Locale } from '../i18n';
 export const digitalImages = digital;
 const vocabulary: Record<Locale, { label: string; colors: string[]; garments: string[]; views: string[] }> = {

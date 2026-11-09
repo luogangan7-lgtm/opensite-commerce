@@ -196,3 +196,8 @@ test('actual eight-language PDP output contains every reviewed view and matching
     }
   }
 });
+
+test('public imagery metadata loads under the Node ESM runtime used by Playwright', () => {
+  const result = Bun.spawnSync(['node', '--experimental-strip-types', '--input-type=module', '-e', "import('./web/apparel/src/data/imagery.ts').then(m => { if (m.digitalImages.length !== 619) process.exit(1); })"]);
+  expect(result.exitCode).toBe(0);
+});
