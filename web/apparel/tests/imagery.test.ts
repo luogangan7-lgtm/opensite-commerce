@@ -117,3 +117,82 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
     console.log('PASS: real gate 25 passing slots, missing-slot RED, fixture review flip restores 26');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+// Public metadata and private review receipts must remain a one-to-one catalog join.
+import digital from '../digital-sources.json';
+import approval from '../catalog-approval.json';
+import products from '../src/data/products.json';
+import { digitalImages, digitalAlt, digitalLabel, publicId } from '../src/data/imagery';
+import { locales } from '../src/i18n';
+import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { resolve, dirname, join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+const commonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
+const sourceRoot = process.env.APPAREL_SOURCE_DIR || resolve(dirname(resolve(commonDir)), 'work/apparel-b2b');
+test('115 licensed catalog identities; all 619 digital models join by exact style and role', async () => {
+  const { imagePlan } = await load();
+  expect(approval.products.length).toBe(115);
+  expect(products.map(p => p.slug).sort()).toEqual(approval.products.map(p => publicId(p.slug)).sort());
+  for (const p of approval.products) expect(['ok','owner-licensed']).toContain(p.rights);
+  expect(digital.length).toBe(619);
+  expect(digital.filter(p => p.wave === 'W3').length).toBe(105);
+  expect(digital.filter(p => p.wave !== 'W3').length).toBe(514);
+  const plan = imagePlan({ ...fixture(), published: products.map(p => p.slug), digital });
+  expect(plan.digital.length).toBe(619);
+  expect(new Set(digital.map(p => p.key)).size).toBe(619);
+  expect(digitalImages.map(p => p.src).sort()).toEqual(digital.map(p => p.src).sort());
+  for (const image of digital) {
+    expect(publicId(image.key.split(/--|__/)[0])).toBe(image.slug);
+    expect(products.find(p => p.slug === image.slug)?.images.filter(i => i.src === image.src).length).toBe(1);
+    expect(digitalImages.find(p => p.src === image.src)?.slug).toBe(image.slug);
+  }
+  expect(digital.some(p => p.key === 'cotton430-hoodie-58065__model-03')).toBe(false);
+  expect(digital.find(p => p.key === 'crew-fleece-8900-46__model-03')?.sha256).toBe('cd78398f7f4865b95113648ea6c6b8af2e8d91d54bb3d80c8e8a0dfb546fc8a0');
+});
+test('every digital model has eight colour, garment, angle and disclosure descriptions', () => {
+  for (const image of digitalImages) {
+    const alts = locales.map(locale => digitalAlt(image.src, locale));
+    expect(alts.every(alt => typeof alt === 'string' && alt.split(';').length === 3 && !alt.includes('undefined'))).toBe(true);
+    expect(new Set(alts).size).toBe(8);
+    for (const locale of locales) expect(digitalAlt(image.src, locale)).toContain(digitalLabel(locale));
+    if (image.wave === 'W3') expect(['turn','back']).toContain(image.view);
+  }
+});
+test('changed bytes, wrong style, traversal and duplicate views fail closed then recover', async () => {
+  const { imagePlan, assertDigitalDigest } = await load();
+  const input = { ...fixture(), published: products.map(p => p.slug), digital: [digital[0]] };
+  expect(() => assertDigitalDigest(digital[0], '0'.repeat(64))).toThrow('source changed');
+  expect(() => assertDigitalDigest(digital[0], digital[0].sha256)).not.toThrow();
+  for (const patch of [{ slug: 'unknown-style' }, { source: '../escaped.png' }, { src: '/img/wrong/front.webp' }, { role: 'packshot' }]) expect(() => imagePlan({ ...input, digital: [{ ...digital[0], ...patch }] })).toThrow();
+  expect(() => imagePlan({ ...input, digital: [digital[0], digital[0]] })).toThrow('Duplicate');
+  expect(imagePlan(input).digital.length).toBe(1);
+});
+test.skipIf(!existsSync(sourceRoot))('local originals: 105 W3 and 514 W1/W2 hashes match accepted sources and current catalog', async () => {
+  const { assertDigitalDigest } = await load();
+  const catalogPath = resolve(sourceRoot, '../../docs/apparel-b2b/catalog.json');
+  expect(digest(readFileSync(catalogPath))).toBe(approval.sha256);
+  for (const image of digital) {
+    const source = join(sourceRoot, image.source);
+    expect(existsSync(source)).toBe(true);
+    assertDigitalDigest(image, digest(readFileSync(source)));
+    const receipt = readFileSync(join(sourceRoot, image.acceptance), 'utf8');
+    // W3 tables have mixed headers and one final.png path; SHA and full source are authoritative.
+    expect(receipt).toContain(image.sha256);
+    expect(receipt).toContain(image.wave === 'W3' ? source : image.key);
+    if (image.wave === 'W3') expect(image.source).toMatch(/\.png$/);
+  }
+});
+
+test('actual eight-language PDP output contains every reviewed view and matching localized alt', () => {
+  const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll("'", '&#39;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  for (const locale of locales) for (const product of products) {
+    const html = readFileSync(join('web/apparel/dist', locale === 'en' ? '' : locale, 'products', product.slug, 'index.html'), 'utf8');
+    expect(html).toContain(digitalLabel(locale));
+    for (const image of digitalImages.filter(row => row.slug === product.slug)) {
+      expect(html).toContain(`href="${image.src}"`);
+      expect(html).toContain(`alt="${escape(digitalAlt(image.src, locale)!)}"`);
+    }
+  }
+});

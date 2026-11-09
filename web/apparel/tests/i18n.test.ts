@@ -16,7 +16,7 @@ test('every UI dictionary has identical, nonempty keys and translated commercial
 });
 test('each published product has reviewed name and descriptions in every language', () => {
   for (const locale of locales) {
-    const translated = read(`products.${locale === 'zh' ? 'en' : locale}`);
+    const translated = read(`products.${locale}`);
     expect(Object.keys(translated).sort()).toEqual(products.map(p => p.slug).sort());
     for (const product of products) {
       expect(Object.keys(translated[product.slug]).sort()).toEqual(['colourway_note', 'fabric_weight_fit', 'name']);

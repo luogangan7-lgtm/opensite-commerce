@@ -8,6 +8,7 @@ import pt from './pt.json';
 import ru from './ru.json';
 import ar from './ar.json';
 import productsEn from './products.en.json';
+import productsZh from './products.zh.json';
 import productsEs from './products.es.json';
 import productsFr from './products.fr.json';
 import productsDe from './products.de.json';
@@ -20,7 +21,7 @@ export type Key = keyof typeof en;
 export const dictionaries: Record<Locale, Record<Key, string>> = { en, zh, es, fr, de, pt, ru, ar };
 export const languageNames: Record<Locale, string> = { en: 'English', zh: '中文', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português', ru: 'Русский', ar: 'العربية' };
 type Translation = { name: string; fabric_weight_fit: string; colourway_note: string };
-export const productText: Record<Locale, Record<string, Translation>> = { en: productsEn, zh: productsEn, es: productsEs, fr: productsFr, de: productsDe, pt: productsPt, ru: productsRu, ar: productsAr };
+export const productText: Record<Locale, Record<string, Translation>> = { en: productsEn, zh: productsZh, es: productsEs, fr: productsFr, de: productsDe, pt: productsPt, ru: productsRu, ar: productsAr };
 export function pageLocale(url: URL): Locale {
   const prefix = url.pathname.split('/')[1];
   return locales.find(locale => locale === prefix) || 'en';
