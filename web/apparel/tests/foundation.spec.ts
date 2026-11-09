@@ -78,7 +78,10 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
 });
 
  test('Chinese digital alt and disclosure follow gallery selection', async ({ page }) => {
-  await page.goto(`/zh/products/${slug}/`);
+  // Catalog order is not a promise that the first style has a reviewed side view.
+  const modelProduct = products.find(product => product.images.some(image => image.src.endsWith('/digital-turn.webp')));
+  expect(modelProduct, 'requires a catalog style with an approved W3 turn view').toBeDefined();
+  await page.goto(`/zh/products/${modelProduct!.slug}/`);
   await expect(page.locator('[data-gallery-main]')).toHaveAttribute('alt', /数字模特示意/);
   const turn = page.locator('.gallery-thumbs a[href$="digital-turn.webp"]');
   await turn.click();
