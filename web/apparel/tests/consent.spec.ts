@@ -7,6 +7,8 @@ async function commands(page: import('@playwright/test').Page) {
   return page.evaluate(() => Array.from((window as any).dataLayer || [], (row: any) => Array.from(row)));
 }
 test.beforeEach(async ({ page }) => {
+  // Synthetic widget transport only; never contacts or provisions Cloudflare.
+  await page.route('https://challenges.cloudflare.com/**', route => route.fulfill({ body: '', contentType: 'text/javascript' }));
   await page.route('**/*', async route => {
     if (route.request().resourceType() !== 'document') return route.fallback();
     const response = await route.fetch();
@@ -63,4 +65,24 @@ test('eight locales, RTL, touch targets and unobstructed submit', async ({ page 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     if (locale === 'ar') await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
   }
+});
+
+if (process.env.PUBLIC_TURNSTILE_SITE_KEY) test('necessary challenge loads before and after rejecting optional analytics', async ({ page }) => {
+  let scripts = 0, frames = 0;
+  await page.route('https://challenges.cloudflare.com/**', route => {
+    if (route.request().resourceType() === 'script') {
+      scripts++;
+      return route.fulfill({ contentType: 'text/javascript', body: "document.querySelector('.cf-turnstile').append(Object.assign(document.createElement('iframe'), {src: 'https://challenges.cloudflare.com/ci-frame'}));" });
+    }
+    frames++;
+    return route.fulfill({ contentType: 'text/html', body: '<p>Synthetic necessary challenge</p>' });
+  });
+  await page.goto('/contact/');
+  await expect(page.locator('[data-cookie-banner]')).toBeVisible();
+  await expect.poll(() => scripts).toBe(1);
+  await expect.poll(() => frames).toBe(1);
+  await page.locator('[data-cookie-choice="essential"]').click();
+  await expect(page.locator('.cf-turnstile iframe')).toBeVisible();
+  expect(await page.locator('script[src*="googletagmanager"]').count()).toBe(0);
+  expect(await page.evaluate(() => localStorage.getItem('sourcyo-cookie-consent-v1'))).toBe('essential');
 });

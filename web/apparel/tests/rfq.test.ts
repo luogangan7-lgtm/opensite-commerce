@@ -20,7 +20,7 @@ function fixture(body: unknown, upstream: Response | Error = Response.json([{ id
 test('valid RFQ inserts validated fields through private PostgREST and returns the DB id', async () => {
   const f = fixture({ ...valid, country: 'Test', product_slug: 'crew-fleece-8900-32', quantity_note: 'Sample request', source_page: '/contact', id: 'untrusted', created_at: 'untrusted', unknown: 'discard' });
   const response = await f.run();
-  expect(response.status).toBe(201); expect(await response.json()).toEqual({ id });
+  expect(response.status).toBe(204); expect(await response.text()).toBe('');
   expect(f.writes).toHaveLength(1);
   const write = f.writes[0];
   expect(write.url).toBe(`${env.SUPABASE_URL}/rest/v1/apparel_rfq`);
@@ -42,7 +42,7 @@ for (const [field, value] of Object.entries({ name: 'n'.repeat(101), company: 'c
 for (const body of [null, [], { ...valid, name: 42 }, { ...valid, email: 'a'.repeat(250) + '@x.com' }, { ...valid, message: '' }, { ...valid, country: {} }, { ...valid, website: 42 }]) {
   test(`reject malformed input ${JSON.stringify(body).slice(0, 30)}`, async () => { const f = fixture(body); expect((await f.run()).status).toBe(400); expect(f.writes).toHaveLength(0); });
 }
-test('honeypot looks successful and makes no PostgREST call', async () => { const f = fixture({ ...valid, website: 'bot' }); expect((await f.run()).status).toBe(201); expect(f.writes).toHaveLength(0); });
+test('honeypot looks successful and makes no PostgREST call', async () => { const f = fixture({ ...valid, website: 'bot' }); expect((await f.run()).status).toBe(204); expect(f.writes).toHaveLength(0); });
 for (const upstream of [new Error('network'), new Response(null, { status: 302, headers: { Location: 'https://untrusted.example.invalid/' } }), Response.json({ error: 'private upstream details' }, { status: 403 }), Response.json([], { status: 201 }), Response.json([{ id: 'bad-id' }], { status: 201 }), new Response('not JSON', { status: 201 })]) {
   test(`storage failure or missing DB receipt does not acknowledge success (${upstream instanceof Error ? 'network' : upstream.status})`, async () => {
     const response = await fixture(valid, upstream).run(); expect(response.status).toBe(503);
@@ -55,7 +55,7 @@ test('missing private configuration makes no request', async () => {
 for (const [locale, path, expected] of [['zh', '/api/rfq', 'zh'], ['es', '/api/rfq', 'es'], [undefined, '/ar/api/rfq', 'ar'], ['de', '/es/api/rfq', 'de'], ['xx', '/es/api/rfq', null], [42, '/api/rfq', null], ['', '/api/rfq', null]] as const) {
   test(`locale ${locale} at ${path} stores ${expected} without changing validation`, async () => {
     const f = fixture({ ...valid, locale }, undefined, path);
-    expect((await f.run()).status).toBe(201);
+    expect((await f.run()).status).toBe(204);
     expect((await f.writes[0].json()).locale).toBe(expected);
   });
 }

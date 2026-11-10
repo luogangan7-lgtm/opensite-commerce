@@ -48,7 +48,7 @@ jobs:
       - name: tokens:check
         run: bun packages/design-tokens/generate.ts --check
       - name: RFQ validation and private PostgREST contract
-        run: bun test web/apparel/tests/rfq.test.ts web/apparel/tests/i18n.test.ts web/apparel/tests/foundation.test.ts
+        run: bun test web/apparel/tests/abuse.test.ts web/apparel/tests/rfq.test.ts web/apparel/tests/i18n.test.ts web/apparel/tests/foundation.test.ts
       - name: Typecheck
         run: bun run --cwd web/apparel check
       - name: Static build
@@ -89,6 +89,8 @@ jobs:
       - name: Consent Mode v2 enabled build and browser gate
         env:
           PUBLIC_GA4_ID: G-CONSENTTEST
+          PUBLIC_TURNSTILE_SITE_KEY: synthetic-site-key
+          TURNSTILE_SECRET_KEY: synthetic-ci-only
         run: |
           bun run --cwd web/apparel build
           bun web/apparel/tests/consent-output.ts

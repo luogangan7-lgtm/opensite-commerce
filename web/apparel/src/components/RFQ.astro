@@ -1,13 +1,15 @@
 ---
 /** Shared same-origin RFQ; preserves validation limits, maps server keys to locale strings. */
 import { getRelativeLocaleUrl } from 'astro:i18n';
+import { abuseMessages } from '../data/abuse-i18n';
 import { dictionaries, pageLocale } from '../i18n';
 interface Props { product?: string }
 const { product = '' } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 // Isolate the catalog code inside Arabic prose so hyphenated SKUs retain their order.
 const code = locale === 'ar' ? `\u2068${product}\u2069` : product;
-const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.startsWith('error.') || ['sending', 'success'].includes(key)));
+const siteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY;
+const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entries(t).filter(([key]) => key.startsWith('error.') || ['sending', 'success'].includes(key))) };
 ---
 <form id="rfq-form" class="rfq" action="/api/rfq" method="post" data-success-url={getRelativeLocaleUrl(locale, "/contact/") + "?sent=1"} data-messages={JSON.stringify(messages)}>
 <input type="hidden" name="locale" value={locale} />
@@ -17,7 +19,9 @@ const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.star
 <label>{t.message}<textarea name="message" placeholder={t.messagePlaceholder} rows="5" required maxlength="2000">{product ? `${t.style}: ${code}\n${t.messagePlaceholder}` : ''}</textarea></label>
 <div hidden><label>Website<input name="website" tabindex="-1" autocomplete="off" /></label></div>
 <p class="muted">{t.terms}: <span>{t.quote}</span>.</p>
-<button type="submit">{t.send}</button><p class="form-status" tabindex="-1" role="status" aria-live="polite"></p>
+{/* Necessary anti-abuse functionality: independent of optional analytics consent. */}
+{siteKey && <><div class="cf-turnstile" data-sitekey={siteKey} data-action="rfq" data-language={locale === 'zh' ? 'zh-cn' : locale} data-size="flexible"></div><script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></>}
+<button type="submit" disabled>{t.send}</button><p class="form-status" tabindex="-1" role="status" aria-live="polite"></p>
 </form>
 <script>
   import { parseRfqPrefill } from '../data/rfq-prefill';
@@ -52,13 +56,18 @@ const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.star
       const timeout = setTimeout(() => controller.abort(), 15000);
       try {
         const response = await fetch(form.action, { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
-        const result = await response.json();
+        const result = response.status === 204 ? {} : await response.json();
         const keys = Object.values(result.errors || { error: result.error || 'error.storage' });
         status.textContent = response.ok ? messages.success : keys.map(key => messages[String(key)] || messages['error.storage']).join(' ');
         if (response.ok) { window.dispatchEvent(new Event('apparel:lead')); navigating = true; window.location.assign(form.dataset.successUrl!); }
         else status.focus();
       } catch { status.textContent = messages['error.network']; status.focus(); }
-      finally { clearTimeout(timeout); button.disabled = navigating; }
+      finally {
+        clearTimeout(timeout); button.disabled = navigating;
+        if (!navigating) (window as Window & { turnstile?: { reset(container: HTMLElement): void } }).turnstile?.reset(form.querySelector<HTMLElement>('.cf-turnstile')!);
+      }
     });
+    // Prevent native URL-encoded submission before the JSON handler is ready.
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = false;
   });
 </script>
