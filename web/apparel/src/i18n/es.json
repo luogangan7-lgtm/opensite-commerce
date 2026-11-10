@@ -115,5 +115,11 @@
   "alt.pdp.craft_stack": "Ilustración de prendas dobladas y apiladas",
   "alt.pdp.craft_stitching": "Ilustración de un detalle de costura",
   "alt.contact.banner": "Ilustración de un espacio de consulta sobre ropa",
-  "illustrativeNotice": "Escenas ilustrativas generadas con IA; las personas y las instalaciones no identifican a un equipo ni a un lugar real."
+  "illustrativeNotice": "Escenas ilustrativas generadas con IA; las personas y las instalaciones no identifican a un equipo ni a un lugar real.",
+  "cookieTitle": "Configuración de cookies",
+  "cookieText": "Usamos almacenamiento necesario. Google Analytics 4 (Google LLC) permanece desactivado hasta que aceptes.",
+  "cookieEssential": "Solo necesarias",
+  "cookieAccept": "Aceptar",
+  "cookieSettings": "Configuración",
+  "cookieDetails": "GA4 mide visitas y consultas enviadas solo con consentimiento. Cookies: _ga y _ga_<ID>, hasta 2 años. Puedes retirar tu consentimiento aquí en cualquier momento."
 }

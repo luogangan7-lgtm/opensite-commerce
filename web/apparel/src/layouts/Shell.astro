@@ -6,6 +6,9 @@ import '@fontsource/inter/500.css';
 import '@fontsource/outfit/300.css';
 import '@fontsource/outfit/500.css';
 import '../styles.css';
+import CookieConsent from '../components/CookieConsent.astro';
+import { analyticsScript, measurementId } from '../../analytics/config.mjs';
+const gaSource = analyticsScript(measurementId(import.meta.env.PUBLIC_GA4_ID));
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { pageLocale, pagePath, dictionaries, locales, languageNames } from '../i18n';
 import { isProduction } from '../../seo/mode';
@@ -25,11 +28,11 @@ const canonical = new URL(getRelativeLocaleUrl(locale, path), origin).href;
 <link rel="canonical" href={canonical} /><meta property="og:title" content={`${title} | Sourcyo Apparel`} /><meta property="og:description" content={t.heroText} /><meta property="og:type" content={seo?.structuredData ? 'product' : 'website'} /><meta property="og:url" content={canonical} /><meta property="og:site_name" content="Sourcyo Apparel" />
 {seo?.structuredData && <script type="application/ld+json" set:html={JSON.stringify(seo.structuredData)} />}
 {path === '/' && <link rel="preload" as="image" type="image/avif" imagesrcset={imageSrcset('home/hero', 'avif')} imagesizes={heroSizes} />}
-{locales.map(lang => <link rel="alternate" hreflang={lang === 'zh' ? 'zh-Hans' : lang} href={new URL(getRelativeLocaleUrl(lang, path), origin)} />)}<link rel="alternate" hreflang="x-default" href={new URL(getRelativeLocaleUrl('en', path), origin)} /></head>
+{locales.map(lang => <link rel="alternate" hreflang={lang === 'zh' ? 'zh-Hans' : lang} href={new URL(getRelativeLocaleUrl(lang, path), origin)} />)}<link rel="alternate" hreflang="x-default" href={new URL(getRelativeLocaleUrl('en', path), origin)} />{gaSource && <script is:inline set:html={gaSource} />}</head>
 <body><a class="skip" href="#content">{t.skip}</a>
 <header><div class="wrap header-inner"><a class="brand" href={href('/')}>Sourcyo Apparel</a><nav aria-label={t.mainNav}><a href={href('/')}>{t.home}</a><a href={href('/collections/')}>{t.collections}</a><a href={href('/oem-odm/')}>OEM / ODM</a><a href={href('/about/')}>{t.factory}</a><a href={href('/contact/')}>{t.contact}</a></nav><a class="button" href={href('/contact/')}>{t.request}</a>
 <details class="language-switcher"><summary>{languageNames[locale]}</summary><nav aria-label={t.language}>{locales.map(lang => <a data-locale-link href={getRelativeLocaleUrl(lang, path)} lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'} aria-current={lang === locale ? 'page' : undefined}>{languageNames[lang]}</a>)}</nav></details></div></header>
-<main id="content"><slot /></main>
+<CookieConsent /><main id="content"><slot /></main>
 <footer><div class="wrap footer"><div><a class="brand" href={href('/')}>Sourcyo Apparel</a><p>{t.footerText}</p></div><nav aria-label={t.footerNav}><a href={href('/collections/')}>{t.collections}</a><a href={href('/about/')}>{t.factoryInfo}</a><a href={href('/contact/')}>{t.contact}</a></nav><div><p>{t.terms}</p><p>{t.quote}</p><a href={href('/contact/')}>{t.request}</a></div></div></footer>
 <a class="quote-float button" href={href('/contact/')}>{t.request}</a>
 </body></html>

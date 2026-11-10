@@ -53,6 +53,8 @@ jobs:
         run: bun run --cwd web/apparel check
       - name: Static build
         run: bun run --cwd web/apparel build
+      - name: Consent build gate (no analytics ID)
+        run: bun web/apparel/tests/consent-output.ts
       - name: Package Pages Function in CI
         run: cd web/apparel && bunx wrangler@4.156.0 pages functions build functions --outdir dist/_worker.js --build-output-directory dist
       - name: Distribution gates
@@ -84,3 +86,10 @@ jobs:
           name: apparel-dist
           path: web/apparel/dist/
           if-no-files-found: error
+      - name: Consent Mode v2 enabled build and browser gate
+        env:
+          PUBLIC_GA4_ID: G-CONSENTTEST
+        run: |
+          bun run --cwd web/apparel build
+          bun web/apparel/tests/consent-output.ts
+          bunx playwright test --config web/apparel/playwright.config.ts web/apparel/tests/consent.spec.ts

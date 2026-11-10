@@ -115,5 +115,11 @@
   "alt.pdp.craft_stack": "Ilustração de uma pilha de peças dobradas",
   "alt.pdp.craft_stitching": "Ilustração de um detalhe de costura",
   "alt.contact.banner": "Ilustração de um espaço de consulta sobre vestuário",
-  "illustrativeNotice": "Cenas ilustrativas geradas por IA; as pessoas e instalações não identificam uma equipa nem um local real."
+  "illustrativeNotice": "Cenas ilustrativas geradas por IA; as pessoas e instalações não identificam uma equipa nem um local real.",
+  "cookieTitle": "Configurações de cookies",
+  "cookieText": "Usamos armazenamento necessário. O Google Analytics 4 (Google LLC) fica desativado até você aceitar.",
+  "cookieEssential": "Apenas necessários",
+  "cookieAccept": "Aceitar",
+  "cookieSettings": "Configurações",
+  "cookieDetails": "O GA4 mede visitas e consultas enviadas apenas com consentimento. Cookies: _ga e _ga_<ID>, até 2 anos. Você pode retirar seu consentimento aqui a qualquer momento."
 }
