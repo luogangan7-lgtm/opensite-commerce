@@ -20,8 +20,28 @@ test('each published product has reviewed name and descriptions in every languag
     expect(Object.keys(translated).sort()).toEqual(products.map(p => p.slug).sort());
     for (const product of products) {
       expect(Object.keys(translated[product.slug]).sort()).toEqual(['colourway_note', 'fabric_weight_fit', 'name']);
-      if (locale === 'ar') expect(translated[product.slug].name).toContain(`\u2068${product.style_codes.join(' / ')}\u2069`);
+      if (locale === 'ar') {
+        const codes = product.style_codes.join(' / ');
+        if (codes) expect(translated[product.slug].name).toContain(`\u2068${codes}\u2069`);
+        expect(translated[product.slug].name).not.toContain('\u2068\u2069');
+      }
       for (const value of Object.values(translated[product.slug])) expect(typeof value === 'string' && value.trim().length > 0).toBe(true);
     }
+  }
+});
+
+test('K24/K25 preserve stand collar, zip jacket and trousers in all seven translations', () => {
+  const terms = { zh: ['立领', '拉链夹克', '裤'], es: ['cuello alto', 'cremallera', 'pantalón'], fr: ['col montant', 'zippée', 'pantalon'], de: ['Stehkragen', 'Reißverschluss', 'Jogginghose'], pt: ['gola alta', 'zíper', 'calça'], ru: ['стойкой', 'молнии', 'брюк'], ar: ['ياقة قائمة', 'بسحاب', 'بنطال'] };
+  for (const [locale, required] of Object.entries(terms)) for (const slug of ['hoodie-set-k24-tz2803-5', 'hoodie-set-k25-tz2803-6']) {
+    const name = read(`products.${locale}`)[slug].name;
+    for (const term of required) expect(name).toContain(term);
+  }
+});
+test('empty-code titles retain catalog identity without inventing style codes', () => {
+  for (const locale of locales) {
+    const d = read(`products.${locale}`);
+    expect(d['apparel-70174-x-small-logo'].name).toContain('70174');
+    expect(d['apparel-70178-x-loropiana-crest'].name).toContain('70178');
+    expect(d['hoodie-set-k01-0256-x-croc'].name).toContain('TBD');
   }
 });

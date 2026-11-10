@@ -4065,7 +4065,7 @@
     "source": "fleet-20261104/wash-final-list-r5-20261107/crew-fleece-8900-46__model-03/final.png",
     "sha256": "cd78398f7f4865b95113648ea6c6b8af2e8d91d54bb3d80c8e8a0dfb546fc8a0",
     "wave": "W2",
-    "acceptance": "fleet-20261104/wash-final-list-r5-20261107/final-list.tsv",
+    "acceptance": "fleet-20261104/r5-one-visual-20261107/REPORT.md",
     "role": "digital-model-03",
     "src": "/img/crew-fleece-8900-46/digital-model-03.webp"
   },

@@ -51,5 +51,5 @@ const urls = [...xml.matchAll(/<url><loc>([^<]+)<\/loc><\/url>/g)].map(m => m[1]
 if (xml.replace(/^.*?<urlset[^>]*>/, '').replace('</urlset>', '').replace(/<url><loc>[^<]+<\/loc><\/url>/g, '') !== '') throw Error('Unexpected XML fields');
 validateSitemap(seoOrigin, publishedPaths, urls);
 if (/UNKNOWN|pages\.dev|preview/i.test(xml)) throw Error('Unsafe sitemap');
-if (read('robots.txt') !== `User-agent: *\n${isProduction ? 'Allow: /' : 'Disallow: /'}\nSitemap: ${seoOrigin}/sitemap.xml\n`) throw Error('Crawler policy');
-console.log(`PASS: ${count} real HTML pages; reciprocal canonical/hreflang, OG, exact JSON-LD; ${urls.length} XML URLs; robots pre-release block.`);
+if (read('robots.txt') !== `User-agent: *\nAllow: /\nSitemap: ${seoOrigin}/sitemap.xml\n`) throw Error('Crawler policy');
+console.log(`PASS: ${count} real HTML pages; reciprocal canonical/hreflang, OG, exact JSON-LD; ${urls.length} XML URLs; crawler access to noindex policy.`);
