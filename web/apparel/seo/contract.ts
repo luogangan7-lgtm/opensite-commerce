@@ -12,8 +12,8 @@ function origin(value: string): string {
   return url.origin;
 }
 function route(path: string): string {
-  // Deliberately closed: category taxonomy and unfinished editorial pages need separate approval.
-  if (path !== '/' && path !== '/collections/' && path !== '/contact/' && !facts.some(f => path === `/products/${f.slug}/`)) throw Error('Unapproved route');
+  // Closed inventory: L1 service/legal pages are explicitly included; other editorial routes stay excluded.
+  if (path !== '/' && path !== '/collections/' && path !== '/contact/' && !['/oem-odm/', '/sampling/', '/shipping/', '/privacy/', '/terms/'].includes(path) && !facts.some(f => path === `/products/${f.slug}/`)) throw Error('Unapproved route');
   return path;
 }
 export function urlFor(site: string, path: string, locale: Locale): string {

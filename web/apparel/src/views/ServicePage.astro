@@ -1,0 +1,29 @@
+---
+/** L1 editorial pages. Depends on approved input-based copy and existing Shell/RFQ.
+ * Called by the closed route inventory; legal pages collect no additional enquiry data.
+ */
+import Shell from '../layouts/Shell.astro';
+import RFQ from '../components/RFQ.astro';
+import { pageLocale } from '../i18n';
+import copy from '../content/launch-pages.json';
+interface Props { kind: 'oem-odm' | 'sampling' | 'shipping' | 'privacy' | 'terms' }
+const { kind } = Astro.props;
+const locale = pageLocale(Astro.url), t = copy[locale];
+const [title, intro, sections] = t[kind] as [string, string, [string, string][]];
+const legal = kind === 'privacy' || kind === 'terms';
+---
+<Shell title={title}>
+  <section class="wrap" data-service-page={kind}>
+    <h1>{title}</h1><p class="lead">{intro}</p>
+    <div class="service-copy">
+      {sections.map(([heading, text], index) => <div id={kind === 'privacy' && index === 2 ? 'cookies' : undefined}><h2>{heading}</h2><p>{text}</p></div>)}
+      {legal && <aside><h3>{t.identity}</h3><p>湖南旋粮生态科技有限公司<br /><bdi>Hunan Xuanliang Eco-Technology Co., Ltd.</bdi><br /><bdi>91430105MA7J4C1WX7</bdi></p><p>{t.address}</p></aside>}
+      <p><a href="mailto:sales@sourcyowear.com"><bdi>sales@sourcyowear.com</bdi></a><br /><a href="https://wa.me/85270227648"><bdi>WhatsApp +852 7022 7648</bdi></a></p>
+    </div>
+    {!legal && <><h2>{t.contact}</h2><RFQ /></>}
+  </section>
+</Shell>
+<style>
+  .service-copy { max-inline-size: 72ch; }
+  .service-copy > div, aside { margin-block: var(--sy-space-grid-y); }
+</style>

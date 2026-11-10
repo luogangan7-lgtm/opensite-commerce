@@ -62,7 +62,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   }
 }
 
- test('Chinese product facts are localized; editorial English fallback remains disclosed', async ({ page }) => {
+ test('Chinese product facts are localized; L1 editorial pages are fully localized', async ({ page }) => {
   await page.goto(`/zh/products/${slug}/`);
   await expect(page.locator('[data-english-fallback]')).toHaveCount(0);
   await expect(page.locator('h1')).toContainText('卫衣');
@@ -71,8 +71,8 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   for (const locale of ['zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
     for (const route of ['shipping', 'privacy', 'terms']) {
       await page.goto(`/${locale}/${route}/`);
-      await expect(page.locator('[data-english-fallback]')).toBeVisible();
-      await expect(page.locator('h1')).toHaveAttribute('lang', 'en');
+      await expect(page.locator('[data-english-fallback]')).toHaveCount(0);
+      await expect(page.locator('h1')).not.toHaveAttribute('lang', 'en');
     }
   }
 });
