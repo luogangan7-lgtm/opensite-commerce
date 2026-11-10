@@ -86,3 +86,18 @@ if (process.env.PUBLIC_TURNSTILE_SITE_KEY) test('necessary challenge loads befor
   expect(await page.locator('script[src*="googletagmanager"]').count()).toBe(0);
   expect(await page.evaluate(() => localStorage.getItem('sourcyo-cookie-consent-v1'))).toBe('essential');
 });
+
+test('privacy cookie settings button reopens consent in all eight locales', async ({ page }) => {
+  for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
+    await page.goto(`${locale === 'en' ? '' : '/' + locale}/privacy/`);
+    const banner = page.locator('[data-cookie-banner]');
+    if (await banner.isVisible()) await page.locator('[data-cookie-choice="essential"]').click();
+    await expect(banner).toBeHidden();
+    const settings = page.locator('#cookies [data-cookie-reopen]');
+    await expect(settings).toBeVisible();
+    await settings.click();
+    await expect(banner).toBeVisible();
+    await page.locator('[data-cookie-choice="essential"]').click();
+    await expect(banner).toBeHidden();
+  }
+});

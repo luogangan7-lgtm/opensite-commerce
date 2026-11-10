@@ -7,7 +7,7 @@ import About from '../views/About.astro';
 import Contact from '../views/Contact.astro';
 import Collections from '../views/Collections.astro';
 import Collection from '../views/Collection.astro';
-import Placeholder from '../views/Placeholder.astro';
+import ServicePage from '../views/ServicePage.astro';
 import NotFound from '../views/NotFound.astro';
 import Product from '../views/Product.astro';
 export function getStaticPaths() {
@@ -23,5 +23,5 @@ const [kind, id] = route.split('/');
 {kind === 'collections' && (id ? <Collection category={id} /> : <Collections />)}
 {kind === 'products' && <Product product={products.find(p => p.slug === id)!} />}
 
-{['oem-odm', 'sampling', 'shipping', 'privacy', 'terms'].includes(kind) && <Placeholder kind={kind} />}
+{['oem-odm', 'sampling', 'shipping', 'privacy', 'terms'].includes(kind) && <ServicePage kind={kind as 'oem-odm' | 'sampling' | 'shipping' | 'privacy' | 'terms'} />}
 {kind === '404' && <NotFound />}
