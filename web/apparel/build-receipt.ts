@@ -3,6 +3,7 @@
  */
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 const hash = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');
 function inventory(root: string, prefix = ''): Record<string,string> {
@@ -30,7 +31,7 @@ export function verifyBuildReceipt(root: string, expectedSha: string, trustedDig
 }
 if (import.meta.main) {
  const root=process.argv[2] || 'web/apparel/dist';
- const receipt=buildReceipt(root,process.env.GITHUB_SHA || '',process.env.GITHUB_RUN_ID || '');
+ const receipt=buildReceipt(root,execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),process.env.GITHUB_RUN_ID || '');
  writeFileSync(join(root,'build-receipt.json'),JSON.stringify(receipt));
  console.log(`BUILD_RECEIPT_SHA256=${receiptDigest(receipt)} run=${receipt.runId} sha=${receipt.sha}`);
 }

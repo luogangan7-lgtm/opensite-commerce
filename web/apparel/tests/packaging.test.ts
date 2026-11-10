@@ -30,3 +30,14 @@ test('single release binds PASS, exact record and final digest, never mere text 
  expect(() => assertSingleRelease(report,key,sha)).not.toThrow();
  for(const bad of [report.replace('结论：PASS','结论：HOLD'),report.replace(key,'other'),report.replace(sha,'b'.repeat(64)),report.replace('/path/final.png','/path/review.png')]) expect(() => assertSingleRelease(bad,key,sha)).toThrow();
 });
+
+test('CI receipt CLI binds checkout HEAD even when PR GITHUB_SHA names a merge commit', () => {
+ const root=mkdtempSync(join(tmpdir(),'apparel-cli-'));
+ try {
+  mkdirSync(join(root,'_worker.js'));writeFileSync(join(root,'index.html'),'html');writeFileSync(join(root,'_worker.js/index.js'),'worker');
+  const result=Bun.spawnSync(['bun','web/apparel/build-receipt.ts',root],{env:{...process.env,GITHUB_SHA:'b'.repeat(40),GITHUB_RUN_ID:'123'}});
+  expect(result.exitCode).toBe(0);
+  const expected=Bun.spawnSync(['git','rev-parse','HEAD']).stdout.toString().trim();
+  expect(JSON.parse(require('node:fs').readFileSync(join(root,'build-receipt.json'),'utf8')).sha).toBe(expected);
+ } finally {rmSync(root,{recursive:true,force:true});}
+});
