@@ -1,4 +1,5 @@
 /** Preview-only live imagery receipts. Browser execution is confined to GitHub CI. */
+import { checkHero } from './hero-check';
 import { test, expect } from '@playwright/test';
 import { assertSlotReferences } from '../image-plan';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
@@ -35,12 +36,9 @@ test('deployed slots, manifest, LCP budget, locale routes and image network allo
   expect(cream.actual).toBe('rgb(231, 226, 214)');
   expect(cream.token).toBe('#e7e2d6');
   expect(cream.height).toBeGreaterThan(0);
-  const hero = manifest.files.find((file: { url: string }) => file.url === '/img/site/illustrative_home_hero-1024.avif');
   await page.setViewportSize({ width: 1024, height: 844 });
   await page.goto('/');
-  await expect.poll(() => page.locator('[data-slot="home/hero"] img').evaluate(node => new URL((node as HTMLImageElement).currentSrc).pathname)).toBe(hero.url);
-  const heroResponse = await request.get(hero.url), heroBytes = (await heroResponse.body()).length;
-  expect(heroBytes).toBe(hero.bytes); expect(heroBytes).toBeLessThan(300_000);
+  const hero1024 = await checkHero(page, manifest, request);
   await page.setViewportSize({ width: 390, height: 844 });
   const network: Record<string, string[]> = {};
   for (const route of ['/', '/es/', '/collections/crew-fleece/', '/products/crew-fleece-8900-33/']) {
@@ -65,7 +63,7 @@ test('deployed slots, manifest, LCP budget, locale routes and image network allo
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
-  const result = { contact: { published: contactPass, images: contactImages, cream }, statuses, arabic390: 'home/collection/PDP rtl and no horizontal scroll', sha: manifest.sha, slots: manifest.slots.length, packshots: manifest.packshots.map((p: { slug: string }) => p.slug), hero1024: { file: hero.url, bytes: heroBytes }, network };
+  const result = { contact: { published: contactPass, images: contactImages, cream }, statuses, arabic390: 'home/collection/PDP rtl and no horizontal scroll', sha: manifest.sha, slots: manifest.slots.length, packshots: manifest.packshots.map((p: { slug: string }) => p.slug), hero1024, network };
   mkdirSync('evidence', { recursive: true }); writeFileSync('evidence/live-imagery.json', JSON.stringify(result, null, 2));
   console.log('LIVE IMAGERY', JSON.stringify(result));
 });
