@@ -55,3 +55,12 @@ for (const mode of ['success', 'validation', 'timeout', 'duplicate'] as const) {
     expect(logs.join('\n')).not.toMatch(/ci@example.invalid|Synthetic RFQ|ci-private-placeholder/);
   });
 }
+test('submit waits for JSON handler when the module loads slowly', async ({ page }) => {
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/_astro/RFQ*.js', async route => { await held; await route.continue(); });
+  await page.goto('/contact/', { waitUntil: 'commit' });
+  await expect(page.locator('button[type="submit"]')).toBeDisabled();
+  release();
+  await expect(page.locator('button[type="submit"]')).toBeEnabled();
+});

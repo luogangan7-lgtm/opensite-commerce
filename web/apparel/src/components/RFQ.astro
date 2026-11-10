@@ -21,7 +21,7 @@ const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entrie
 <p class="muted">{t.terms}: <span>{t.quote}</span>.</p>
 {/* Necessary anti-abuse functionality: independent of optional analytics consent. */}
 {siteKey && <><div class="cf-turnstile" data-sitekey={siteKey} data-action="rfq" data-language={locale === 'zh' ? 'zh-cn' : locale} data-size="flexible"></div><script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></>}
-<button type="submit">{t.send}</button><p class="form-status" tabindex="-1" role="status" aria-live="polite"></p>
+<button type="submit" disabled>{t.send}</button><p class="form-status" tabindex="-1" role="status" aria-live="polite"></p>
 </form>
 <script>
   import { parseRfqPrefill } from '../data/rfq-prefill';
@@ -67,5 +67,7 @@ const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entrie
         if (!navigating) (window as Window & { turnstile?: { reset(container: HTMLElement): void } }).turnstile?.reset(form.querySelector<HTMLElement>('.cf-turnstile')!);
       }
     });
+    // Prevent native URL-encoded submission before the JSON handler is ready.
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = false;
   });
 </script>
