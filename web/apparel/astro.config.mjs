@@ -26,7 +26,7 @@ export default defineConfig({
       }
     }
     headers = headers.replace(/^.*Content-Security-Policy:.*\n?/gmi, '');
-    writeFileSync(file, headers + '  Content-Security-Policy: ' + contentSecurityPolicy(gaId, [...hashes]) + '\n');
+    writeFileSync(file, headers + '  Content-Security-Policy: ' + contentSecurityPolicy(gaId, [...hashes], turnstile) + '\n');
   } } }],
   trailingSlash: 'always',
   i18n: { locales: ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'], defaultLocale: 'en', routing: { prefixDefaultLocale: false } },

@@ -89,6 +89,8 @@ jobs:
       - name: Consent Mode v2 enabled build and browser gate
         env:
           PUBLIC_GA4_ID: G-CONSENTTEST
+          PUBLIC_TURNSTILE_SITE_KEY: synthetic-site-key
+          TURNSTILE_SECRET_KEY: synthetic-ci-only
         run: |
           bun run --cwd web/apparel build
           bun web/apparel/tests/consent-output.ts

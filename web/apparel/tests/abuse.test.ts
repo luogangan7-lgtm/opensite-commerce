@@ -63,3 +63,14 @@ test('security feedback exists for all eight locales', async () => {
   expect(Object.keys(abuseMessages)).toHaveLength(8);
   for (const messages of Object.values(abuseMessages)) for (const key of ['error.challenge', 'error.rate'] as const) expect(messages[key].length).toBeGreaterThan(10);
 });
+test('necessary Turnstile CSP stays independent of optional analytics', async () => {
+  const { contentSecurityPolicy } = await import('../analytics/config.mjs');
+  for (const ga of ['', 'G-CONSENTTEST']) for (const necessary of [false, true]) {
+    const csp = contentSecurityPolicy(ga, [], necessary);
+    for (const directive of ['script-src', 'connect-src', 'frame-src']) {
+      const value = csp.split(';').find((part: string) => part.trim().startsWith(directive + ' ')) || '';
+      expect(value.includes('https://challenges.cloudflare.com')).toBe(necessary);
+    }
+    expect(csp.includes('googletagmanager.com')).toBe(Boolean(ga));
+  }
+});
