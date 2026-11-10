@@ -36,7 +36,7 @@ for (const [name, expected] of [['html', 'HTML robots policy'], ['header', 'X-Ro
     cpSync('web/apparel/dist', dir, { recursive: true });
     const file = join(dir, name === 'header' ? '_headers' : name === 'robots' ? 'robots.txt' : 'index.html');
     const original = readFileSync(file, 'utf8');
-    const changed = name === 'html' ? original.replace(/<meta name="robots" content="noindex"\s*\/?>/, '') : name === 'header' ? original.replace(/.*X-Robots-Tag:.*\n?/, '') : name === 'robots' ? original.replace('Disallow: /', 'Allow: /') : original.replaceAll('https://sourcyowear.example.invalid', testOrigin);
+    const changed = name === 'html' ? original.replace(/<meta name="robots" content="noindex"\s*\/?>/, '') : name === 'header' ? original.replace(/.*X-Robots-Tag:.*\n?/, '') : name === 'robots' ? original.replace('Allow: /', 'Disallow: /') : original.replaceAll('https://sourcyowear.example.invalid', testOrigin);
     if (changed === original) throw Error(`Mutation did not apply: ${name}`);
     writeFileSync(file, changed);
     gate(dir, 'preview', undefined, expected);

@@ -170,7 +170,7 @@ test('changed bytes, wrong style, traversal and duplicate views fail closed then
   expect(imagePlan(input).digital.length).toBe(1);
 });
 test.skipIf(!existsSync(sourceRoot))('local originals: 154 W3 and 514 W1/W2 hashes match accepted sources and current catalog', async () => {
-  const { assertDigitalDigest } = await load();
+  const { assertDigitalDigest, assertSingleRelease } = await load();
   const catalogPath = resolve(sourceRoot, '../../docs/apparel-b2b/catalog.json');
   expect(digest(readFileSync(catalogPath))).toBe(approval.sha256);
   for (const image of digital) {
@@ -181,6 +181,7 @@ test.skipIf(!existsSync(sourceRoot))('local originals: 154 W3 and 514 W1/W2 hash
     // W3 tables have mixed headers and one final.png path; SHA and full source are authoritative.
     expect(receipt).toContain(image.sha256);
     expect(receipt).toContain(image.wave === 'W3' ? source : image.key);
+    if (image.acceptance.endsWith('/r5-one-visual-20261107/REPORT.md')) assertSingleRelease(receipt, image.key, image.sha256);
     if (image.wave === 'W3') expect(image.source).toMatch(/\.png$/);
   }
 });

@@ -2,7 +2,10 @@
  * Invariants: eight reciprocal locales; no preview indexing; no inferred product claims.
  * Integration into rendered pages requires a separate release gate.
  */
-import facts from './sku-source-delta.json';
+import rawFacts from './sku-source-delta.json';
+import { publicId } from '../src/data/imagery';
+const facts = rawFacts.map(f => ({ ...f, slug: publicId(f.slug) }));
+if (new Set(facts.map(f => f.slug)).size !== facts.length) throw Error('Conflicting public SEO identities');
 export const locales = ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const;
 export type Locale = typeof locales[number];
 export interface Page { locale: Locale; path: string; canonical: string; alternates: Record<string, string>; structuredData: unknown }

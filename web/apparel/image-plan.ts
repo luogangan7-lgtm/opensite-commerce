@@ -59,3 +59,9 @@ export function assertSlotReferences(html: string, slots: { id?: string }[], pag
 export function assertDigitalDigest(image: DigitalSource, actual: string): void {
   if (actual !== image.sha256) throw Error(`Digital model source changed: ${image.key}`);
 }
+
+/** Explicit single-image independent review format; binds final.png, identity and PASS together. */
+export function assertSingleRelease(report: string, key: string, sha: string): void {
+  if (!/^结论：PASS。/m.test(report) || !report.includes(`record：${key}；`) ||
+      !report.split('\n').some((line, i, lines) => line.endsWith('/final.png') && lines[i + 1] === `SHA256：${sha}`)) throw Error(`Single-image release not PASS: ${key}`);
+}

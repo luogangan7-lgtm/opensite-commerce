@@ -4,15 +4,18 @@ import { dirname, resolve, join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { verifyBuildReceipt } from './build-receipt';
 import products from './src/data/products.json';
 import digital from './digital-sources.json';
-import { assertDigitalDigest, imagePlan, publishSlotMarkup, assertSlotReferences, type Review, type Approved } from './image-plan';
+import { assertSingleRelease, assertDigitalDigest, imagePlan, publishSlotMarkup, assertSlotReferences, type Review, type Approved } from './image-plan';
 import { widths, imageBase } from './src/data/imagery';
 const sharp = createRequire(import.meta.resolve('astro/package.json'))('sharp');
 const common = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
 const sourceRoot = process.env.APPAREL_SOURCE_DIR || resolve(dirname(resolve(common)), 'work/apparel-b2b');
 const hd = join(sourceRoot, 'hd'), destination = resolve(process.argv[2] || '');
 if (!process.argv[2] || !existsSync(join(destination, 'index.html')) || existsSync(join(destination, 'img')) || existsSync(join(destination, 'deploy-manifest.json'))) throw Error('Pass a fresh downloaded apparel-dist directory');
+const packagerSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const build = verifyBuildReceipt(destination, packagerSha, process.env.APPAREL_BUILD_RECEIPT_SHA256 || '');
 const json = (file: string) => JSON.parse(readFileSync(file, 'utf8'));
 const slotInput = json(join(hd, '_site/slots.json'));
 const review: Review[] = readFileSync(join(hd, 'review.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
@@ -31,6 +34,7 @@ function record(url: string, sourceSha256: string) {
 }
 // All digital models share the existing SHA-bound, isolated packaging pipeline.
 for (const image of plan.digital) {
+  if (image.acceptance.endsWith('/r5-one-visual-20261107/REPORT.md')) assertSingleRelease(readFileSync(safeInput(sourceRoot, image.acceptance), 'utf8'), image.key, image.sha256);
   const input = safeInput(sourceRoot, image.source), metadata = await sharp(input).metadata();
   assertDigitalDigest(image, hash(readFileSync(input)));
   if (!metadata.width || !metadata.height) throw Error(`Missing digital model geometry: ${image.key}`);
@@ -96,6 +100,6 @@ for (const locale of ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) for (const page
   for (const route of targets[page]) assertSlotReferences(readFileSync(join(destination, locale === 'en' ? '' : locale, route, 'index.html'), 'utf8'), plan.slots, page);
 }
 const receipt = (image: Approved) => ({ id: image.id, slug: image.slug, role: image.id ? 'illustrative' : image.role, src: image.src, sha256: image.sha256, w: image.w, h: image.h, rights: image.rights });
-const manifest = { schema: 1, sha: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), digital: plan.digital.map(({ slug, role, src, sha256 }) => ({ slug, role, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src) })), files };
+const manifest = { schema: 1, sha: build.sha, buildRunId: build.runId, buildReceiptSha256: process.env.APPAREL_BUILD_RECEIPT_SHA256, packagerSha, slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), digital: plan.digital.map(({ slug, role, src, sha256 }) => ({ slug, role, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src) })), files };
 writeFileSync(join(destination, 'deploy-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 console.log(JSON.stringify({ sha: manifest.sha, slots: plan.slots.length, packshots: plan.packshots.map(p => p.slug), files: files.length, hero1024: files.filter(p => p.url.includes('illustrative_home_hero-1024')) }));
