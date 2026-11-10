@@ -115,5 +115,11 @@
   "alt.pdp.craft_stack": "Illustrated stack of folded garments",
   "alt.pdp.craft_stitching": "Illustrated garment stitching detail",
   "alt.contact.banner": "Illustrated apparel inquiry workspace",
-  "illustrativeNotice": "场景由 AI 生成，仅作示意；人物和设施不代表真实团队或地点。"
+  "illustrativeNotice": "场景由 AI 生成，仅作示意；人物和设施不代表真实团队或地点。",
+  "cookieTitle": "Cookie 设置",
+  "cookieText": "默认仅使用必要存储。接受后才启用 Google Analytics 4（Google LLC）。",
+  "cookieEssential": "仅必要",
+  "cookieAccept": "接受",
+  "cookieSettings": "设置",
+  "cookieDetails": "GA4 仅在同意后统计访问和成功询盘。Cookie：_ga 和 _ga_<ID>，最长保存 2 年。您可随时在此撤回同意。"
 }

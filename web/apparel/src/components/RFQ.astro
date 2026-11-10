@@ -55,7 +55,7 @@ const messages = Object.fromEntries(Object.entries(t).filter(([key]) => key.star
         const result = await response.json();
         const keys = Object.values(result.errors || { error: result.error || 'error.storage' });
         status.textContent = response.ok ? messages.success : keys.map(key => messages[String(key)] || messages['error.storage']).join(' ');
-        if (response.ok) { navigating = true; window.location.assign(form.dataset.successUrl!); }
+        if (response.ok) { window.dispatchEvent(new Event('apparel:lead')); navigating = true; window.location.assign(form.dataset.successUrl!); }
         else status.focus();
       } catch { status.textContent = messages['error.network']; status.focus(); }
       finally { clearTimeout(timeout); button.disabled = navigating; }

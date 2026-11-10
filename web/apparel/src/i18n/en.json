@@ -115,5 +115,11 @@
   "alt.pdp.craft_stack": "Illustrated stack of folded garments",
   "alt.pdp.craft_stitching": "Illustrated garment stitching detail",
   "alt.contact.banner": "Illustrated apparel inquiry workspace",
-  "illustrativeNotice": "Illustrative scenes generated with AI; people and facilities do not identify a real team or location."
+  "illustrativeNotice": "Illustrative scenes generated with AI; people and facilities do not identify a real team or location.",
+  "cookieTitle": "Cookie settings",
+  "cookieText": "We use necessary storage. Google Analytics 4 (Google LLC) stays off until you accept.",
+  "cookieEssential": "Necessary only",
+  "cookieAccept": "Accept",
+  "cookieSettings": "Settings",
+  "cookieDetails": "GA4 measures visits and successful inquiries only with consent. Cookies: _ga and _ga_<ID>, up to 2 years. You can withdraw consent here at any time."
 }
