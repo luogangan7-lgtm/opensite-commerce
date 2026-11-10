@@ -6,10 +6,15 @@ import { loadEnv } from 'vite';
 import { measurementId, contentSecurityPolicy } from './analytics/config.mjs';
 const gaId = measurementId(process.env.PUBLIC_GA4_ID ?? loadEnv(process.env.NODE_ENV || 'production', process.cwd(), 'PUBLIC_').PUBLIC_GA4_ID);
 import { defineConfig } from 'astro/config';
+// Build secrets are inspected only for presence; never written to static assets.
+const turnstile = Boolean(process.env.PUBLIC_TURNSTILE_SITE_KEY?.trim());
+const secret = Boolean(process.env.TURNSTILE_SECRET_KEY?.trim());
+if ((isProduction && (!turnstile || !secret)) || turnstile !== secret) throw Error('Turnstile site and secret keys required together; production must be protected');
 export default defineConfig({
   output: 'static',
   site: buildOrigin,
   integrations: [{ name: 'seo-header-policy', hooks: { 'astro:build:done': ({ dir }) => {
+    writeFileSync(new URL('rfq-policy.json', dir), JSON.stringify({ required: isProduction || turnstile }));
     const file = new URL('_headers', dir);
     let headers = readFileSync(file, 'utf8');
     if (isProduction) headers = headers.replace(/^.*X-Robots-Tag:.*\n?/gmi, '');
