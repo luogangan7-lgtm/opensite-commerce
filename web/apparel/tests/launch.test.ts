@@ -14,7 +14,7 @@ test('all 115 approved public identities have eight SEO routes and Product data'
     expect(publishedPaths).toContain(path);
     expect(productData('https://example.org', path, 'ar')).toMatchObject({ '@type': 'Product', url: `https://example.org/ar${path}` });
   }
-  expect(sitemap('https://example.org', publishedPaths).length).toBe(944);
+  expect(sitemap('https://example.org', publishedPaths).length).toBe(984);
   expect(() => productData('https://example.org', '/products/unknown/', 'en')).toThrow();
   expect(() => productData('https://example.org', '/products/aston-hoodie-69012/', 'en')).toThrow();
 });
