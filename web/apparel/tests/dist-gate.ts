@@ -6,6 +6,8 @@ import products from '../src/data/products.json';
 import { dictionaries, locales, type Locale } from '../src/i18n';
 import { imageBase, widths } from '../src/data/imagery';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
+const policy = JSON.parse(readFileSync(join(root, 'rfq-policy.json'), 'utf8'));
+if (typeof policy.required !== 'boolean' || (process.env.SEO_BUILD_MODE === 'production' && !policy.required)) throw Error('Turnstile production policy missing');
 // Pages decides whether to invoke the compiled Worker from this manifest, before dispatch.
 const routes = JSON.parse(readFileSync(join(root, '_routes.json'), 'utf8'));
 if (routes.version !== 1 || routes.exclude.length !== 0 || JSON.stringify([...routes.include].sort()) !== JSON.stringify(['/api/rfq', '/contact', '/contact/'])) throw Error('Pages route manifest must invoke RFQ and both contact paths');
@@ -49,6 +51,7 @@ const worker = (await import(pathToFileURL(resolve(root, '_worker.js/index.js'))
 const records: object[] = [];
 const env = { SUPABASE_URL: 'https://database.example.invalid', SUPABASE_SECRET_KEY: 'ci-private-placeholder', ASSETS: { fetch: (request: Request) => {
   const path = new URL(request.url).pathname;
+  if (path === '/rfq-policy.json') return Response.json({ required: false });
   if (path === '/contact/') return new Response('Contact RFQ', { status: 200 });
   if (path === '/contact' || path === '/about') return new Response(null, { status: 308, headers: { Location: `${path}/` } });
   return new Response('not found', { status: 404 });
@@ -61,7 +64,7 @@ globalThis.fetch = async (input, init) => {
   return Response.json([{ id: '524f5000-0000-4000-8000-000000000001' }], { status: 201 });
 };
 const context = { waitUntil: () => {}, passThroughOnException: () => {} };
-for (const [email, website, expected] of [['gate@example.invalid', '', 201], ['invalid', '', 400], ['gate@example.invalid', 'bot', 201]] as const) {
+for (const [email, website, expected] of [['gate@example.invalid', '', 204], ['invalid', '', 400], ['gate@example.invalid', 'bot', 204]] as const) {
   const response = await worker.fetch(new Request('https://example.invalid/api/rfq', { method: 'POST', body: JSON.stringify({ name: 'CI Gate', company: 'Example', email, website, message: 'Synthetic compiled-worker inquiry.' }) }), env, context);
   if (response.status !== expected) throw Error('Compiled RFQ route failed');
 }
@@ -71,3 +74,20 @@ for (const [path, expected] of [['/contact', 200], ['/contact/', 200], ['/about'
   if (response.status !== expected) throw Error(`Compiled route ${path} expected ${expected}, got ${response.status}`);
 }
 console.log('PASS: compiled Pages dispatch, valid/invalid/honeypot RFQ, private PostgREST insert and contact 200.');
+// Exercise the protected route through the packaged Pages worker as well.
+const counters = new Map<string, Response>();
+(globalThis as any).caches = { default: { match: async (r: Request) => counters.get(r.url)?.clone(), put: async (r: Request, v: Response) => { counters.set(r.url, v.clone()); } } };
+let verified = false, protectedWrites = 0;
+globalThis.fetch = async (input, init) => {
+  if (new Request(input, init).url.includes('/siteverify')) return Response.json({ success: verified, hostname: 'example.invalid', action: 'rfq' });
+  protectedWrites++;
+  return Response.json([{ id: '524f5000-0000-4000-8000-000000000001' }], { status: 201 });
+};
+const protectedEnv = { ...env, TURNSTILE_SECRET_KEY: 'synthetic', ASSETS: { fetch: () => Response.json({ required: true }) } };
+const submit = (bindings = protectedEnv) => worker.fetch(new Request('https://example.invalid/api/rfq', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.20' }, body: JSON.stringify({ name: 'CI', company: 'Example', email: 'ci@example.invalid', message: 'Synthetic', 'cf-turnstile-response': 'synthetic' }) }), bindings, context);
+if ((await submit()).status !== 403 || protectedWrites !== 0) throw Error('Compiled Turnstile rejection');
+verified = true;
+for (let i = 0; i < 4; i++) if ((await submit()).status !== 204) throw Error('Compiled protected success');
+if ((await submit()).status !== 429 || protectedWrites !== 4) throw Error('Compiled rate limit');
+if ((await submit({ ...protectedEnv, TURNSTILE_SECRET_KEY: '' })).status !== 503) throw Error('Compiled production missing runtime secret');
+console.log('PASS: compiled protected RFQ 403/204/429 and missing runtime secret 503; no storage on rejection.');

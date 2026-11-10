@@ -115,5 +115,11 @@
   "alt.pdp.craft_stack": "Illustration d’une pile de vêtements pliés",
   "alt.pdp.craft_stitching": "Illustration d’un détail de couture",
   "alt.contact.banner": "Illustration d’un espace de discussion de projets textiles",
-  "illustrativeNotice": "Scènes illustratives générées par IA ; les personnes et installations ne désignent aucune équipe ni aucun lieu réel."
+  "illustrativeNotice": "Scènes illustratives générées par IA ; les personnes et installations ne désignent aucune équipe ni aucun lieu réel.",
+  "cookieTitle": "Paramètres des cookies",
+  "cookieText": "Nous utilisons le stockage nécessaire. Google Analytics 4 (Google LLC) reste désactivé tant que vous n’acceptez pas.",
+  "cookieEssential": "Nécessaires uniquement",
+  "cookieAccept": "Accepter",
+  "cookieSettings": "Paramètres",
+  "cookieDetails": "GA4 mesure les visites et les demandes envoyées uniquement avec votre consentement. Cookies : _ga et _ga_<ID>, jusqu’à 2 ans. Vous pouvez retirer votre consentement ici à tout moment."
 }

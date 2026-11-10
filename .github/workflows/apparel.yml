@@ -48,11 +48,13 @@ jobs:
       - name: tokens:check
         run: bun packages/design-tokens/generate.ts --check
       - name: RFQ validation and private PostgREST contract
-        run: bun test web/apparel/tests/rfq.test.ts web/apparel/tests/i18n.test.ts web/apparel/tests/foundation.test.ts
+        run: bun test web/apparel/tests/abuse.test.ts web/apparel/tests/rfq.test.ts web/apparel/tests/i18n.test.ts web/apparel/tests/foundation.test.ts
       - name: Typecheck
         run: bun run --cwd web/apparel check
       - name: Static build
         run: bun run --cwd web/apparel build
+      - name: Consent build gate (no analytics ID)
+        run: bun web/apparel/tests/consent-output.ts
       - name: Package Pages Function in CI
         run: cd web/apparel && bunx wrangler@4.156.0 pages functions build functions --outdir dist/_worker.js --build-output-directory dist
       - name: Distribution gates
@@ -84,3 +86,12 @@ jobs:
           name: apparel-dist
           path: web/apparel/dist/
           if-no-files-found: error
+      - name: Consent Mode v2 enabled build and browser gate
+        env:
+          PUBLIC_GA4_ID: G-CONSENTTEST
+          PUBLIC_TURNSTILE_SITE_KEY: synthetic-site-key
+          TURNSTILE_SECRET_KEY: synthetic-ci-only
+        run: |
+          bun run --cwd web/apparel build
+          bun web/apparel/tests/consent-output.ts
+          bunx playwright test --config web/apparel/playwright.config.ts web/apparel/tests/consent.spec.ts

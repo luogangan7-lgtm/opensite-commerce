@@ -115,5 +115,11 @@
   "alt.pdp.craft_stack": "Illustration eines Stapels gefalteter Kleidung",
   "alt.pdp.craft_stitching": "Illustration eines Nahtdetails",
   "alt.contact.banner": "Illustration eines Arbeitsplatzes für Bekleidungsanfragen",
-  "illustrativeNotice": "Mit KI erzeugte Illustrationen; Personen und Einrichtungen zeigen kein bestimmtes reales Team oder einen realen Standort."
+  "illustrativeNotice": "Mit KI erzeugte Illustrationen; Personen und Einrichtungen zeigen kein bestimmtes reales Team oder einen realen Standort.",
+  "cookieTitle": "Cookie-Einstellungen",
+  "cookieText": "Wir verwenden notwendigen Speicher. Google Analytics 4 (Google LLC) bleibt bis zu Ihrer Zustimmung deaktiviert.",
+  "cookieEssential": "Nur notwendige",
+  "cookieAccept": "Akzeptieren",
+  "cookieSettings": "Einstellungen",
+  "cookieDetails": "GA4 erfasst Besuche und gesendete Anfragen nur mit Einwilligung. Cookies: _ga und _ga_<ID>, bis zu 2 Jahre. Sie können Ihre Einwilligung hier jederzeit widerrufen."
 }
