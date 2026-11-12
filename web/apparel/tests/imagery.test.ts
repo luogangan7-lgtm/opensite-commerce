@@ -126,11 +126,12 @@ import { digitalImages, digitalAlt, digitalLabel, publicId } from '../src/data/i
 import { locales } from '../src/i18n';
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { resolve, dirname, join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { resolve, join } from 'node:path';
+import { privateSourceRoot, assertPrivateOriginalInputs } from './private-originals';
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
-const commonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
-const sourceRoot = process.env.APPAREL_SOURCE_DIR || resolve(dirname(resolve(commonDir)), 'work/apparel-b2b');
+// Private originals are optional only when not explicitly selected. Tracked code under work/ is not a bundle.
+const selectedSourceRoot = privateSourceRoot(process.env);
+const sourceRoot = selectedSourceRoot ?? '';
 test('115 licensed catalog identities; all 668 digital models join by exact style and role', async () => {
   const { imagePlan } = await load();
   expect(approval.products.length).toBe(115);
@@ -169,8 +170,9 @@ test('changed bytes, wrong style, traversal and duplicate views fail closed then
   expect(() => imagePlan({ ...input, digital: [digital[0], digital[0]] })).toThrow('Duplicate');
   expect(imagePlan(input).digital.length).toBe(1);
 });
-test.skipIf(!existsSync(sourceRoot))('local originals: 154 W3 and 514 W1/W2 hashes match accepted sources and current catalog', async () => {
+test.skipIf(selectedSourceRoot === undefined)('local originals: 154 W3 and 514 W1/W2 hashes match accepted sources and current catalog', async () => {
   const { assertDigitalDigest, assertSingleRelease } = await load();
+  assertPrivateOriginalInputs(sourceRoot, digital, approval.sha256);
   const catalogPath = resolve(sourceRoot, '../../docs/apparel-b2b/catalog.json');
   expect(digest(readFileSync(catalogPath))).toBe(approval.sha256);
   for (const image of digital) {
@@ -204,7 +206,7 @@ test('public imagery metadata loads under the Node ESM runtime used by Playwrigh
 });
 
 // Regression: every accepted W3 slot, including nested final.png, must be connected.
-test.skipIf(!existsSync(sourceRoot))('all accepted W3 tables resolve to exactly 154 SHA-bound catalog slots', () => {
+test.skipIf(selectedSourceRoot === undefined)('all accepted W3 tables resolve to exactly 154 SHA-bound catalog slots', () => {
   const { readdirSync } = require('node:fs');
   const fleet = join(sourceRoot, 'fleet-20261104');
   const accepted = new Map<string, string>();
@@ -238,4 +240,35 @@ test('all back sources distinguish same-colour, owner plain and colour-swapped r
   expect(backs.filter(row => row.backReference === 'owner-plain').length).toBe(45);
   expect(backs.filter(row => row.backReference === 'other-color-ink').length).toBe(4);
   for (const row of backs) expect(['same-color', 'owner-plain', 'other-color-ink']).toContain(row.backReference);
+});
+
+// Synthetic owned bundle proves explicit selection cannot mask missing or corrupt private data.
+test('private originals require explicit selection; declared incomplete or changed bundles fail closed', async () => {
+  const { mkdirSync, mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const dir = mkdtempSync(join('work', 'imagery-bundle-test-'));
+  const root = join(dir, 'work/apparel-b2b'), catalog = resolve(root, '../../docs/apparel-b2b/catalog.json');
+  const source = join(root, 'source.png'), accepted = join(root, 'accepted.tsv');
+  const image = { source: 'source.png', acceptance: 'accepted.tsv', sha256: digest(Buffer.from('owned pixels')) };
+  try {
+    mkdirSync(join(root, 'fleet-20261104/sender-g'), { recursive: true });
+    // This code-only prefix used to enable private tests just by existing.
+    expect(existsSync(root)).toBe(true);
+    expect(privateSourceRoot({})).toBeUndefined();
+    expect(privateSourceRoot({ APPAREL_SOURCE_DIR: root })).toBe(resolve(root));
+    expect(() => privateSourceRoot({ APPAREL_SOURCE_DIR: '' })).toThrow('explicitly');
+    expect(() => assertPrivateOriginalInputs(root, [image], digest(Buffer.from('{}')))).toThrow('catalog.json'); // missing catalog
+    mkdirSync(join(dir, 'docs/apparel-b2b'), { recursive: true });
+    writeFileSync(catalog, '{}');
+    expect(() => assertPrivateOriginalInputs(root, [image], digest(Buffer.from('{}')))).toThrow('source.png'); // missing source
+    writeFileSync(source, 'owned pixels');
+    expect(() => assertPrivateOriginalInputs(root, [image], digest(Buffer.from('{}')))).toThrow('accepted.tsv'); // missing accepted
+    writeFileSync(accepted, image.sha256);
+    expect(() => assertPrivateOriginalInputs(root, [image], digest(Buffer.from('{}')))).not.toThrow();
+    writeFileSync(source, 'changed pixels');
+    expect(() => assertPrivateOriginalInputs(root, [image], digest(Buffer.from('{}')))).toThrow('source SHA');
+    writeFileSync(source, 'owned pixels'); writeFileSync(catalog, '{"changed":true}');
+    expect(() => assertPrivateOriginalInputs(root, [image], digest(Buffer.from('{}')))).toThrow('catalog SHA');
+    writeFileSync(catalog, '{}');
+    expect(() => assertPrivateOriginalInputs(root, [image], digest(Buffer.from('{}')))).not.toThrow();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
