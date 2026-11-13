@@ -460,7 +460,7 @@
         "role": "front",
         "sha256_16": "e8b833ceebb7078e",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-35/digital-model-02.webp",
@@ -495,7 +495,7 @@
         "role": "turn",
         "sha256_16": "1c25b3153bd30f5d",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-35/model-01.webp",
@@ -544,7 +544,7 @@
         "role": "back",
         "sha256_16": "883a4c2ebdb53873",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-35/fabric.webp",
@@ -905,7 +905,7 @@
         "role": "front",
         "sha256_16": "d72d4a57730d136b",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-39/digital-model-02.webp",
@@ -947,7 +947,7 @@
         "role": "turn",
         "sha256_16": "d5f79870fd2285b5",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-39/model-01.webp",
@@ -996,7 +996,7 @@
         "role": "back",
         "sha256_16": "0907f68a34db27d2",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-39/fabric.webp",
@@ -1687,7 +1687,7 @@
         "role": "front",
         "sha256_16": "d20718c21f5d6a79",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-46/digital-model-02.webp",
@@ -1722,7 +1722,7 @@
         "role": "turn",
         "sha256_16": "cd5668cafa0f859f",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-46/model-01.webp",
@@ -1765,7 +1765,7 @@
         "role": "back",
         "sha256_16": "39e0d17729c639a2",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-46/fabric.webp",
@@ -2237,7 +2237,7 @@
         "role": "front",
         "sha256_16": "ed545d95a7b7ef8d",
         "web_sha256": "",
-        "colour": "red"
+        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-53/digital-model-03.webp",
@@ -2308,7 +2308,7 @@
         "role": "back",
         "sha256_16": "a9ef56a8f2ea4952",
         "web_sha256": "",
-        "colour": "red"
+        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-53/fabric.webp",
@@ -2340,7 +2340,7 @@
         "role": "front",
         "sha256_16": "bb0ffc7527a4e8b1",
         "web_sha256": "",
-        "colour": "green"
+        "colour": "dark green"
       },
       {
         "src": "/img/apparel-59011/digital-model-02.webp",
@@ -2368,7 +2368,7 @@
         "role": "turn",
         "sha256_16": "896314ceabe35964",
         "web_sha256": "",
-        "colour": "green"
+        "colour": "dark green"
       },
       {
         "src": "/img/apparel-59011/model-01.webp",
@@ -2436,7 +2436,7 @@
         "role": "front",
         "sha256_16": "55ea67a5e93b11a5",
         "web_sha256": "",
-        "colour": "green"
+        "colour": "dark green"
       },
       {
         "src": "/img/apparel-59043/digital-model-02.webp",
@@ -2464,7 +2464,7 @@
         "role": "turn",
         "sha256_16": "932b3198e4ae8984",
         "web_sha256": "",
-        "colour": "green"
+        "colour": "dark green"
       },
       {
         "src": "/img/apparel-59043/model-01.webp",
@@ -7396,7 +7396,7 @@
         "role": "front",
         "sha256_16": "3874cf2f9828b956",
         "web_sha256": "",
-        "colour": "beige"
+        "colour": "sand/beige"
       },
       {
         "src": "/img/cotton430-hoodie-l8615/digital-model-02.webp",
@@ -7454,7 +7454,7 @@
         "role": "back",
         "sha256_16": "742c10cbad0633d6",
         "web_sha256": "",
-        "colour": "beige"
+        "colour": "sand/beige"
       },
       {
         "src": "/img/cotton430-hoodie-l8615/fabric.webp",
@@ -8771,7 +8771,7 @@
         "role": "front",
         "sha256_16": "887d628d9da05524",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "light grey"
       },
       {
         "src": "/img/hoodie-set-k11-1103/digital-model-02.webp",
@@ -8806,7 +8806,7 @@
         "role": "turn",
         "sha256_16": "80215761995b300a",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "light grey"
       },
       {
         "src": "/img/hoodie-set-k11-1103/model-01.webp",
@@ -8849,7 +8849,7 @@
         "role": "back",
         "sha256_16": "f2c9db1246f0c55a",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "light grey"
       },
       {
         "src": "/img/hoodie-set-k11-1103/fabric.webp",
@@ -9544,7 +9544,7 @@
         "role": "front",
         "sha256_16": "5e1eb22ecac0e912",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "light grey"
       },
       {
         "src": "/img/hoodie-set-k18-3906/digital-model-02.webp",
@@ -10229,7 +10229,7 @@
         "role": "front",
         "sha256_16": "32da2d0c4fc184da",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "stone/light greige"
       },
       {
         "src": "/img/pullover-hoodie-69010/digital-model-02.webp",
@@ -10264,7 +10264,7 @@
         "role": "turn",
         "sha256_16": "4dd274b61991cd11",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "stone/light greige"
       },
       {
         "src": "/img/pullover-hoodie-69010/model-01.webp",
@@ -10307,7 +10307,7 @@
         "role": "back",
         "sha256_16": "52de1536aa4f8c79",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "stone/light greige"
       },
       {
         "src": "/img/pullover-hoodie-69010/fabric.webp",
@@ -10552,7 +10552,7 @@
         "role": "front",
         "sha256_16": "c770667ee51d00ee",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "stone/light greige"
       },
       {
         "src": "/img/pullover-hoodie-69013/digital-model-02.webp",
@@ -10587,7 +10587,7 @@
         "role": "turn",
         "sha256_16": "701cad2741dac44b",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "stone/light greige"
       },
       {
         "src": "/img/pullover-hoodie-69013/model-01.webp",
@@ -10630,7 +10630,7 @@
         "role": "back",
         "sha256_16": "4baca6ff97d326e8",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "stone/light greige"
       },
       {
         "src": "/img/pullover-hoodie-69013/fabric.webp",
@@ -10971,7 +10971,7 @@
         "role": "front",
         "sha256_16": "27af3698a71e7290",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/pullover-hoodie-69017/digital-model-02.webp",
@@ -11006,7 +11006,7 @@
         "role": "turn",
         "sha256_16": "417ec924257bf40a",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/pullover-hoodie-69017/model-01.webp",
@@ -11049,7 +11049,7 @@
         "role": "back",
         "sha256_16": "cd8a0e943f24c3ef",
         "web_sha256": "",
-        "colour": "grey-green"
+        "colour": "sage/olive grey"
       },
       {
         "src": "/img/pullover-hoodie-69017/fabric.webp",
@@ -11081,7 +11081,7 @@
         "role": "front",
         "sha256_16": "1b7ec839f7f06dae",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "stone/light greige"
       },
       {
         "src": "/img/pullover-hoodie-69018/digital-model-02.webp",
@@ -11116,7 +11116,7 @@
         "role": "turn",
         "sha256_16": "fe922ccdfe571089",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "stone/light greige"
       },
       {
         "src": "/img/pullover-hoodie-69018/model-01.webp",
@@ -11159,7 +11159,7 @@
         "role": "back",
         "sha256_16": "3c2ee935229e7266",
         "web_sha256": "",
-        "colour": "grey"
+        "colour": "stone/light greige"
       },
       {
         "src": "/img/pullover-hoodie-69018/fabric.webp",

@@ -8,7 +8,7 @@ import { verifyBuildReceipt } from './build-receipt';
 import products from './src/data/products.json';
 import digital from './digital-sources.json';
 import details from './detail-sources.json';
-import { packageDetails } from './detail-images';
+import { packageDetails, readDetailLedger } from './detail-images';
 import { assertDetailDigest, type DetailSource } from './image-plan';
 import { assertSingleRelease, assertDigitalDigest, imagePlan, publishSlotMarkup, assertSlotReferences, type Review, type Approved } from './image-plan';
 import { widths, imageBase } from './src/data/imagery';
@@ -22,7 +22,8 @@ const build = verifyBuildReceipt(destination, packagerSha, process.env.APPAREL_B
 const json = (file: string) => JSON.parse(readFileSync(file, 'utf8'));
 const slotInput = json(join(hd, '_site/slots.json'));
 const review: Review[] = readFileSync(join(hd, 'review.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-const plan = imagePlan({ slots: slotInput, review, provenance: json(join(hd, '_site/provenance.json')), digital, details: details as DetailSource[], published: products.map(p => p.slug) });
+const detailLedger = readDetailLedger(sourceRoot);
+const plan = imagePlan({ slots: slotInput, review, provenance: json(join(hd, '_site/provenance.json')), digital, detailLedger, details: details as DetailSource[], published: products.map(p => p.slug) });
 const hash = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
 const safeInput = (root: string, path: string) => {
   const input = realpathSync(resolve(root, path));
@@ -46,8 +47,8 @@ for (const image of plan.digital) {
 // Validate every G digest and native geometry before any image is copied.
 for (const image of plan.details) {
   const input = safeInput(sourceRoot, image.source), metadata = await sharp(input).metadata();
-  assertDetailDigest(image, hash(readFileSync(input)));
-  if (!metadata.width || metadata.width !== metadata.height) throw Error(`Invalid detail geometry: ${image.slug}`);
+  assertDetailDigest(image, hash(readFileSync(input)), detailLedger);
+  if (metadata.width !== 1200 || metadata.height !== 1200) throw Error(`Detail requires native 1200×1200: ${image.slug}`);
   dimensions.set(image.src, { w: metadata.width, h: metadata.height });
 }
 // Validate all review-bound originals before writing any deploy images.
@@ -67,7 +68,7 @@ for (const product of products) for (const image of [...product.images, ...produ
   mkdirSync(dirname(output), { recursive: true }); copyFileSync(input, output);
   dimensions.set(image.src, { w: metadata.width, h: metadata.height }); record(image.src, digest);
 }
-for (const receipt of await packageDetails(plan.details, sourceRoot, destination)) {
+for (const receipt of await packageDetails(plan.details, sourceRoot, destination, detailLedger)) {
   dimensions.set(receipt.src, {w:receipt.w, h:receipt.h});
   record(receipt.src, receipt.sourceSha256);
 }

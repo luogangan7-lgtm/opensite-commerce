@@ -12,9 +12,9 @@ const captions = {
 };
 for (const [locale, caption] of Object.entries(captions)) test(`gallery details ${locale}`, async ({ page }) => {
  await page.goto(`${locale === 'en' ? '' : '/' + locale}/products/crew-fleece-8900-31/`);
- const links = page.locator('.gallery-thumbs a');
+ const links = page.locator('.gallery-thumbs:not([hidden]) a');
  const roles = await links.evaluateAll(nodes => nodes.map(n => (n as HTMLElement).dataset.role));
- const rank: Record<string, number> = {front:0,turn:1,back:2,print:3,garment:4,structure:5,fabric:6};
+ const rank: Record<string, number> = {front:0,turn:1,back:2,garment:3,print:4,structure:5,fabric:6};
  const known = roles.filter(r => r && r in rank).map(r => rank[r!]);
  expect(known).toEqual([...known].sort((a,b)=>a-b));
  const detail = page.locator('.gallery-thumbs a[data-role="fabric"]');
@@ -33,4 +33,21 @@ for (const [locale, caption] of Object.entries(captions)) test(`gallery details 
  await page.keyboard.press('Escape');
  await links.first().click();
  await expect(page.locator('[data-digital-label]')).not.toHaveText(caption);
+});
+
+test('primary colour sequence excludes other fronts and unknown roles until swatch selection', async ({page}) => {
+ await page.goto('/products/crew-fleece-8900-31/');
+ const visible = page.locator('.gallery-thumbs:not([hidden]) a');
+ await expect(visible.locator('[data-role="overview"]')).toHaveCount(0);
+ expect(await visible.evaluateAll(nodes=>nodes.every(n=>(n as HTMLElement).dataset.colour==='cream'))).toBe(true);
+ await expect(page.locator('.gallery-thumbs a[data-role="overview"], .gallery-thumbs a[data-role="model"]')).toHaveCount(0);
+ await expect(page.locator('.gallery-thumbs:not([hidden]) a[data-role="front"]')).toHaveCount(1);
+ await page.locator('[data-gallery-swatch="black"]').click();
+ await expect(visible).toHaveCount(1);
+ await expect(visible).toHaveAttribute('data-role','front');
+ await expect(visible).toHaveAttribute('data-colour','black');
+ await expect(page.locator('[data-gallery-main]')).toHaveAttribute('src', await visible.getAttribute('href') || '');
+ await expect(page.locator('.gallery-thumbs:not([hidden]) a[data-role="fabric"]')).toHaveCount(0);
+ await page.locator('[data-gallery-swatch="cream"]').click();
+ await expect(page.locator('.gallery-thumbs:not([hidden]) a[data-role="fabric"]')).toHaveCount(1);
 });
