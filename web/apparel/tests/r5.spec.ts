@@ -18,7 +18,7 @@ test('23 independently accepted regenerated slots are served and selectable', as
  }
  if(process.env.APPAREL_PACKAGED_IMAGES === '1' || process.env.APPAREL_PREVIEW_URL) {
  const manifest = await (await request.get('/deploy-manifest.json')).json();
- expect(manifest.digital).toHaveLength(739);
+ expect(manifest.digital).toHaveLength(753);
  for(const row of accepted) {
   const receipt = manifest.digital.find((r: {src:string}) => r.src === row.src);
   expect(receipt?.sha256, row.exactId).toBe(row.sha256);
