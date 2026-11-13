@@ -36,6 +36,9 @@ for (const locale of ['en', 'zh', 'ar']) {
     await expect(menu.locator('[data-menu-close]')).toBeFocused();
     await page.keyboard.press('Shift+Tab'); await expect(last).toBeFocused();
     await page.keyboard.press('Escape');
+    await expect(menu).toBeVisible();
+    await expect(menu.locator('summary')).toBeFocused();
+    await page.keyboard.press('Escape');
     await expect(menu).not.toBeVisible(); await expect(toggle).toBeFocused();
     await toggle.click(); await menu.locator('[data-menu-close]').click();
     await expect(menu).not.toBeVisible(); await expect(toggle).toBeFocused();
@@ -65,5 +68,33 @@ for (const locale of ['en', 'zh', 'ar']) {
     await expect(page.locator('.header-inner > .button')).toBeVisible();
     await expect(page.locator('.header-inner > .language-switcher')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
+// MENU-08 / LANG-13: dismiss the inline list before dismissing its parent menu.
+for (const locale of ['en', 'ar']) {
+  test(`nested Escape ${locale}`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(locale === 'en' ? '/' : '/ar/');
+    const toggle = page.locator('[data-menu-toggle]');
+    const menu = page.locator('#mobile-navigation');
+    const languages = menu.locator('.mobile-languages');
+    const summary = languages.locator('summary');
+    await toggle.click();
+    await summary.click();
+    await languages.locator('a[lang="ar"]').focus();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(languages).not.toHaveAttribute('open', '');
+    await expect(summary).toBeFocused();
+    await expect(page.locator('main')).toHaveAttribute('inert', '');
+    await expect(page.locator('body')).toHaveCSS('overflow', 'hidden');
+    await page.keyboard.press('Escape');
+    await expect(menu).not.toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toBeFocused();
+    await expect(page.locator('main')).not.toHaveAttribute('inert', '');
+    await expect(page.locator('body')).not.toHaveCSS('overflow', 'hidden');
   });
 }
