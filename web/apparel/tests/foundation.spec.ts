@@ -2,19 +2,26 @@
 import { test, expect } from '@playwright/test';
 import products from '../src/data/products.json' with { type: 'json' };
 import identities from './card-identities.json' with { type: 'json' };
+import en from '../src/i18n/en.json' with { type: 'json' };
+import zh from '../src/i18n/zh.json' with { type: 'json' };
 const cardTitle = (locale: string, sku: string) => identities.find(identity => identity.slug === sku)!.localized_titles[locale as keyof typeof identities[0]['localized_titles']];
 const slug = products[0].slug;
 test('contact prefill and language switching retain path/query/fragment', async ({ page }) => {
   await page.goto(`/contact/?product=${slug}&type=sample&subject=fabric-photos#rfq-form`);
-  await expect(page.locator('textarea')).toHaveValue(`${slug} (${products[0].style_codes.join(' / ')})\nsample\nfabric-photos`);
-  await page.locator('[data-menu-toggle]').click();
-  await page.locator('.mobile-languages summary').click();
-  await page.locator('.mobile-languages [data-locale-link][lang="zh"]').click();
+  await expect(page.locator('textarea')).toHaveValue(`${slug} (${products[0].style_codes.join(' / ')})\n${en.requestSample}\nfabric-photos`);
+  const mobile = await page.locator('[data-menu-toggle]').isVisible();
+  if (mobile) await page.locator('[data-menu-toggle]').click();
+  const switcher = page.locator(mobile ? '.mobile-languages' : '.language-switcher');
+  await switcher.locator('summary').click();
+  await switcher.locator('[data-locale-link][lang="zh"]').click();
   expect(new URL(page.url()).pathname).toBe('/zh/contact/');
   expect(new URL(page.url()).searchParams.get('product')).toBe(slug);
+  expect(new URL(page.url()).searchParams.get('type')).toBe('sample');
+  expect(new URL(page.url()).searchParams.get('subject')).toBe('fabric-photos');
+  await expect(page.locator('[name="product_slug"]')).toHaveValue(slug);
   expect(new URL(page.url()).hash).toBe('#rfq-form');
   await expect(page.locator('[name="locale"]')).toHaveValue('zh');
-  await expect(page.locator('textarea')).toHaveValue(`${slug} (${products[0].style_codes.join(' / ')})\nsample\nfabric-photos`);
+  await expect(page.locator('textarea')).toHaveValue(`${slug} (${products[0].style_codes.join(' / ')})\n${zh.requestSample}\nfabric-photos`);
 });
 test('invalid query and obsolete fragment query are ignored; sent status renders', async ({ page }) => {
   await page.goto('/contact/?product=unknown&type=bad&subject=%3Cscript%3E#rfq-form?subject=fabric-photos');
