@@ -1,11 +1,13 @@
 /** Pure deploy selection contract; called by copy-images and CI. No IO, embedded review rows or private paths. */
-import { basename } from 'node:path';
+import { basename, dirname } from 'node:path';
 import { imageBase, publicId } from './src/data/imagery';
 export interface Review { slug: string; role: string; path: string; sha256: string; w: number; h: number; pass: boolean }
 export interface DigitalSource { key: string; slug: string; role: string; source: string; src: string; sha256: string; wave: string; acceptance: string; backReference?: string; reviewEvidence?: string }
-interface Input { digital?: DigitalSource[]; slots: Record<string, Record<string, string>>; review: Review[]; provenance: Record<string, { rights: string }>; published: string[] }
+export interface DetailSource { slug: string; role: 'fabric' | 'structure'; colour: string; source: string; src: string; sha256: string; acceptance: string; sourceSha256: string }
+export interface DetailLedger { style_slug: string; source_slug: string; colour: string; logical_slot: string; asset_path: string; asset_sha256: string; source_sha256: string; accepted_evidence: string }
+interface Input { detailLedger?: DetailLedger[]; details?: DetailSource[]; digital?: DigitalSource[]; slots: Record<string, Record<string, string>>; review: Review[]; provenance: Record<string, { rights: string }>; published: string[] }
 export interface Approved { slug: string; role: string; source: string; src: string; sha256: string; w: number; h: number; id?: string; rights?: string }
-export function imagePlan({ slots, review, provenance, published, digital = [] }: Input) {
+export function imagePlan({ slots, review, provenance, published, digital = [], details = [], detailLedger = [] }: Input) {
   const eligible = review.filter(row => row.pass === true && row.role !== 'dh-legacy' && !row.path.split(/[\\/]/).includes('dh-legacy') && basename(row.path) !== 'model_front.png');
   const checked = (row: Review, source: string, src: string): Approved => {
     if (!/^[a-z0-9_-]+\/[a-z0-9_-]+\.png$/.test(source) || !row.path.replaceAll('\\', '/').endsWith(`/${source}`) || !/^[a-f0-9]{64}$/.test(row.sha256) || !Number.isInteger(row.w) || !Number.isInteger(row.h) || row.w <= 0 || row.h <= 0) throw Error('Invalid reviewed source');
@@ -34,7 +36,13 @@ export function imagePlan({ slots, review, provenance, published, digital = [] }
     return row;
   });
   if (new Set(models.map(row => row.src)).size !== models.length) throw Error('Duplicate digital model view');
-  return { slots: illustrations, slotReviews, packshots, digital: models };
+  const detailImages = details.map(row => {
+    assertDetailLedger(row, detailLedger);
+    if (!published.includes(row.slug) || !/^[a-z0-9-]+$/.test(row.slug) || !['fabric', 'structure'].includes(row.role) || !row.colour || publicId(basename(row.source) === 'final.png' ? basename(dirname(row.source)) + '.png' : basename(row.source)) !== `${row.slug}--${row.role}.png` || row.src !== `/img/${row.slug}/${row.role}.webp` || !/^[a-f0-9]{64}$/.test(row.sha256) || !/^[a-f0-9]{64}$/.test(row.sourceSha256) || row.source.startsWith('/') || row.source.split(/[\\/]/).some(p => p === '..') || !row.source.endsWith('.png') || !row.acceptance) throw Error('Invalid detail source or catalog identity');
+    return row;
+  });
+  if (new Set([...models, ...detailImages].map(row => row.src)).size !== models.length + detailImages.length) throw Error('Duplicate image view');
+  return { slots: illustrations, slotReviews, packshots, digital: models, details: detailImages };
 }
 
 /** Packaging is the sole publication writer; omitted reviews remove the entire picture, never only src. */
@@ -64,4 +72,25 @@ export function assertDigitalDigest(image: DigitalSource, actual: string): void 
 export function assertSingleRelease(report: string, key: string, sha: string): void {
   if (!/^结论：PASS。/m.test(report) || !report.includes(`record：${key}；`) ||
       !report.split('\n').some((line, i, lines) => line.endsWith('/final.png') && lines[i + 1] === `SHA256：${sha}`)) throw Error(`Single-image release not PASS: ${key}`);
+}
+
+/** Detail publication uses the exact independently accepted bytes, never a similarly named file. */
+export function assertDetailLedger(image: DetailSource, ledger: DetailLedger[]): DetailLedger {
+  const matches = ledger.filter(row => publicId(row.style_slug) === image.slug && row.logical_slot === `pdp.${image.role}`);
+  if (matches.length !== 1) throw Error(`Missing or ambiguous detail ledger: ${image.slug}`);
+  const row = matches[0];
+  const relative = (path: string) => path.split('/work/apparel-b2b/')[1];
+  if (publicId(row.source_slug) !== image.slug || row.colour !== image.colour || row.asset_sha256 !== image.sha256 || row.source_sha256 !== image.sourceSha256 || relative(row.asset_path) !== image.source || relative(row.accepted_evidence) !== image.acceptance || !/^[a-f0-9]{64}$/.test(row.asset_sha256) || !/^[a-f0-9]{64}$/.test(row.source_sha256)) throw Error(`Detail ledger binding mismatch: ${image.slug}`);
+  return row;
+}
+export function assertDetailDigest(image: DetailSource, actual: string, ledger: DetailLedger[]): void {
+  const accepted = assertDetailLedger(image, ledger);
+  if (actual !== accepted.asset_sha256) throw Error(`Detail source changed from ledger: ${image.slug}/${image.role}`);
+}
+
+/** G/C native-pixel gate shared by accepted G packaging and ordinary C fallback copying. */
+export function imageDimensions(role: string | undefined, metadata: {width?: number; height?: number}) {
+  if (!metadata.width || !metadata.height) throw Error('Missing image geometry');
+  if (['fabric','structure','print'].includes(role || '') && (metadata.width !== 1200 || metadata.height !== 1200)) throw Error('G/C detail requires native 1200×1200 pixels');
+  return {w:metadata.width, h:metadata.height};
 }

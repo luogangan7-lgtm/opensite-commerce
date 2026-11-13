@@ -90,8 +90,8 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   await turn.click();
   await expect(page.locator('[data-gallery-main]')).toHaveAttribute('alt', /侧转/);
   await expect(page.locator('[data-digital-label]')).toHaveText('数字模特示意');
-  await page.locator('.gallery-thumbs a').last().click();
-  await expect(page.locator('[data-digital-label]')).toBeEmpty();
+  await page.locator('.gallery-thumbs:not([hidden]) a[data-role="front"]').click();
+  await expect(page.locator('[data-digital-label]')).toHaveText('数字模特示意');
   await page.goto('/zh/collections/');
   await expect(page.locator('.tile img').first()).toHaveAttribute('alt', /数字模特示意/);
 });
