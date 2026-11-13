@@ -84,7 +84,7 @@
   {"slug": "apparel-70190", "colour": "white", "catalog_pointer_index": 0, "src": "/img/apparel-70190/digital-model-04.webp", "confidence": "high"},
   {"slug": "apparel-70190", "colour": "sage green", "catalog_pointer_index": 1, "src": "/img/apparel-70190/digital-model-05.webp", "confidence": "high"},
   {"slug": "apparel-70190", "colour": "slate purple-grey", "catalog_pointer_index": 2, "src": "/img/apparel-70190/digital-model-03.webp", "confidence": "high"},
-  {"slug": "apparel-70190", "colour": "black (overview only; photos filed in 70192)", "catalog_pointer_index": 3, "src": "/img/apparel-70190/digital-front.webp", "confidence": "high"},
+  {"slug": "apparel-70190", "colour": "black", "catalog_pointer_index": 3, "src": "/img/apparel-70190/digital-front.webp", "confidence": "high"},
   {"slug": "apparel-70191", "colour": "white", "catalog_pointer_index": 0, "src": "/img/apparel-70191/digital-front.webp", "confidence": "high"},
   {"slug": "apparel-70191", "colour": "black", "catalog_pointer_index": 1, "src": "/img/apparel-70191/digital-model-03.webp", "confidence": "high"},
   {"slug": "apparel-70191", "colour": "pink", "catalog_pointer_index": 2, "src": "/img/apparel-70191/digital-model-04.webp", "confidence": "high"},

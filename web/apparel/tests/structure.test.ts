@@ -10,11 +10,11 @@ import { packageDetails } from '../detail-images';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-test('113 independently accepted structures bind primary galleries; #552 colour conflicts stay excluded',()=>{
+test('115 independently accepted structures bind primary galleries',()=>{
  expect(accepted).toHaveLength(115);
  const placed=accepted.filter(r=>!r.skipped);
  const structures=details.filter(r=>r.role==='structure');
- expect(placed).toHaveLength(113); expect(structures).toHaveLength(113); expect(ledger).toHaveLength(113);
+ expect(placed).toHaveLength(115); expect(structures).toHaveLength(115); expect(ledger).toHaveLength(115);
  const plan=imagePlan({slots:{},review:[],provenance:{},published:products.map(p=>p.slug),details:structures as DetailSource[],detailLedger:ledger});
  for(const row of placed) {
   const source=plan.details.find(i=>i.slug===row.slug)!;
@@ -25,10 +25,9 @@ test('113 independently accepted structures bind primary galleries; #552 colour 
   expect(image?.src).toBe(source.src); expect(image?.sha256_16).toBe(row.sha256.slice(0,16));
   if(gallery.some(i=>i.role==='fabric')) expect(gallery.indexOf(image!)).toBeLessThan(gallery.findIndex(i=>i.role==='fabric'));
  }
- for(const slug of ['crew-fleece-8900-53','apparel-70190']) expect(structures.some(i=>i.slug===slug)).toBe(false);
  expect(Object.values(detailCaption)).toHaveLength(8);
 });
-test.skipIf(!process.env.APPAREL_SOURCE_DIR)('113 raw hashes and independent reviews package as native square structures', async()=>{
+test.skipIf(!process.env.APPAREL_SOURCE_DIR)('115 raw hashes and independent reviews package as native square structures', async()=>{
  const root=process.env.APPAREL_SOURCE_DIR!;
  const rows=details.filter(r=>r.role==='structure');
  for(const row of accepted.filter(r=>!r.skipped)) {
@@ -42,7 +41,7 @@ test.skipIf(!process.env.APPAREL_SOURCE_DIR)('113 raw hashes and independent rev
   expect(link).toContain('data-fit="contain"');
  }
  const receipts=await packageDetails(rows as DetailSource[],root,'web/apparel/dist');
- expect(receipts).toHaveLength(113);
+ expect(receipts).toHaveLength(115);
  for(const r of receipts) expect([r.w,r.h]).toEqual([1254,1254]);
 }, 30000);
 

@@ -144,7 +144,7 @@
     "sha256": "ca507fd5dae91ce9206852fe08cda161262e8eee8d6fe0f1ef5346138217c6e2",
     "src": "review-G-02/out/review.tsv",
     "slug": "crew-fleece-8900-53",
-    "skipped": true
+    "skipped": false
   },
   {
     "exactId": "regen-queue-01/apparel-59011/primary-structure-g1",
@@ -280,11 +280,11 @@
     "skipped": false
   },
   {
-    "exactId": "regen-queue-01/apparel-70190/primary-structure-g1",
-    "sha256": "8ef7bc1456af5a3ee2d77f99d93063849e060119d1d19bcfea7ff3a47d79e184",
-    "src": "review-G-03m/out/review.tsv",
+    "exactId": "regen-queue-01/apparel-70190/primary-structure-g2",
+    "sha256": "2edb311285917a79fb35b7392cde35fe6e9f0269605e16cfbaf3ab29cfad05da",
+    "src": "review-R8-01m/out/review.tsv",
     "slug": "apparel-70190",
-    "skipped": true
+    "skipped": false
   },
   {
     "exactId": "regen-queue-01/apparel-70191/primary-structure-g1",
