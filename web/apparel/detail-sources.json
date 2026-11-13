@@ -798,5 +798,1085 @@
     "sha256": "1a84ea30b24994657a089d6af1ee0e64a86bb88994044282be1921c0f966db49",
     "acceptance": "fleet-20261104/detail-20261110/d24b/items/aston-hoodie-69018--fabric/evidence.json",
     "sourceSha256": "ee7462b4ac5149114bdd9ba59bc5e8edced7f6073f89a86e330f8d6a5983b05e"
+  },
+  {
+    "slug": "crew-fleece-8900-31",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-31--structure.png",
+    "src": "/img/crew-fleece-8900-31/structure.webp",
+    "sha256": "fcdd00497715c86d52ee05f3504b526fa9da06743b2b49727b3b7fca03fa0a1a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "cbfe4ad2773022dcc4cce99d5805616e21c4daaa93d78420b74132738b021190"
+  },
+  {
+    "slug": "crew-fleece-8900-32",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-32--structure.png",
+    "src": "/img/crew-fleece-8900-32/structure.webp",
+    "sha256": "d57bd5a136f45823ac7b0725043e87f3792d6a76659b9f73e8d63ca72600cf24",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "47ba9a60703753e04b185a00dbb42dd33a07408533fa8d6b0d774811c37df705"
+  },
+  {
+    "slug": "crew-fleece-8900-33",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-33--structure.png",
+    "src": "/img/crew-fleece-8900-33/structure.webp",
+    "sha256": "af702739d4712899dda3b2df1a72713c5cd0397712116ae51e49ea46d9b2b675",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "ef5ab8bbc70dff1e2ea6300f0ce807a8366eff4edbf913d2bb3993ab6c4e6ab4"
+  },
+  {
+    "slug": "crew-fleece-8900-34",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-34--structure.png",
+    "src": "/img/crew-fleece-8900-34/structure.webp",
+    "sha256": "0a20d4950920176c6cbe5129f75a0b5e5260666daef64f2c74e8aee2bdf7934a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "6305758ae8925c48183bc1a73f1ecba33b2242a13c849f4bdb5b2ad5ab7b758e"
+  },
+  {
+    "slug": "crew-fleece-8900-35",
+    "role": "structure",
+    "colour": "sage/olive grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-35--structure.png",
+    "src": "/img/crew-fleece-8900-35/structure.webp",
+    "sha256": "32ca1b37177bf6ed85268219720443b71798eeb180b378516200b2f8b1a131d5",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "949ada50f3db70e0e5bbc6504c359a1266ad5ec7313c1c8dd023633683afb939"
+  },
+  {
+    "slug": "crew-fleece-8900-36",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-36--structure.png",
+    "src": "/img/crew-fleece-8900-36/structure.webp",
+    "sha256": "fd17a15c818a750a9a1569da19470211a766bbea1f633f2eff23b920d079fc6f",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "28474bf50b7a6393a0ab5992a8e8a107b8d93cc4b46a1066a1d5b2509d9bb258"
+  },
+  {
+    "slug": "crew-fleece-8900-37",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-37--structure.png",
+    "src": "/img/crew-fleece-8900-37/structure.webp",
+    "sha256": "2911b6639b5de40e87bc2d13267f0c1ec8417bf102dd64168cfb92862e512117",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "df85fe40ea8c72dce4832f1f5495828dbdafbdc20bc9a895007bc2f5bf71ccdd"
+  },
+  {
+    "slug": "crew-fleece-8900-38",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-38--structure.png",
+    "src": "/img/crew-fleece-8900-38/structure.webp",
+    "sha256": "dc2eabfa41f10627f394a015fef9e8c342f40844efbeba8979166766629f8980",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "4563809293e79c949433b82b2f1945e20aaaa60242dae7e77ed64b4bd2296e9d"
+  },
+  {
+    "slug": "crew-fleece-8900-39",
+    "role": "structure",
+    "colour": "sage/olive grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-39--structure.png",
+    "src": "/img/crew-fleece-8900-39/structure.webp",
+    "sha256": "afea163f3b0a19234dc5a155ad4a86da3d81d40a30fa12aedbe91005745f05c0",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "2d81a72d90bbb8bedb2c518deabf309df4b0b05649902b40edced3582bfd36df"
+  },
+  {
+    "slug": "crew-fleece-8900-40",
+    "role": "structure",
+    "colour": "brown",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-40--structure.png",
+    "src": "/img/crew-fleece-8900-40/structure.webp",
+    "sha256": "aab48cf9e4f223dc5f1d18e6a6cfa03cbe666279ccfa77e053e1e724cf7eb0e0",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "636de26d0ee4f2244549cad7829eca20091913a94ac3dc045d0c0591db33d64c"
+  },
+  {
+    "slug": "crew-fleece-8900-41",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-41--structure.png",
+    "src": "/img/crew-fleece-8900-41/structure.webp",
+    "sha256": "8002fadf2e2ce4dac279612b614cb732e31add700a1f6ccaa5092ba65e45ccee",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "9ad7856d8fdac06c6cfec028e18f9aff423e0d7b1789f45e6d96ea15fe90c17f"
+  },
+  {
+    "slug": "crew-fleece-8900-42",
+    "role": "structure",
+    "colour": "red",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-42--structure.png",
+    "src": "/img/crew-fleece-8900-42/structure.webp",
+    "sha256": "ef8c1bd09b02398a041f0bca7cd537f331c87f9c51c1631c955d53d36f6344df",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "26c6850300e84d5f5bb226de6eb75db26d979405adc566f24118036620913a7d"
+  },
+  {
+    "slug": "crew-fleece-8900-43",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-43--structure.png",
+    "src": "/img/crew-fleece-8900-43/structure.webp",
+    "sha256": "8b5b64bbf1b3f0f52c344e7b6c3bb2be8a82c08f109ca9e162b899c1a5c33560",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "0bbb9fbbd2bd2488daadfa17d3f733804fb29950a40b76ca718c3249d10d160a"
+  },
+  {
+    "slug": "crew-fleece-8900-44",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-44--structure.png",
+    "src": "/img/crew-fleece-8900-44/structure.webp",
+    "sha256": "747e30233cf8820f337f7dadbc1a681fad928965f4fa8cd333134787c736a8f0",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "9f4a6fc63c22d59725114e8a75a5508935d36996ac3fc146d214ff1a62e0920d"
+  },
+  {
+    "slug": "crew-fleece-8900-45",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-45--structure.png",
+    "src": "/img/crew-fleece-8900-45/structure.webp",
+    "sha256": "a93a83082742f24c117bc52d0e658833000c1fdc94cd646dbc459af3c26878a5",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-01/out/review.tsv",
+    "sourceSha256": "8c6c4b8fa22d5cbd662a23f00566e7d78f32f0723e27c10b95c45a1f96e6d47b"
+  },
+  {
+    "slug": "crew-fleece-8900-46",
+    "role": "structure",
+    "colour": "sage/olive grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-46--structure.png",
+    "src": "/img/crew-fleece-8900-46/structure.webp",
+    "sha256": "6e969cd93e371facfb6edd7e98b84699e68daddbbc47f2a6f4f2c6747cc37000",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "a54a6867d7c550ae44a2d4f6a3002d4c4b2db882a54a117c74c75099bc18d6f5"
+  },
+  {
+    "slug": "crew-fleece-8900-47",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-47--structure.png",
+    "src": "/img/crew-fleece-8900-47/structure.webp",
+    "sha256": "0060416e0c29e48baedd6c9fb771fec68f7137c9c1adb73aba16d6872db8ee49",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "27e3e2db1fdd59f0e6eafd8a7b6c84768b4516b5294218789496e883391c2837"
+  },
+  {
+    "slug": "crew-fleece-8900-48",
+    "role": "structure",
+    "colour": "red",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-48--structure.png",
+    "src": "/img/crew-fleece-8900-48/structure.webp",
+    "sha256": "aef7dd29b3f13e566efdc51f1bccb550522d31e57ecb546405d40008632f968d",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "46e5789e614b484b35379ec36278b4189314cdb99828b9ca8ec423ef203d809e"
+  },
+  {
+    "slug": "crew-fleece-8900-49",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-49--structure.png",
+    "src": "/img/crew-fleece-8900-49/structure.webp",
+    "sha256": "543ff86965a1f98bde0cc63dcd704495be5d61884b26d1873712f96a9c278b90",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "21ce08922fee1a777c463004c9469e1fdb08beb2c274d6d991a5a870fb898874"
+  },
+  {
+    "slug": "crew-fleece-8900-50",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/crew-fleece-8900-50--structure.png",
+    "src": "/img/crew-fleece-8900-50/structure.webp",
+    "sha256": "7daea45d97ff1a812bbe741b24cca4cdb7f84dada1d0a11520242da7c910ce19",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "9bd1e1c223a80ae0c7e2c43ddec101e137e62be616d4a910e6f3481f281070af"
+  },
+  {
+    "slug": "apparel-59011",
+    "role": "structure",
+    "colour": "dark green",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-59011--structure.png",
+    "src": "/img/apparel-59011/structure.webp",
+    "sha256": "698ad06e97c3dbe9a9b7d4ef126b2a44b8a34f6f4696818855ad84468c2535e0",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "f9a03d00dc0ead3313f7b62b0d2db895ef83fde195eb803e0dab786c6b456a23"
+  },
+  {
+    "slug": "apparel-59043",
+    "role": "structure",
+    "colour": "dark green",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-59043--structure.png",
+    "src": "/img/apparel-59043/structure.webp",
+    "sha256": "578a7fc8fec8efdc3fb64ec1c20fb31c2e84e57ef3c8fbbdd31c1089a660c25b",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "eefb28712b4f5e3637b3284df11f5b2a3812270d593e7041402309f2a7db290b"
+  },
+  {
+    "slug": "apparel-59048",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-59048--structure.png",
+    "src": "/img/apparel-59048/structure.webp",
+    "sha256": "c630899e943264c42fb682d4fa17e999090220932efd573a4a79b45e03a13442",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "3755cfd027677ac0666407ab9f9d9d3368dc85f978d89e76e99376a069736d56"
+  },
+  {
+    "slug": "apparel-70108",
+    "role": "structure",
+    "colour": "brown",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70108--structure.png",
+    "src": "/img/apparel-70108/structure.webp",
+    "sha256": "b20f612f301372c52776b6e85d6e65bfebad60c97b0716d510ddc186297b8d86",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "c8f59f78c8f6993884e8065637ce3a67eb344f01a9f6ba4b8f56e0ddd4189846"
+  },
+  {
+    "slug": "apparel-70159",
+    "role": "structure",
+    "colour": "brown",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70159--structure.png",
+    "src": "/img/apparel-70159/structure.webp",
+    "sha256": "a91df1760b8db89dfa7bad0463489c95ad4707a4d087cd5b4dc712cf11584070",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "45991f8eacdb80e127d79b9e338ec1bf8cf2b38693586a86fbe6d679a899a13f"
+  },
+  {
+    "slug": "apparel-70171",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70171--structure.png",
+    "src": "/img/apparel-70171/structure.webp",
+    "sha256": "f822026587b174e8d45fc72b9a9b8a8c28912c800275bfb3dafadd67548d070e",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "d14a4edfd46bb7faeb10ac0c76446a85c65154f9c123689d4e49793213ccc2c8"
+  },
+  {
+    "slug": "apparel-70172",
+    "role": "structure",
+    "colour": "brown",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70172--structure.png",
+    "src": "/img/apparel-70172/structure.webp",
+    "sha256": "e9290e6e4c45d74d0e77d0029badeca190107b66f0d26c804a5fa0f249544fd6",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "5e1a736256ddd64afb85bf563769201e7900c2303e9685795cf5563d89ab38d9"
+  },
+  {
+    "slug": "apparel-70173",
+    "role": "structure",
+    "colour": "brown",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70173--structure.png",
+    "src": "/img/apparel-70173/structure.webp",
+    "sha256": "d73ff8632433bf39bea829e6d3ce9cdbcbca5055523495e9d7ab82551230397e",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "6f2591074380f2f32ce4d05e604ec84c5070bb025bb5318c00b924548f1274cc"
+  },
+  {
+    "slug": "apparel-70174",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70174--structure.png",
+    "src": "/img/apparel-70174/structure.webp",
+    "sha256": "162b5e8e2d1a9223067d72088200d08a7eab8e89d50f8b6b996fa2d5c99cb9b2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-02/out/review.tsv",
+    "sourceSha256": "1e1189ab8a2a6e9d8d11c7c9e9e98e07af1f84ba88028cdb862da9b0efcee34e"
+  },
+  {
+    "slug": "apparel-70174-x-small-logo",
+    "role": "structure",
+    "colour": "slate grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70174-x-small-logo--structure.png",
+    "src": "/img/apparel-70174-x-small-logo/structure.webp",
+    "sha256": "de1602df0a827fa4f40a531723718edc7b0401940455fc5af413d0920a6f65c8",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "eb6b676fdbd08f991814bd91d0d9237504eeb19786c462e137103dfc06229a4c"
+  },
+  {
+    "slug": "apparel-70175",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70175--structure.png",
+    "src": "/img/apparel-70175/structure.webp",
+    "sha256": "885068c5bd7c4f7cc4c18999586fdbf74988dbab3bbd956c1e5886f3ec90b903",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "3d264a9f767ad5bac127788dfbc239e8357a0bbf399776015a7ff70ee8d2064c"
+  },
+  {
+    "slug": "apparel-70176",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70176--structure.png",
+    "src": "/img/apparel-70176/structure.webp",
+    "sha256": "413e6a0652d83bcf7928ee8a25da93ee40e7246dca3cd11508b0f2aa14e38b43",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "60ee1d739f5fd2b521afda37477b393804fefddd3d24e94757196ee807d8001a"
+  },
+  {
+    "slug": "apparel-70178",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70178--structure.png",
+    "src": "/img/apparel-70178/structure.webp",
+    "sha256": "53bbf28bfd268fd43fc08867cd4f03a0b0534565394294eeeebf96218a1b7c5a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "7ca0ff22f9bd8091880c5cb152d6b024c7bafb87402a0bb3aac718f55fa4febf"
+  },
+  {
+    "slug": "apparel-70178-x-loropiana-crest",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70178-x-loropiana-crest--structure.png",
+    "src": "/img/apparel-70178-x-loropiana-crest/structure.webp",
+    "sha256": "766efac1506e24efb726dd5b9389f264ce73fe602cb958348f473f4f1a701618",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "a2ab73e658a7cfe46ff4f12138e5819306977f92acd3cfa78aeb0821b29d9676"
+  },
+  {
+    "slug": "apparel-70179",
+    "role": "structure",
+    "colour": "pink",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70179--structure.png",
+    "src": "/img/apparel-70179/structure.webp",
+    "sha256": "aa36bccaa1e451a7d95db22c7f55d67937e3b43817d605a60f89ab488c9e0c25",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "36053fc1125eac3f5be62a23dcfc9dbe9ff12999eb2d6985f59899c179b0efe9"
+  },
+  {
+    "slug": "apparel-70185",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70185--structure.png",
+    "src": "/img/apparel-70185/structure.webp",
+    "sha256": "44265535c313c17cc5eda6f4750c72347b55eb02db84f9cf4bce863557e64776",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "f2886b9b89b863d300a75a5dcdab4ebca780adbd72381dc05579f5a6eebc6147"
+  },
+  {
+    "slug": "apparel-70186",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70186--structure.png",
+    "src": "/img/apparel-70186/structure.webp",
+    "sha256": "19c04334e3b1300b901c32bfaf8cd5157d3733b481c79285cab6484dd4b8bf43",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "4e206f59c7700994406dc135c76bc6e548d1ec29d0305fc17dfaca87b3e5f415"
+  },
+  {
+    "slug": "apparel-70188",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70188--structure.png",
+    "src": "/img/apparel-70188/structure.webp",
+    "sha256": "3976015d251c1bb1e5efa6607d283945e27affee9ace58dc8ca068540c8e7ccd",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "8dd3c49c4a649d8c40a8674e565cb76acd0aa21601e6aab887115001cb951b62"
+  },
+  {
+    "slug": "apparel-70189",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70189--structure.png",
+    "src": "/img/apparel-70189/structure.webp",
+    "sha256": "7445ba4d9aa9d9d9383325b7c49184b6658bcd77667d8012663eeeba934ac892",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "b13954a28ab1efef13d9a89ea11719df5338bc8a933b0fca7bf9d3e71ae26e1e"
+  },
+  {
+    "slug": "apparel-70191",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70191--structure.png",
+    "src": "/img/apparel-70191/structure.webp",
+    "sha256": "8de4a44e1c1a725d4a666a45e8f826a86c1ed7aa74dd3dceb61a3aaefe91a53a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "4a7de13e815d33a1730206eb8bc819a117c4b1fcd02bc65da9806501867d6177"
+  },
+  {
+    "slug": "apparel-70192",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70192--structure.png",
+    "src": "/img/apparel-70192/structure.webp",
+    "sha256": "8c5bab7339adcf3fa22bb1f9a1b869d67263478ca8916f04b27016b25283cd3e",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "9765f60fffde6370d6b94a9ba7e2422223b99bce565d62aa1fbd7de92914f915"
+  },
+  {
+    "slug": "apparel-70193",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-70193--structure.png",
+    "src": "/img/apparel-70193/structure.webp",
+    "sha256": "c935b5459a67691c474cc6dbf85556a649f5c9c45c8bcef919b0de78e32b7652",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-03m/out/review.tsv",
+    "sourceSha256": "0362b0e17dbd204ebc9fe0fe78d8df79ee5448eaf9666b9ea15b6681f7dd00d2"
+  },
+  {
+    "slug": "apparel-7201",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-7201--structure.png",
+    "src": "/img/apparel-7201/structure.webp",
+    "sha256": "964b68663ae5405d271afb4e1e8cc480d1a7d79e0173600f102a0977cbf589f2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "e5d65b8d4991da046bc7ebe75977156fb8c344e47b3fcfa5247ba4237fb069bf"
+  },
+  {
+    "slug": "apparel-7202",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-7202--structure.png",
+    "src": "/img/apparel-7202/structure.webp",
+    "sha256": "e1d31039be32c16902c1f47369cc7ab5a7632df5d38a02c7650f33304de9ac02",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "ad5603b0c1b29e89b08070dbbdbc116c5f34caf420a63630f192d9ca03da5ad8"
+  },
+  {
+    "slug": "apparel-7203",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-7203--structure.png",
+    "src": "/img/apparel-7203/structure.webp",
+    "sha256": "92edf3f9ccd5bfe15a373d11fdb67fd07e26e1c84778073f860b64b836367c82",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "5c03ba8fdfed0d529e7ba4c239232fe701a55ba3fdcaf06d3638585fedf8308a"
+  },
+  {
+    "slug": "apparel-7208",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-7208--structure.png",
+    "src": "/img/apparel-7208/structure.webp",
+    "sha256": "5f7257ad742a7b4536606488a197361523625aec4c7ca8af9b82a2283f81bcb2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "48d0194f912082a56672e7062420e25b4ff3987d7afcba7d348cad7014f0abf1"
+  },
+  {
+    "slug": "apparel-7210",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-7210--structure.png",
+    "src": "/img/apparel-7210/structure.webp",
+    "sha256": "7d8057c43cf420f72175fc11ca38099311aac1bbd525bf076b9b6e388cffc2b6",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "9a62b1afd4c4f5afa66d26ded77325f7de45f3fa7f75f5a6c5570d01b077d940"
+  },
+  {
+    "slug": "apparel-7213",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-7213--structure.png",
+    "src": "/img/apparel-7213/structure.webp",
+    "sha256": "425a37d63fec090a0fc8bda8519614b4e58f1b4cd2ddf23cacfa9284033592d4",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "1d15cf3d4c34814bb7aef2ca3360549314f91dd49664ce4ee0ef11f8f92e58f9"
+  },
+  {
+    "slug": "apparel-7214",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-7214--structure.png",
+    "src": "/img/apparel-7214/structure.webp",
+    "sha256": "6988315fa7f49a6e3d756bc931fd9e4772f2b907e87b31f0274789f63dbb6540",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "fbbbfa22bf2ffa245da0cbdd03dfedc3e641e88f368bfcb885f55e7859976bb6"
+  },
+  {
+    "slug": "apparel-7217",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-7217--structure.png",
+    "src": "/img/apparel-7217/structure.webp",
+    "sha256": "f38e0ba4e80eba3b29ebc36c714e5410abd0cf9dabc7c69b34b13402173cd0b3",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "08c1cf3af9cf3a76043afb4cb3aaa048659301edc93ec335a69f93073c66de17"
+  },
+  {
+    "slug": "apparel-7700-38",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-7700-38--structure.png",
+    "src": "/img/apparel-7700-38/structure.webp",
+    "sha256": "0bd5ca73dfef2cadcbb70a60f52f0a6d5cf89ed5ef294e089ab584f1786a44af",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "765940988407874c6461e511f758af2bcc69d381825cd94bd2d0561b4588ee90"
+  },
+  {
+    "slug": "apparel-7700-9",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-7700-9--structure.png",
+    "src": "/img/apparel-7700-9/structure.webp",
+    "sha256": "9f62dc01423ef69dd8d1fe98f197f1cdfb0f441ea0aa3d262cb8d26ed6f2c444",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "98ffabad83dc0df8a5f6a72814e9219f1992f897dface9c8eeda4b26e519fbfc"
+  },
+  {
+    "slug": "apparel-78187",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/apparel-78187--structure.png",
+    "src": "/img/apparel-78187/structure.webp",
+    "sha256": "ef81b9ac60a9f226f7d7ef18ec9b3809a87644ad4035e031ed2c1867d1863d3b",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "65dd0e7a9498c956299176f29fdc9c19a4045566a3b5db0d2d1f746d349b7818"
+  },
+  {
+    "slug": "cotton430-hoodie-58063",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-58063--structure.png",
+    "src": "/img/cotton430-hoodie-58063/structure.webp",
+    "sha256": "094dd0dca1b7251cde7fa24d0a4b0c5dbbe4aa02c90e3e5912b63a98314a22f0",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "e10737216935e27454a5693902ef98cd4f3cc8faa96bb8dd08bdfec4fb06d84d"
+  },
+  {
+    "slug": "cotton430-hoodie-58064",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-58064--structure.png",
+    "src": "/img/cotton430-hoodie-58064/structure.webp",
+    "sha256": "d4bfcc9b60b0a2c5f9da2ac453b50b2e8ce531a18ae5d903ac95e185c8fef93b",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "ad7abe85be630b627e191492ad5bb8887d8a01ec4f3656be7eea63322875a1cf"
+  },
+  {
+    "slug": "cotton430-hoodie-58065",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-58065--structure.png",
+    "src": "/img/cotton430-hoodie-58065/structure.webp",
+    "sha256": "a0a250abb379a1d46245b5046a41eebfefdafade616bc80e7bebb312d3081f93",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "b06150dedab1073393a4b5dde378c75ef70917eca922f959478af6386c45e0a7"
+  },
+  {
+    "slug": "cotton430-hoodie-58066",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-58066--structure.png",
+    "src": "/img/cotton430-hoodie-58066/structure.webp",
+    "sha256": "f53b890e8b261404136bb67984011e862724d1f9f22390327510603f0094c5e8",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-04m/out/review.tsv",
+    "sourceSha256": "6f6afb29791b656fb7949e00f0cf30b43c78ec06571bfa63f456b20876322fb4"
+  },
+  {
+    "slug": "cotton430-hoodie-70046",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-70046--structure.png",
+    "src": "/img/cotton430-hoodie-70046/structure.webp",
+    "sha256": "216a28e7f03a00052f6577f171dbc29e025f47de27999bbb17958021cc92ae89",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "11e7313a71df100572c995ddffe4dbf0706ffe9cd6e3def4e4abe54c7cb1b12d"
+  },
+  {
+    "slug": "cotton430-hoodie-7339",
+    "role": "structure",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-7339--structure.png",
+    "src": "/img/cotton430-hoodie-7339/structure.webp",
+    "sha256": "179436c458e90c02e526b7b2e43e78fb0ad53cdc044b7ae67720fffe219c117a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "586b59c816012c694e1df632d70e37296804df1f383e5109d7773afbc02c48d4"
+  },
+  {
+    "slug": "cotton430-hoodie-8601",
+    "role": "structure",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-8601--structure.png",
+    "src": "/img/cotton430-hoodie-8601/structure.webp",
+    "sha256": "76411bb6481dcff9dad590c62f701a1878e0f65f826809a0bbee8c545a883bab",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "cd9f9b089cbe4f01fcad4dbfd40d8f5deb0666f9010107c13597758d1c029b20"
+  },
+  {
+    "slug": "cotton430-hoodie-8610",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-8610--structure.png",
+    "src": "/img/cotton430-hoodie-8610/structure.webp",
+    "sha256": "23ae0a57d2af608e026382ca20ebe1384d704b9062ce578ffc18e79af4573537",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "ce3be449d8c2a1d304bea5c90b26a38af36f99bf7bb0448b1ffdaae369d54cc9"
+  },
+  {
+    "slug": "cotton430-hoodie-8611",
+    "role": "structure",
+    "colour": "grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-8611--structure.png",
+    "src": "/img/cotton430-hoodie-8611/structure.webp",
+    "sha256": "8bfdace9550a3a8ad901e225eb8bc4d0c9383026af42d2180f704efa6abb862c",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "6db3cffbb0c98ec1ddf53626e1b4ed1cc54063b2d6ad1a601b2600d8bb9725be"
+  },
+  {
+    "slug": "cotton430-hoodie-l8602",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-l8602--structure.png",
+    "src": "/img/cotton430-hoodie-l8602/structure.webp",
+    "sha256": "f7494f0e44af67f1398cfab41b7db503b7e22c4e66cb940f7e97ba78679040a7",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "c0e471f1658c25040bb181228f9703eb86a56e5d0ff300c0305f8beb035da801"
+  },
+  {
+    "slug": "cotton430-hoodie-l8603",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-l8603--structure.png",
+    "src": "/img/cotton430-hoodie-l8603/structure.webp",
+    "sha256": "4e55a7fcb743b92ccc327adb50d4b2ee356a40906fd2a053d6080de3efe8ad41",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "7d5c5692f1b14ce5f8f3de74435ddb73124a84cc246f38b9264d5d1d48a6b2f3"
+  },
+  {
+    "slug": "cotton430-hoodie-l8604",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-l8604--structure.png",
+    "src": "/img/cotton430-hoodie-l8604/structure.webp",
+    "sha256": "0c414f9d59f4f8207debeb7e661a3b09740191610af464c9f9be2b8b906d1c81",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "900dcd4cc257992a8c84bf7201f0a1b087b8609d075f99a2417c928f19c09977"
+  },
+  {
+    "slug": "cotton430-hoodie-l8606",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-l8606--structure.png",
+    "src": "/img/cotton430-hoodie-l8606/structure.webp",
+    "sha256": "e12285815b0068a96252027b1423d852d22b9f7688b3d95f1b39eb0d7fe23eb8",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "a08475f2bb4518ed3be23f985ec3cea82c3247274de129fa92cb6173e32c24e2"
+  },
+  {
+    "slug": "cotton430-hoodie-l8612",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-l8612--structure.png",
+    "src": "/img/cotton430-hoodie-l8612/structure.webp",
+    "sha256": "3902a5d8b2d92c34d3521f0a57953b04e5dcf9326798603c4db74e29ac40b40a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "f7d07cd141df00bc9ab17bd11934e1f25a04bd7cb652590bdc21fd12248923e1"
+  },
+  {
+    "slug": "cotton430-hoodie-l8615",
+    "role": "structure",
+    "colour": "sand/beige",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-l8615--structure.png",
+    "src": "/img/cotton430-hoodie-l8615/structure.webp",
+    "sha256": "43fd3e43be5971b113808909ea527f6564cad9e30231fbff15a72b1df9046529",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "ae502c436f96d056243b0c556244adffd6e5b989cb46084bb79882a2df432418"
+  },
+  {
+    "slug": "cotton430-hoodie-l8705",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/cotton430-hoodie-l8705--structure.png",
+    "src": "/img/cotton430-hoodie-l8705/structure.webp",
+    "sha256": "343c3a71d9f6135f2e5ab6132102d5db82f8baab3c24d2d43cd435d78c3e5832",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "19cdffda6e97b94000df35fac5adc623e7e8a07af495111e431fe8149d0f0127"
+  },
+  {
+    "slug": "hoodie-set-k01-0256-tz2804-7",
+    "role": "structure",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k01-0256-tz2804-7--structure.png",
+    "src": "/img/hoodie-set-k01-0256-tz2804-7/structure.webp",
+    "sha256": "9ce11f671fb11db455899d976de5e2d9970570a7fca89c411564faaf10219882",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "222d9d2d1f3dd3d87f2ca506befed4f36fa8e92b5be344dd21c1ebfbb913f158"
+  },
+  {
+    "slug": "hoodie-set-k01-0256-x-croc",
+    "role": "structure",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k01-0256-x-croc--structure.png",
+    "src": "/img/hoodie-set-k01-0256-x-croc/structure.webp",
+    "sha256": "ffe1ee10b7d91b0756e0c3bbc47ee6b39d9891d4cbf6ca4c996a37e287d33a9e",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "9c41e1814c830c9cc8021a7c8d666a4e564b27523d36edb3dc5939dfe784e7e0"
+  },
+  {
+    "slug": "hoodie-set-k01-0256-tz2804-8",
+    "role": "structure",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k01-0256-tz2804-8--structure.png",
+    "src": "/img/hoodie-set-k01-0256-tz2804-8/structure.webp",
+    "sha256": "0e4d30806f4d2c8d04a065b1377f2438577aa3372992a69bc12f79f53827cf6e",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-05m/out/review.tsv",
+    "sourceSha256": "2ac3cc4798fa63edceecd89d5317f5d3b1c3d4230083ebb53fe6c17dc5fac911"
+  },
+  {
+    "slug": "hoodie-set-k01-0256-tz2800-10",
+    "role": "structure",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k01-0256-tz2800-10--structure.png",
+    "src": "/img/hoodie-set-k01-0256-tz2800-10/structure.webp",
+    "sha256": "3c75db2e41c5adbf61cb20d6c02622c2e61a85686d79ada9228d227dbd6236db",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "c1465ecd9871e7cbd51fe60e845cfdcdd447eb49b78d7e99511bfced8925b750"
+  },
+  {
+    "slug": "hoodie-set-k01-0256",
+    "role": "structure",
+    "colour": "off-white/light grey (unclear vs 18)",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k01-0256--structure.png",
+    "src": "/img/hoodie-set-k01-0256/structure.webp",
+    "sha256": "8c013decbcec414667d982fafcde37c8ac52154ee0c01c75440e01767c19f09d",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "42af363ac632a53e2fffb1fcca31b7d72bb385cbfd494f9e90b553c850016929"
+  },
+  {
+    "slug": "hoodie-set-k02",
+    "role": "structure",
+    "colour": "off-white/very light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k02--structure.png",
+    "src": "/img/hoodie-set-k02/structure.webp",
+    "sha256": "3413cb5efcf80557dcfb878ca31ab1f7e86315297f23e715b67612ba7ecbc952",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "9b82589a1130cb8fe3f4c79a46874b6297bdad3f0012f108cdbc2fc4a8b6a931"
+  },
+  {
+    "slug": "hoodie-set-k03",
+    "role": "structure",
+    "colour": "white/cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k03--structure.png",
+    "src": "/img/hoodie-set-k03/structure.webp",
+    "sha256": "7c112c9b82dbd5c643d363712cef4d527c0871d3bef62087c40ff0a4efbddbbd",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "34ad247f30d8a2e2cafb2ba85aef26e8cfd4c6d67514e78b923a32f109c6abed"
+  },
+  {
+    "slug": "hoodie-set-k04",
+    "role": "structure",
+    "colour": "white/cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k04--structure.png",
+    "src": "/img/hoodie-set-k04/structure.webp",
+    "sha256": "ca47bf8823ec7d69fb38abb78177d2c5e955df602cbce3f87cbc5114d72da7e5",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "c91dd0efd2d228a527f93d03aedb97d2a86d425680ddbf25e9a3663996f9a12d"
+  },
+  {
+    "slug": "hoodie-set-k05",
+    "role": "structure",
+    "colour": "white/cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k05--structure.png",
+    "src": "/img/hoodie-set-k05/structure.webp",
+    "sha256": "6324e1b372e26ded0d18f61779d1b33c293a2d0a6c61bd0ec10dd90fcede43ef",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "3d79a375db369e004ebf34f2baab55cb03b9191f8d18719fe2923a1da25f8d2d"
+  },
+  {
+    "slug": "hoodie-set-k06",
+    "role": "structure",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k06--structure.png",
+    "src": "/img/hoodie-set-k06/structure.webp",
+    "sha256": "325181090267d4fee58446413f6a9ebbdfc366c429e53cb79642ec312e6e4710",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "9172a40843c4f5f5e65d26cfcc92b373322da3f24973430beecf7de103e7329b"
+  },
+  {
+    "slug": "hoodie-set-k07",
+    "role": "structure",
+    "colour": "white/cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k07--structure.png",
+    "src": "/img/hoodie-set-k07/structure.webp",
+    "sha256": "d33f5f99b290d2c0997cf71bdf65108f6ebd2aad8ab298b287fa807b346e2bed",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "497b48cd4949eba2fb22db61377d9903d30dd9fed77852918841e3c836eb7e72"
+  },
+  {
+    "slug": "hoodie-set-k08",
+    "role": "structure",
+    "colour": "white/cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k08--structure.png",
+    "src": "/img/hoodie-set-k08/structure.webp",
+    "sha256": "86d50e35666ffe1a2acf0482cf1881968ef666fce0d570cc8d740202389f824a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "621095539e24d80657313e1b085ff5d137562e7f72d7d5b2a5aeaa5ea06a89c3"
+  },
+  {
+    "slug": "hoodie-set-k09",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k09--structure.png",
+    "src": "/img/hoodie-set-k09/structure.webp",
+    "sha256": "11024911ccf796cc076777ae00d857eca8aa6b1b19b1b7ff68b8c7b9042b5a4a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "bdc3493f2e71fd1b9084ce3161efcbda8e2365ca69cffb0c9680ef51db2c3b48"
+  },
+  {
+    "slug": "hoodie-set-k10-1102-dj121",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k10-1102-dj121--structure.png",
+    "src": "/img/hoodie-set-k10-1102-dj121/structure.webp",
+    "sha256": "795597431198d184107e19e070c7df1962c05f035beb7aaf569dbd804bc997a0",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "79ff7878e07161a1a66cab1372342a230da81a53050341c60b7a15eefd0a7f01"
+  },
+  {
+    "slug": "hoodie-set-k10-1102",
+    "role": "structure",
+    "colour": "dark grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k10-1102--structure.png",
+    "src": "/img/hoodie-set-k10-1102/structure.webp",
+    "sha256": "05dfe144fd36e0f5af5565c3dc7da760a3e6c03b0f14b07d15854e14eb731e0a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "2d8cdd53274ffb449769418eabc0515e85f1a5f2058db09884f777f36fe415cc"
+  },
+  {
+    "slug": "hoodie-set-k11-1103",
+    "role": "structure",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k11-1103--structure.png",
+    "src": "/img/hoodie-set-k11-1103/structure.webp",
+    "sha256": "9064a072532f1176917a4b8a7d0b6ff2dd47c08877dece9cc92063704b07c9f2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "72b9dec7add2dffb562d595cff2d8bc0dc641e01ba4f2c10b3c2d19a87b77ffc"
+  },
+  {
+    "slug": "hoodie-set-k12-3900-0253",
+    "role": "structure",
+    "colour": "beige",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k12-3900-0253--structure.png",
+    "src": "/img/hoodie-set-k12-3900-0253/structure.webp",
+    "sha256": "ad1e8b912f62826bb940451bcb5930add2fb1421fc9205578dec32a149a0a789",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "59044f4f9c14b1edfa3e53f0452974665daaaffaef0604686ea09d4df89a0998"
+  },
+  {
+    "slug": "hoodie-set-k12-3900-0252",
+    "role": "structure",
+    "colour": "blue",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k12-3900-0252--structure.png",
+    "src": "/img/hoodie-set-k12-3900-0252/structure.webp",
+    "sha256": "55f2643951d83a5720276235a5412e11cb0eb7cda11880c0c4f3c9551bbde445",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-06m/out/review.tsv",
+    "sourceSha256": "948f7ee00991f66e54e339ec117277202f80dab835d1012b1178cffab1c6d479"
+  },
+  {
+    "slug": "hoodie-set-k12-3900",
+    "role": "structure",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k12-3900--structure.png",
+    "src": "/img/hoodie-set-k12-3900/structure.webp",
+    "sha256": "86937d359791c476b47cbde37929d2b840e9c89faab49ba4fae99a5c2c8be0d7",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "b5e45ae24041afb93056748fc7ac8e068a66def3e85b129db04a3e11297027c3"
+  },
+  {
+    "slug": "hoodie-set-k13-3901",
+    "role": "structure",
+    "colour": "navy",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k13-3901--structure.png",
+    "src": "/img/hoodie-set-k13-3901/structure.webp",
+    "sha256": "46fc2bf7a614d663f877e5912253b9a18f5f31a82cbd9b8fe1674090ad73ca7d",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "c6a9e9d1cad210535ff0b4292558a263034403a0037e9b5d18a2aa9134c5d3de"
+  },
+  {
+    "slug": "hoodie-set-k14-3902",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k14-3902--structure.png",
+    "src": "/img/hoodie-set-k14-3902/structure.webp",
+    "sha256": "693834eea581bbf2c7e0ad6d39643533cad026f2590a37e01f1938dfd1a04328",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "6d627e2dfdc140d46c44cedc3a55f4bad3efc6be2d8b32d84340174729e6d523"
+  },
+  {
+    "slug": "hoodie-set-k15-3903",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k15-3903--structure.png",
+    "src": "/img/hoodie-set-k15-3903/structure.webp",
+    "sha256": "4a31f61334c36a7953c78d46bbfded6805a33145f020b47e3f53095701a1e7ad",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "34e80ec24644c1f66efccc7f282342360d26c5f3d53866ada701e41e28b35375"
+  },
+  {
+    "slug": "hoodie-set-k16-3904",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k16-3904--structure.png",
+    "src": "/img/hoodie-set-k16-3904/structure.webp",
+    "sha256": "6aa0853d7052cb0667fa0f48fe5ee8dfc8bea9a5199d10a7d7ba2e41e916d555",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "92a9ceca8fea502c971e202d5afbc8aa9c636f471f7bd56f146470f884823649"
+  },
+  {
+    "slug": "hoodie-set-k17-3905",
+    "role": "structure",
+    "colour": "navy",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k17-3905--structure.png",
+    "src": "/img/hoodie-set-k17-3905/structure.webp",
+    "sha256": "416f280ba2188f9014332524d91e401a15a96f9113ba80d5d239e3f7148f8032",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "691f627c444c3a88009a6b206cfc8b5d8abf8fa620d8688bdcc75b86f93b373a"
+  },
+  {
+    "slug": "hoodie-set-k18-3906",
+    "role": "structure",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k18-3906--structure.png",
+    "src": "/img/hoodie-set-k18-3906/structure.webp",
+    "sha256": "a171723f86cb9db643a77d8fcfb8b1db2d08309095a8de156783be986e79889e",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "b918e0df6dff950cf3954cdfb923886f4eb93891f9ef593d169e25e6229612cb"
+  },
+  {
+    "slug": "hoodie-set-k19-3907",
+    "role": "structure",
+    "colour": "navy",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k19-3907--structure.png",
+    "src": "/img/hoodie-set-k19-3907/structure.webp",
+    "sha256": "61bb1282f773819ea91d93878159da012955c825442194c062fe9c98e093c05e",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "351eff22cd34df2ad691d215a6a666261b2283fc4e8dedb8ccf73638788ea59d"
+  },
+  {
+    "slug": "hoodie-set-k20-70083",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k20-70083--structure.png",
+    "src": "/img/hoodie-set-k20-70083/structure.webp",
+    "sha256": "03ffd8d58b373fde658a1c540d6ca53f58a414458002c1bb5aabbb907e4510c9",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "8cbae3a8a30e9665f01b832775fd52978e22da3516fdda472d7e04dcb1a2d846"
+  },
+  {
+    "slug": "hoodie-set-k21-70046",
+    "role": "structure",
+    "colour": "light grey-green/sage",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k21-70046--structure.png",
+    "src": "/img/hoodie-set-k21-70046/structure.webp",
+    "sha256": "d7dac169edd87548f31579becde0975a3228063b2d55ce7205d63b6b3266b4c3",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "15b1f984372ff513f7128ce7785805c7ccc7e6da9e0a22f6afe989dd2e34eaa2"
+  },
+  {
+    "slug": "hoodie-set-k22-6000-2",
+    "role": "structure",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k22-6000-2--structure.png",
+    "src": "/img/hoodie-set-k22-6000-2/structure.webp",
+    "sha256": "8441e497fa3a8dcd884f64d60d9c3b841a8e5798c3be86512653d7d052ea7670",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "e63acdd2f28db3db6610129a21750c768ee385564e1133d56056daadea1b4834"
+  },
+  {
+    "slug": "hoodie-set-k23-70080",
+    "role": "structure",
+    "colour": "khaki/sand",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k23-70080--structure.png",
+    "src": "/img/hoodie-set-k23-70080/structure.webp",
+    "sha256": "741a1499db9e3494f264ba94d0dada29516190252211415620b90fbedb38ecc5",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "35f2505e971825285de25ab0befb5ddd1e46cbae7325da29082db02efcff751c"
+  },
+  {
+    "slug": "pullover-hoodie-69008",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/pullover-hoodie-69008--structure.png",
+    "src": "/img/pullover-hoodie-69008/structure.webp",
+    "sha256": "044fea7c22a497f430a976897ed67037ca80d4e63b6d7555f06bfa30f66d5c13",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "e122f823b161c8ef4ca3915f42eb4f776dbff83035375b5754df572f97ac7a0a"
+  },
+  {
+    "slug": "pullover-hoodie-69009",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/pullover-hoodie-69009--structure.png",
+    "src": "/img/pullover-hoodie-69009/structure.webp",
+    "sha256": "95ef4c51733d7ed62d096bd3c50591bf57d4c947b00b5f6caf4c275606414ad9",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-07m/out/review.tsv",
+    "sourceSha256": "515ebe750fee0d15b42290975b70162fcceb0917870a53e1333329e626d995dd"
+  },
+  {
+    "slug": "pullover-hoodie-69011",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/pullover-hoodie-69011--structure.png",
+    "src": "/img/pullover-hoodie-69011/structure.webp",
+    "sha256": "e5bdf3de08a780451934a638df69c796be527fe9439b4e9fe4d370601b7f46a1",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-08m/out/review.tsv",
+    "sourceSha256": "8527cdde167445cc4d3775e5cc3259d32f9feb358931c41a1d55603fa4111dec"
+  },
+  {
+    "slug": "pullover-hoodie-69013",
+    "role": "structure",
+    "colour": "stone/light greige",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/pullover-hoodie-69013--structure.png",
+    "src": "/img/pullover-hoodie-69013/structure.webp",
+    "sha256": "918eafd77bf79c3c5e0519e78317353f5f34b10e64e1675d9c12c6020af12aa0",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-08m/out/review.tsv",
+    "sourceSha256": "9342801da2cbeff7fcb32ce75968cbd3e274efa99816822113f4091241690737"
+  },
+  {
+    "slug": "pullover-hoodie-69016",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/pullover-hoodie-69016--structure.png",
+    "src": "/img/pullover-hoodie-69016/structure.webp",
+    "sha256": "0231cdab17721c037fd6625a425e29bc6f42e650936474d0b6959f4435da9b94",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-08m/out/review.tsv",
+    "sourceSha256": "309b8e0703f371b1655ad50402b5bc5f30ccbf4d82c1682ba33683961492690c"
+  },
+  {
+    "slug": "pullover-hoodie-69017",
+    "role": "structure",
+    "colour": "sage/olive grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/pullover-hoodie-69017--structure.png",
+    "src": "/img/pullover-hoodie-69017/structure.webp",
+    "sha256": "9802de87daf0d508ae3d8d493a967ba7bb7930a528a9a37813c62a38ada1f290",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-08m/out/review.tsv",
+    "sourceSha256": "e809575bb97ccdb484d57ae48619d995f3a3ed26f80a582d73007ff1e621e50e"
+  },
+  {
+    "slug": "pullover-hoodie-69018",
+    "role": "structure",
+    "colour": "stone/light greige",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/pullover-hoodie-69018--structure.png",
+    "src": "/img/pullover-hoodie-69018/structure.webp",
+    "sha256": "eb21bf97a85a395fc3452f746517f38d41a599e9d5f0c9804a4ffc2c1d0a9250",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-08m/out/review.tsv",
+    "sourceSha256": "ee7462b4ac5149114bdd9ba59bc5e8edced7f6073f89a86e330f8d6a5983b05e"
+  },
+  {
+    "slug": "hoodie-set-k24-tz2803-5",
+    "role": "structure",
+    "colour": "灰",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k24-tz2803-5--structure.png",
+    "src": "/img/hoodie-set-k24-tz2803-5/structure.webp",
+    "sha256": "318fe28f3f660167a9f5ab8d2c5180acdfbb4ead2843bf70585d379f59df7a51",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-08m/out/review.tsv",
+    "sourceSha256": "716d9c81b4228808a7378a1359258be0e357a0e602917824f022b799e228111e"
+  },
+  {
+    "slug": "hoodie-set-k25-tz2803-6",
+    "role": "structure",
+    "colour": "灰",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C12/assets/hoodie-set-k25-tz2803-6--structure.png",
+    "src": "/img/hoodie-set-k25-tz2803-6/structure.webp",
+    "sha256": "a77f157f11c83c6d98d809c8a98ee63b3c878729b9a3bddb8b53b1b7c8a0a4a0",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-08m/out/review.tsv",
+    "sourceSha256": "10ca1c78020cb5437da54af279937123202a95d9cb4acc38bfca3029be7dd644"
   }
 ]
