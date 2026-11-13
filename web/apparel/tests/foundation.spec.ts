@@ -5,8 +5,9 @@ const slug = products[0].slug;
 test('contact prefill and language switching retain path/query/fragment', async ({ page }) => {
   await page.goto(`/contact/?product=${slug}&type=sample&subject=fabric-photos#rfq-form`);
   await expect(page.locator('textarea')).toHaveValue(`${slug} (${products[0].style_codes.join(' / ')})\nsample\nfabric-photos`);
-  await page.locator('.language-switcher summary').click();
-  await page.locator('[data-locale-link][lang="zh"]').click();
+  await page.locator('[data-menu-toggle]').click();
+  await page.locator('.mobile-languages summary').click();
+  await page.locator('.mobile-languages [data-locale-link][lang="zh"]').click();
   expect(new URL(page.url()).pathname).toBe('/zh/contact/');
   expect(new URL(page.url()).searchParams.get('product')).toBe(slug);
   expect(new URL(page.url()).hash).toBe('#rfq-form');
