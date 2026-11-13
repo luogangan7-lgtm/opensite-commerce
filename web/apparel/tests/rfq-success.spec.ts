@@ -22,10 +22,13 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) 
       const confirmation = page.locator('[data-rfq-success]');
       await expect(confirmation).toBeVisible();
       await expect(confirmation).toBeFocused();
-      await expect(confirmation).toBeInViewport({ ratio: 1 });
+      // Require the buyer-visible content; section border can round beyond the scroll pixel.
+      await expect(confirmation.getByRole('heading')).toBeInViewport({ ratio: 1 });
+      await expect(confirmation.locator('p')).toBeInViewport({ ratio: 1 });
       await expect(confirmation).toContainText(JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`, import.meta.url), 'utf8')).success);
       await expect(page.locator('html')).toHaveAttribute('dir', locale === 'ar' ? 'rtl' : 'ltr');
       const back = confirmation.getByRole('link');
+      await expect(back).toBeInViewport({ ratio: 1 });
       await expect(back).toHaveText(JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`, import.meta.url), 'utf8')).backToProducts);
       await expect(back).toHaveAttribute('href', `${prefix}/collections/`);
       await page.keyboard.press('Tab');
