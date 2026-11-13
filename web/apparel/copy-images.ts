@@ -7,6 +7,9 @@ import { createHash } from 'node:crypto';
 import { verifyBuildReceipt } from './build-receipt';
 import products from './src/data/products.json';
 import digital from './digital-sources.json';
+import details from './detail-sources.json';
+import { packageDetails } from './detail-images';
+import { assertDetailDigest, type DetailSource } from './image-plan';
 import { assertSingleRelease, assertDigitalDigest, imagePlan, publishSlotMarkup, assertSlotReferences, type Review, type Approved } from './image-plan';
 import { widths, imageBase } from './src/data/imagery';
 const sharp = createRequire(import.meta.resolve('astro/package.json'))('sharp');
@@ -19,7 +22,7 @@ const build = verifyBuildReceipt(destination, packagerSha, process.env.APPAREL_B
 const json = (file: string) => JSON.parse(readFileSync(file, 'utf8'));
 const slotInput = json(join(hd, '_site/slots.json'));
 const review: Review[] = readFileSync(join(hd, 'review.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-const plan = imagePlan({ slots: slotInput, review, provenance: json(join(hd, '_site/provenance.json')), digital, published: products.map(p => p.slug) });
+const plan = imagePlan({ slots: slotInput, review, provenance: json(join(hd, '_site/provenance.json')), digital, details: details as DetailSource[], published: products.map(p => p.slug) });
 const hash = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
 const safeInput = (root: string, path: string) => {
   const input = realpathSync(resolve(root, path));
@@ -40,6 +43,13 @@ for (const image of plan.digital) {
   if (!metadata.width || !metadata.height) throw Error(`Missing digital model geometry: ${image.key}`);
   dimensions.set(image.src, { w: metadata.width, h: metadata.height });
 }
+// Validate every G digest and native geometry before any image is copied.
+for (const image of plan.details) {
+  const input = safeInput(sourceRoot, image.source), metadata = await sharp(input).metadata();
+  assertDetailDigest(image, hash(readFileSync(input)));
+  if (!metadata.width || metadata.width !== metadata.height) throw Error(`Invalid detail geometry: ${image.slug}`);
+  dimensions.set(image.src, { w: metadata.width, h: metadata.height });
+}
 // Validate all review-bound originals before writing any deploy images.
 for (const image of [...plan.slots, ...plan.packshots]) {
   const input = safeInput(hd, image.source), metadata = await sharp(input).metadata();
@@ -56,6 +66,10 @@ for (const product of products) for (const image of [...product.images, ...produ
   if (!metadata.width || !metadata.height) throw Error('Missing fallback geometry');
   mkdirSync(dirname(output), { recursive: true }); copyFileSync(input, output);
   dimensions.set(image.src, { w: metadata.width, h: metadata.height }); record(image.src, digest);
+}
+for (const receipt of await packageDetails(plan.details, sourceRoot, destination)) {
+  dimensions.set(receipt.src, {w:receipt.w, h:receipt.h});
+  record(receipt.src, receipt.sourceSha256);
 }
 for (const image of plan.digital) {
   mkdirSync(dirname(join(destination, image.src)), { recursive: true });
@@ -100,6 +114,6 @@ for (const locale of ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) for (const page
   for (const route of targets[page]) assertSlotReferences(readFileSync(join(destination, locale === 'en' ? '' : locale, route, 'index.html'), 'utf8'), plan.slots, page);
 }
 const receipt = (image: Approved) => ({ id: image.id, slug: image.slug, role: image.id ? 'illustrative' : image.role, src: image.src, sha256: image.sha256, w: image.w, h: image.h, rights: image.rights });
-const manifest = { schema: 1, sha: build.sha, buildRunId: build.runId, buildReceiptSha256: process.env.APPAREL_BUILD_RECEIPT_SHA256, packagerSha, slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), digital: plan.digital.map(({ slug, role, src, sha256 }) => ({ slug, role, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src) })), files };
+const manifest = { schema: 1, sha: build.sha, buildRunId: build.runId, buildReceiptSha256: process.env.APPAREL_BUILD_RECEIPT_SHA256, packagerSha, details: plan.details.map(({slug, role, colour, src, sha256}) => ({slug, role, colour, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src)})), slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), digital: plan.digital.map(({ slug, role, src, sha256 }) => ({ slug, role, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src) })), files };
 writeFileSync(join(destination, 'deploy-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 console.log(JSON.stringify({ sha: manifest.sha, slots: plan.slots.length, packshots: plan.packshots.map(p => p.slug), files: files.length, hero1024: files.filter(p => p.url.includes('illustrative_home_hero-1024')) }));

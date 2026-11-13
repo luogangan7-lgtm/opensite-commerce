@@ -1,11 +1,12 @@
 /** Pure deploy selection contract; called by copy-images and CI. No IO, embedded review rows or private paths. */
-import { basename } from 'node:path';
+import { basename, dirname } from 'node:path';
 import { imageBase, publicId } from './src/data/imagery';
 export interface Review { slug: string; role: string; path: string; sha256: string; w: number; h: number; pass: boolean }
 export interface DigitalSource { key: string; slug: string; role: string; source: string; src: string; sha256: string; wave: string; acceptance: string; backReference?: string; reviewEvidence?: string }
-interface Input { digital?: DigitalSource[]; slots: Record<string, Record<string, string>>; review: Review[]; provenance: Record<string, { rights: string }>; published: string[] }
+export interface DetailSource { slug: string; role: 'fabric' | 'structure'; colour: string; source: string; src: string; sha256: string; acceptance: string; sourceSha256: string }
+interface Input { details?: DetailSource[]; digital?: DigitalSource[]; slots: Record<string, Record<string, string>>; review: Review[]; provenance: Record<string, { rights: string }>; published: string[] }
 export interface Approved { slug: string; role: string; source: string; src: string; sha256: string; w: number; h: number; id?: string; rights?: string }
-export function imagePlan({ slots, review, provenance, published, digital = [] }: Input) {
+export function imagePlan({ slots, review, provenance, published, digital = [], details = [] }: Input) {
   const eligible = review.filter(row => row.pass === true && row.role !== 'dh-legacy' && !row.path.split(/[\\/]/).includes('dh-legacy') && basename(row.path) !== 'model_front.png');
   const checked = (row: Review, source: string, src: string): Approved => {
     if (!/^[a-z0-9_-]+\/[a-z0-9_-]+\.png$/.test(source) || !row.path.replaceAll('\\', '/').endsWith(`/${source}`) || !/^[a-f0-9]{64}$/.test(row.sha256) || !Number.isInteger(row.w) || !Number.isInteger(row.h) || row.w <= 0 || row.h <= 0) throw Error('Invalid reviewed source');
@@ -34,7 +35,12 @@ export function imagePlan({ slots, review, provenance, published, digital = [] }
     return row;
   });
   if (new Set(models.map(row => row.src)).size !== models.length) throw Error('Duplicate digital model view');
-  return { slots: illustrations, slotReviews, packshots, digital: models };
+  const detailImages = details.map(row => {
+    if (!published.includes(row.slug) || !/^[a-z0-9-]+$/.test(row.slug) || !['fabric', 'structure'].includes(row.role) || !row.colour || publicId(basename(row.source) === 'final.png' ? basename(dirname(row.source)) + '.png' : basename(row.source)) !== `${row.slug}--${row.role}.png` || row.src !== `/img/${row.slug}/${row.role}.webp` || !/^[a-f0-9]{64}$/.test(row.sha256) || !/^[a-f0-9]{64}$/.test(row.sourceSha256) || row.source.startsWith('/') || row.source.split(/[\\/]/).some(p => p === '..') || !row.source.endsWith('.png') || !row.acceptance) throw Error('Invalid detail source or catalog identity');
+    return row;
+  });
+  if (new Set([...models, ...detailImages].map(row => row.src)).size !== models.length + detailImages.length) throw Error('Duplicate image view');
+  return { slots: illustrations, slotReviews, packshots, digital: models, details: detailImages };
 }
 
 /** Packaging is the sole publication writer; omitted reviews remove the entire picture, never only src. */
@@ -64,4 +70,9 @@ export function assertDigitalDigest(image: DigitalSource, actual: string): void 
 export function assertSingleRelease(report: string, key: string, sha: string): void {
   if (!/^结论：PASS。/m.test(report) || !report.includes(`record：${key}；`) ||
       !report.split('\n').some((line, i, lines) => line.endsWith('/final.png') && lines[i + 1] === `SHA256：${sha}`)) throw Error(`Single-image release not PASS: ${key}`);
+}
+
+/** Detail publication uses the exact independently accepted bytes, never a similarly named file. */
+export function assertDetailDigest(image: DetailSource, actual: string): void {
+  if (actual !== image.sha256) throw Error(`Detail source changed: ${image.slug}/${image.role}`);
 }

@@ -85,11 +85,11 @@ picture img { width: 100%; }
 .pdp h1 { font-size: var(--sy-text-h2); }
 .gallery { min-width: 0; }
 .gallery img { width: 100%; }
-.gallery > img { aspect-ratio: 5 / 6; object-fit: cover; }
+.gallery > img { aspect-ratio: 4 / 5; object-fit: cover; }
 .gallery-thumbs { display: flex; gap: .75rem; overflow-x: auto; padding: .5rem; margin-block-start: .75rem; }
 .gallery-thumbs a { flex: 0 0 64px; }
 .gallery-thumbs [aria-current] { outline: 2px solid var(--sy-color-accent); outline-offset: 2px; }
-.gallery-thumbs img { aspect-ratio: 5 / 6; object-fit: cover; }
+.gallery-thumbs img { aspect-ratio: 4 / 5; object-fit: cover; }
 table { width: 100%; border-collapse: collapse; margin-block: var(--sy-space-grid-y); }
 caption { text-align: start; font-weight: var(--sy-weight-title); }
 th, td { text-align: start; border-block-end: 1px solid var(--sy-color-border); padding-block: .75rem; }
@@ -147,3 +147,8 @@ footer { padding-block-end: var(--sy-space-section-sm); }
 .gallery > img { border-radius: var(--sy-radius-card); }
 .product-info .actions { display: grid; }
 @media (max-width: 650px) { .contact-form, .form-pair { grid-template-columns: minmax(0, 1fr); } .contact-form .rfq { padding: var(--sy-space-grid-x); } }
+
+/* G/C retain their full square composition inside the shared portrait frame. */
+.gallery [data-fit="contain"], .gallery [data-fit="contain"] img { object-fit: contain; }
+.gallery dialog { max-inline-size: 90vw; max-block-size: 90vh; }
+.gallery dialog img { width: auto; max-inline-size: 100%; max-block-size: 70vh; object-fit: contain; }
