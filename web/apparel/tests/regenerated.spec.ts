@@ -1,9 +1,9 @@
-/** C9 browser gate: approved bytes must reach served PDP slots, including colour selection. */
+/** C9 + R4 browser gate: approved bytes must reach served PDP slots, including colour selection. */
 import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import accepted from './accepted-regenerated.json' with { type: 'json' };
 import products from '../src/data/products.json' with { type: 'json' };
-test('63 independently accepted regenerated slots are served and selectable', async ({page, request}) => {
+test('78 independently accepted regenerated slots are served and selectable', async ({page, request}) => {
  test.setTimeout(180_000);
  for(const slug of new Set(accepted.map(r=>r.slug))) {
   await page.goto(`/products/${slug}/`);
@@ -19,7 +19,7 @@ test('63 independently accepted regenerated slots are served and selectable', as
  }
  if(process.env.APPAREL_PACKAGED_IMAGES === '1' || process.env.APPAREL_PREVIEW_URL) {
  const manifest = await (await request.get('/deploy-manifest.json')).json();
- expect(manifest.digital).toHaveLength(716);
+ expect(manifest.digital).toHaveLength(730);
  for(const row of accepted) {
   const receipt = manifest.digital.find((r: {src:string}) => r.src === row.src);
   expect(receipt?.sha256, row.exactId).toBe(row.sha256);
