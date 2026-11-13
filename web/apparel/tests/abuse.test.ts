@@ -32,7 +32,8 @@ test('verified normal path returns empty 204 and private token never reaches sto
 test('production build without Turnstile keys is rejected by real Astro config', () => {
   const r = Bun.spawnSync(['bun', 'run', '--cwd', 'web/apparel', 'build'], { env: { ...process.env, SEO_BUILD_MODE: 'production', PRODUCTION_ORIGIN: 'https://sourcyo.com', PUBLIC_TURNSTILE_SITE_KEY: '', TURNSTILE_SECRET_KEY: '' } });
   expect(r.exitCode).not.toBe(0); expect(r.stderr.toString() + r.stdout.toString()).toContain('Turnstile');
-});
+// Astro CLI startup can exceed Bun's 5 s default on a contended CI runner.
+}, 60_000);
 test('missing, oversized, expired and replay-rejected tokens do not reach storage', async () => {
   const f = setup(false);
   for (const token of ['', 'x'.repeat(2049), 'expired', 'replayed']) {
