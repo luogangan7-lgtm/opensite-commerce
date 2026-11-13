@@ -9,7 +9,12 @@ import { dictionaries, pageLocale, type Key } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 const href = (route: string) => getRelativeLocaleUrl(locale, route);
-const featured = Object.keys(categories).map(category => products.find(p => p.category === category)!).filter(Boolean);
+// Fixed Home identities from the adopted card contract; facts stay in the catalog.
+const featured = ['apparel-59043', 'cotton430-hoodie-58065', 'apparel-70171', 'crew-fleece-8900-38'].map(slug => {
+  const product = products.find(product => product.slug === slug);
+  if (!product) throw new Error(`Missing Home product: ${slug}`);
+  return product;
+});
 const benefits = [['styleFirst', 'styleText'], ['fabricFirst', 'fabricText'], ['sampleFirst', 'sampleText'], ['confirmFirst', 'confirmText']] as const;
 ---
 <Shell title={t.heroTitle}>

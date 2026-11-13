@@ -1,6 +1,8 @@
 /** Browser contract against static output, only synthetic intercepted RFQs. */
 import { test, expect } from '@playwright/test';
 import products from '../src/data/products.json' with { type: 'json' };
+import identities from './card-identities.json' with { type: 'json' };
+const cardTitle = (locale: string, sku: string) => identities.find(identity => identity.slug === sku)!.localized_titles[locale as keyof typeof identities[0]['localized_titles']];
 const slug = products[0].slug;
 test('contact prefill and language switching retain path/query/fragment', async ({ page }) => {
   await page.goto(`/contact/?product=${slug}&type=sample&subject=fabric-photos#rfq-form`);
@@ -92,3 +94,51 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   await page.goto('/zh/collections/');
   await expect(page.locator('.tile img').first()).toHaveAttribute('alt', /数字模特示意/);
 });
+
+// §14 per-SKU acceptance; fixed contract identities, existing locale dictionaries and suite.
+// C3: card identity only; inquiry behavior belongs to the separate C1 task.
+for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) {
+  const prefix = locale === 'en' ? '' : `/${locale}`;
+  for (const width of [390, 768, 1440]) {
+    for (const [sku, style] of [
+      ['apparel-59043', '59043'], ['cotton430-hoodie-58065', '58065'],
+      ['apparel-70171', '70171'], ['apparel-70175', '70175'],
+      ['crew-fleece-8900-38', '8900-38'],
+    ]) test(`card identity ${sku} ${locale} ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1000 });
+      // Fail closed: every RFQ is intercepted before navigation; no real customer request.
+      await page.route('**/api/rfq', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }));
+      await page.goto(`${prefix}/collections/`);
+      const card = page.locator('.tile').filter({ has: page.locator('bdi', { hasText: new RegExp(`^${style}$`) }) });
+      await expect(card).toHaveCount(1);
+      const title = cardTitle(locale, sku);
+      await expect(card.locator('h3')).toHaveText(title);
+      await expect(card).toHaveAttribute('href', `${prefix}/products/${sku}/`);
+      await card.click();
+      await expect(page).toHaveURL(`${prefix}/products/${sku}/`);
+      await expect(page.locator('h1')).toHaveText(title);
+      await expect(page.locator('.product-info > .muted bdi')).toHaveText(style);
+      await expect(page.locator('html')).toHaveAttribute('lang', locale);
+      await expect(page.locator('html')).toHaveAttribute('dir', locale === 'ar' ? 'rtl' : 'ltr');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+    });
+    test(`Home and related card entrances ${locale} ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.route('**/api/rfq', route => route.abort());
+      for (const [origin, sku] of [
+        ['/', 'apparel-59043'], ['/', 'cotton430-hoodie-58065'],
+        ['/', 'apparel-70171'], ['/', 'crew-fleece-8900-38'],
+        ['/products/apparel-59043/', 'apparel-70171'],
+      ]) {
+        await page.goto(`${prefix}${origin}`);
+        const card = page.locator(`.tile[href="${prefix}/products/${sku}/"]`);
+        await expect(card).toHaveCount(1);
+        await expect(card.locator('h3')).toHaveText(cardTitle(locale, sku));
+        await card.click();
+        await expect(page).toHaveURL(`${prefix}/products/${sku}/`);
+        await expect(page.locator('h1')).toHaveText(cardTitle(locale, sku));
+      }
+    });
+  }
+}
