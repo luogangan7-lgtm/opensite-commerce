@@ -5726,5 +5726,117 @@
     "garment": "hoodie",
     "view": "turn",
     "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k20-70083/digital-turn.webp",
+    "slug": "hoodie-set-k20-70083",
+    "color": "k",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k21-70046/digital-turn.webp",
+    "slug": "hoodie-set-k21-70046",
+    "color": "o",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-58066/digital-back.webp",
+    "slug": "cotton430-hoodie-58066",
+    "color": "c",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-8610/digital-back.webp",
+    "slug": "cotton430-hoodie-8610",
+    "color": "k",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-l8612/digital-back.webp",
+    "slug": "cotton430-hoodie-l8612",
+    "color": "w",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k04/digital-back.webp",
+    "slug": "hoodie-set-k04",
+    "color": "c",
+    "garment": "set",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k05/digital-back.webp",
+    "slug": "hoodie-set-k05",
+    "color": "c",
+    "garment": "set",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k06/digital-back.webp",
+    "slug": "hoodie-set-k06",
+    "color": "g",
+    "garment": "set",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k14-3902/digital-back.webp",
+    "slug": "hoodie-set-k14-3902",
+    "color": "k",
+    "garment": "jacket",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k18-3906/digital-back.webp",
+    "slug": "hoodie-set-k18-3906",
+    "color": "g",
+    "garment": "jacket",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k22-6000-2/digital-back.webp",
+    "slug": "hoodie-set-k22-6000-2",
+    "color": "g",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k23-70080/digital-back.webp",
+    "slug": "hoodie-set-k23-70080",
+    "color": "t",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-7201/digital-back.webp",
+    "slug": "apparel-7201",
+    "color": "k",
+    "garment": "tee",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-58064/digital-back.webp",
+    "slug": "cotton430-hoodie-58064",
+    "color": "c",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
   }
 ]

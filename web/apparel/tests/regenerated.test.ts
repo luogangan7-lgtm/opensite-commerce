@@ -1,4 +1,4 @@
-/** C9 acceptance pool is an independent fixture; no unaccepted slot may change. */
+/** C9 + R4 acceptance pool is an independent fixture; no unaccepted slot may change. */
 import { test, expect } from 'bun:test';
 import accepted from './accepted-regenerated.json';
 import digital from '../digital-sources.json';
@@ -9,9 +9,9 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { orderedGallery } from '../src/data/gallery';
 import { imagePlan } from '../image-plan';
-test('all 63 accepted source SHAs are bound to existing packaging and gallery slots',()=>{
- expect(accepted).toHaveLength(63);
- expect(new Set(accepted.map(r=>r.src)).size).toBe(63);
+test('all 78 accepted source SHAs are bound to existing packaging and gallery slots',()=>{
+ expect(accepted).toHaveLength(78);
+ expect(new Set(accepted.map(r=>r.src)).size).toBe(78);
  const plan=imagePlan({slots:{},review:[],provenance:{},published:products.map(p=>p.slug),digital});
  for(const row of accepted) {
   const source=plan.digital.find(r=>r.src===row.src);
@@ -25,7 +25,7 @@ test('all 63 accepted source SHAs are bound to existing packaging and gallery sl
  }
 });
 
-test.skipIf(!process.env.APPAREL_SOURCE_DIR)('private 63 originals match independent PASS rows and source digests',()=>{
+test.skipIf(!process.env.APPAREL_SOURCE_DIR)('private 78 originals match independent PASS rows and source digests',()=>{
  for(const row of accepted) {
   const bytes=readFileSync(join(process.env.APPAREL_SOURCE_DIR!,row.source));
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(row.sha256);
