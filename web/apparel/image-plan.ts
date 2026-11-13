@@ -87,3 +87,10 @@ export function assertDetailDigest(image: DetailSource, actual: string, ledger: 
   const accepted = assertDetailLedger(image, ledger);
   if (actual !== accepted.asset_sha256) throw Error(`Detail source changed from ledger: ${image.slug}/${image.role}`);
 }
+
+/** G/C native-pixel gate shared by accepted G packaging and ordinary C fallback copying. */
+export function imageDimensions(role: string | undefined, metadata: {width?: number; height?: number}) {
+  if (!metadata.width || !metadata.height) throw Error('Missing image geometry');
+  if (['fabric','structure','print'].includes(role || '') && (metadata.width !== 1200 || metadata.height !== 1200)) throw Error('G/C detail requires native 1200×1200 pixels');
+  return {w:metadata.width, h:metadata.height};
+}

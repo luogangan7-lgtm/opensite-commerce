@@ -68,3 +68,20 @@ test('tampered 1200 file with a re-signed descriptor cannot override the accepte
   expect(existsSync(join(root,'out'))).toBe(false);
  } finally {rmSync(root,{recursive:true,force:true});}
 });
+
+test('print fallback rejects non-1200 native input before copying, then accepts exact1200', async () => {
+ const {copyFallbackImage}=await import('../detail-images');
+ const root=mkdtempSync(join(tmpdir(),'c4-print-'));
+ try {
+  for(const size of [64,1200]) await sharp({create:{width:size,height:size,channels:3,background:'#fff'}}).webp().toFile(join(root,`${size}.webp`));
+  const source=join(root,'64.webp'), output=join(root,'bad','print.webp');
+  await expect(copyFallbackImage({role:'print',web_sha256:digest(source)},source,output)).rejects.toThrow(/1200/);
+  expect(existsSync(output)).toBe(false);
+  const good=join(root,'1200.webp'), target=join(root,'good','print.webp');
+  const receipt=await copyFallbackImage({role:'print',web_sha256:digest(good)},good,target);
+  expect([receipt.w,receipt.h]).toEqual([1200,1200]);
+  expect(readFileSync(target)).toEqual(readFileSync(good));
+  // The stronger C gate must not reject an ordinary legacy fallback merely for its dimensions.
+  expect((await copyFallbackImage({role:'model'},source,join(root,'legacy.webp'))).w).toBe(64);
+ } finally {rmSync(root,{recursive:true,force:true});}
+});

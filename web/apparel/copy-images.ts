@@ -1,5 +1,5 @@
 /** Deploy packaging only: exact green artifact + freshly reviewed sources -> isolated output, never a build. */
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync, readdirSync, existsSync, realpathSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, readdirSync, existsSync, realpathSync } from 'node:fs';
 import { dirname, resolve, join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
@@ -8,8 +8,8 @@ import { verifyBuildReceipt } from './build-receipt';
 import products from './src/data/products.json';
 import digital from './digital-sources.json';
 import details from './detail-sources.json';
-import { packageDetails, readDetailLedger } from './detail-images';
-import { assertDetailDigest, type DetailSource } from './image-plan';
+import { packageDetails, readDetailLedger, copyFallbackImage } from './detail-images';
+import { assertDetailDigest, imageDimensions, type DetailSource } from './image-plan';
 import { assertSingleRelease, assertDigitalDigest, imagePlan, publishSlotMarkup, assertSlotReferences, type Review, type Approved } from './image-plan';
 import { widths, imageBase } from './src/data/imagery';
 const sharp = createRequire(import.meta.resolve('astro/package.json'))('sharp');
@@ -48,8 +48,7 @@ for (const image of plan.digital) {
 for (const image of plan.details) {
   const input = safeInput(sourceRoot, image.source), metadata = await sharp(input).metadata();
   assertDetailDigest(image, hash(readFileSync(input)), detailLedger);
-  if (metadata.width !== 1200 || metadata.height !== 1200) throw Error(`Detail requires native 1200×1200: ${image.slug}`);
-  dimensions.set(image.src, { w: metadata.width, h: metadata.height });
+  dimensions.set(image.src, imageDimensions(image.role, metadata));
 }
 // Validate all review-bound originals before writing any deploy images.
 for (const image of [...plan.slots, ...plan.packshots]) {
@@ -61,12 +60,8 @@ for (const product of products) for (const image of [...product.images, ...produ
   const name = image.src.replace(/^\/img\//, '');
   if (!/^[a-z0-9-]+\/[a-z0-9-]+\.webp$/.test(name)) throw Error('Invalid published fallback path');
   const input = safeInput(join(sourceRoot, 'images'), name.replace(/^pullover-hoodie-/, 'aston-hoodie-'));
-  const digest = hash(readFileSync(input));
-  if (image.web_sha256 && digest !== image.web_sha256) throw Error('Fallback image changed');
-  const output = join(destination, image.src), metadata = await sharp(input).metadata();
-  if (!metadata.width || !metadata.height) throw Error('Missing fallback geometry');
-  mkdirSync(dirname(output), { recursive: true }); copyFileSync(input, output);
-  dimensions.set(image.src, { w: metadata.width, h: metadata.height }); record(image.src, digest);
+  const receipt = await copyFallbackImage(image, input, join(destination, image.src));
+  dimensions.set(image.src, {w:receipt.w, h:receipt.h}); record(image.src, receipt.sha256);
 }
 for (const receipt of await packageDetails(plan.details, sourceRoot, destination, detailLedger)) {
   dimensions.set(receipt.src, {w:receipt.w, h:receipt.h});
