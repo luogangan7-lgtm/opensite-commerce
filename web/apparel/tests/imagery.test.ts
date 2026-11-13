@@ -120,7 +120,9 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
 
 // Public metadata and private review receipts must remain a one-to-one catalog join.
 import digital from '../digital-sources.json';
-import regenerated from './accepted-regenerated.json';
+import originalRegenerated from './accepted-regenerated.json';
+import r5 from './accepted-r5.json';
+const regenerated = [...originalRegenerated, ...r5];
 import approval from '../catalog-approval.json';
 import products from '../src/data/products.json';
 import { digitalImages, digitalAlt, digitalLabel, publicId } from '../src/data/imagery';
@@ -133,24 +135,24 @@ const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest(
 // Private originals are optional only when not explicitly selected. Tracked code under work/ is not a bundle.
 const selectedSourceRoot = privateSourceRoot(process.env);
 const sourceRoot = selectedSourceRoot ?? '';
-test('115 licensed catalog identities; all 716 digital models join by exact style and role', async () => {
+test('115 licensed catalog identities; all 739 digital models join by exact style and role', async () => {
   const { imagePlan } = await load();
   expect(approval.products.length).toBe(115);
   expect(products.map(p => p.slug).sort()).toEqual(approval.products.map(p => publicId(p.slug)).sort());
   for (const p of approval.products) expect(['ok','owner-licensed']).toContain(p.rights);
-  expect(digital.length).toBe(716);
-  expect(digital.filter(p => p.wave === 'W3').length).toBe(202);
-  expect(digital.filter(p => p.wave !== 'W3').length).toBe(514);
+  expect(digital.length).toBe(739);
+  expect(digital.filter(p => p.wave === 'W3').length).toBe(203);
+  expect(digital.filter(p => p.wave !== 'W3').length).toBe(536);
   const plan = imagePlan({ ...fixture(), published: products.map(p => p.slug), digital });
-  expect(plan.digital.length).toBe(716);
-  expect(new Set(digital.map(p => p.key)).size).toBe(716);
+  expect(plan.digital.length).toBe(739);
+  expect(new Set(digital.map(p => p.key)).size).toBe(739);
   expect(digitalImages.map(p => p.src).sort()).toEqual(digital.map(p => p.src).sort());
   for (const image of digital) {
     expect(publicId(image.key.split(/--|__/)[0])).toBe(image.slug);
     expect(products.find(p => p.slug === image.slug)?.images.filter(i => i.src === image.src).length).toBe(1);
     expect(digitalImages.find(p => p.src === image.src)?.slug).toBe(image.slug);
   }
-  expect(digital.some(p => p.key === 'cotton430-hoodie-58065__model-03')).toBe(false);
+  expect(digital.find(p => p.key === 'cotton430-hoodie-58065__model-03')?.sha256).toBe(r5.find(row => row.slug === 'cotton430-hoodie-58065')!.sha256);
   expect(digital.find(p => p.key === 'crew-fleece-8900-46__model-03')?.sha256).toBe('cd78398f7f4865b95113648ea6c6b8af2e8d91d54bb3d80c8e8a0dfb546fc8a0');
 });
 test('every digital model has eight colour, garment, angle and disclosure descriptions', () => {
@@ -171,7 +173,7 @@ test('changed bytes, wrong style, traversal and duplicate views fail closed then
   expect(() => imagePlan({ ...input, digital: [digital[0], digital[0]] })).toThrow('Duplicate');
   expect(imagePlan(input).digital.length).toBe(1);
 });
-test.skipIf(selectedSourceRoot === undefined)('local originals: 202 W3 and 514 W1/W2 hashes match accepted sources and current catalog', async () => {
+test.skipIf(selectedSourceRoot === undefined)('local originals: 203 W3 and 536 W1/W2 hashes match accepted sources and current catalog', async () => {
   const { assertDigitalDigest, assertSingleRelease } = await load();
   assertPrivateOriginalInputs(sourceRoot, digital, approval.sha256);
   const catalogPath = resolve(sourceRoot, '../../docs/apparel-b2b/catalog.json');
@@ -212,12 +214,12 @@ test('eight-language PDP includes primary accepted slots and selectable other-co
 });
 
 test('public imagery metadata loads under the Node ESM runtime used by Playwright', () => {
-  const result = Bun.spawnSync(['node', '--experimental-strip-types', '--input-type=module', '-e', "import('./web/apparel/src/data/imagery.ts').then(m => { if (m.digitalImages.length !== 716) process.exit(1); })"]);
+  const result = Bun.spawnSync(['node', '--experimental-strip-types', '--input-type=module', '-e', "import('./web/apparel/src/data/imagery.ts').then(m => { if (m.digitalImages.length !== 739) process.exit(1); })"]);
   expect(result.exitCode).toBe(0);
 });
 
 // Regression: every accepted W3 slot, including nested final.png, must be connected.
-test.skipIf(selectedSourceRoot === undefined)('historical W3 tables plus regenerated approvals resolve to 202 SHA-bound slots', () => {
+test.skipIf(selectedSourceRoot === undefined)('historical W3 tables plus regenerated approvals resolve to 203 SHA-bound slots', () => {
   const { readdirSync } = require('node:fs');
   const fleet = join(sourceRoot, 'fleet-20261104');
   const accepted = new Map<string, string>();
@@ -236,7 +238,7 @@ test.skipIf(selectedSourceRoot === undefined)('historical W3 tables plus regener
   }
   expect(accepted.size).toBe(154);
   for (const row of regenerated.filter(row => row.view !== 'front')) accepted.set(`${row.slug}--${row.view}`, row.sha256);
-  expect(accepted.size).toBe(202);
+  expect(accepted.size).toBe(203);
   expect(digital.filter(row => row.wave === 'W3').map(row => row.key).sort()).toEqual([...accepted.keys()].sort());
   for (const [key, sha] of accepted) expect(digital.find(row => row.key === key)?.sha256).toBe(sha);
 });
@@ -249,7 +251,7 @@ test('back descriptions name the back angle in all eight languages without inven
 
 test('all back sources distinguish same-colour, owner plain and colour-swapped references', () => {
   const backs = digital.filter(row => row.role === 'digital-back');
-  expect(backs.filter(row => row.backReference === 'same-color').length).toBe(46);
+  expect(backs.filter(row => row.backReference === 'same-color').length).toBe(47);
   expect(backs.filter(row => row.backReference === 'owner-plain').length).toBe(45);
   expect(backs.filter(row => row.backReference === 'other-color-ink').length).toBe(4);
   for (const row of backs) expect(['same-color', 'owner-plain', 'other-color-ink']).toContain(row.backReference);

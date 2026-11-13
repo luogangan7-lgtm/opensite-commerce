@@ -7302,5 +7302,236 @@
     "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fcotton430-hoodie-l8612%2Fmodel-01-turn-r3/image.raw",
     "sha256": "1bc3a286fc70debf1fcb867c3fb6532ba241d8e0c02f750e7df74949ec0aec8c",
     "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R3-04/out/review.tsv"
+  },
+  {
+    "key": "apparel-70173__model-04",
+    "slug": "apparel-70173",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fapparel-70173%2Fmodel-04-front-r5/image.raw",
+    "sha256": "2680576c5aa34f32b1417801c23fe65d84088e996fe9e49bc78cde3e4f99d1ed",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-04",
+    "src": "/img/apparel-70173/digital-model-04.webp"
+  },
+  {
+    "key": "apparel-70186__model-04",
+    "slug": "apparel-70186",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fapparel-70186%2Fmodel-04-front-r5/image.raw",
+    "sha256": "b5e5bad805ebbb4b78370bb86e991c8740450cfbd26f12983942015f7857ea33",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-04",
+    "src": "/img/apparel-70186/digital-model-04.webp"
+  },
+  {
+    "key": "apparel-70191__model-06",
+    "slug": "apparel-70191",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fapparel-70191%2Fmodel-06-front-r5/image.raw",
+    "sha256": "7c2fb528558166d39804a566e908ecb8095f6fce7388468d362372bfec4d0d97",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-06",
+    "src": "/img/apparel-70191/digital-model-06.webp"
+  },
+  {
+    "key": "apparel-7210__model-04",
+    "slug": "apparel-7210",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fapparel-7210%2Fmodel-04-front-r5/image.raw",
+    "sha256": "6164c67fd50ccf112987787ed640daaf03fb40a366443dbe8ec8891655e4e695",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-04",
+    "src": "/img/apparel-7210/digital-model-04.webp"
+  },
+  {
+    "key": "aston-hoodie-69012__model-04",
+    "slug": "pullover-hoodie-69012",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Faston-hoodie-69012%2Fmodel-04-front-r5/image.raw",
+    "sha256": "b3344910567fc302d674f0fe959a01ec9a58fd7d4d4378e7b8bcc5d7be11c64d",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-04",
+    "src": "/img/pullover-hoodie-69012/digital-model-04.webp"
+  },
+  {
+    "key": "aston-hoodie-69015__model-04",
+    "slug": "pullover-hoodie-69015",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Faston-hoodie-69015%2Fmodel-04-front-r5/image.raw",
+    "sha256": "02b216bbc85dc8e7002efa4fb54f56458f9e13f80ab57a20a699cf4a8d30cfa2",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-04",
+    "src": "/img/pullover-hoodie-69015/digital-model-04.webp"
+  },
+  {
+    "key": "cotton430-hoodie-58065__model-03",
+    "slug": "cotton430-hoodie-58065",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fcotton430-hoodie-58065%2Fmodel-03-front-r5/image.raw",
+    "sha256": "ae7aa06158a25f3b2128648818866373226c7981b731f983277badba5f9cc563",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-03",
+    "src": "/img/cotton430-hoodie-58065/digital-model-03.webp"
+  },
+  {
+    "key": "cotton430-hoodie-8610__model-09",
+    "slug": "cotton430-hoodie-8610",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fcotton430-hoodie-8610%2Fmodel-09-front-r5/image.raw",
+    "sha256": "53b4ec9a61bdd21a099d8381152a16484354dd62483d6843d3008bedafdacdc3",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-09",
+    "src": "/img/cotton430-hoodie-8610/digital-model-09.webp"
+  },
+  {
+    "key": "crew-fleece-8900-34__model-04",
+    "slug": "crew-fleece-8900-34",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fcrew-fleece-8900-34%2Fmodel-04-front-r5/image.raw",
+    "sha256": "b6a3b7c70f83e9c759f3338403f476f2d99f8ca4a46cf82170974984a966b15b",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-04",
+    "src": "/img/crew-fleece-8900-34/digital-model-04.webp"
+  },
+  {
+    "key": "hoodie-set-k10-1102-dj121__model-03",
+    "slug": "hoodie-set-k10-1102-dj121",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fhoodie-set-k10-1102-dj121%2Fmodel-03-front-r5/image.raw",
+    "sha256": "fe0a0b56db292d80796be0837411cafd8742231120bd4e00ea4c6229cb937f18",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-03",
+    "src": "/img/hoodie-set-k10-1102-dj121/digital-model-03.webp"
+  },
+  {
+    "key": "apparel-70171__model-05",
+    "slug": "apparel-70171",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fapparel-70171%2Fcolour-pink-overview-only-front-r5/image.raw",
+    "sha256": "6048621d959ae9bbcdf27e4a85a2afa55384dc00b5f1d792272172113fcef42d",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-05",
+    "src": "/img/apparel-70171/digital-model-05.webp"
+  },
+  {
+    "key": "apparel-70190__model-04",
+    "slug": "apparel-70190",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fapparel-70190%2Fcolour-white-front-r5/image.raw",
+    "sha256": "3389bcd0d7ce9cdbe691fea991fd32ef71bb05facc6217d1fef4bce5cea41871",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-04",
+    "src": "/img/apparel-70190/digital-model-04.webp"
+  },
+  {
+    "key": "apparel-70190__model-05",
+    "slug": "apparel-70190",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fapparel-70190%2Fcolour-sage-green-front-r5/image.raw",
+    "sha256": "dfcdb3ce89b0104cce7d25cf44f1bbea69eeeb1ecd9ad79275d742a10679ec83",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-05",
+    "src": "/img/apparel-70190/digital-model-05.webp"
+  },
+  {
+    "key": "apparel-7210__model-07",
+    "slug": "apparel-7210",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fapparel-7210%2Fcolour-black-overview-only-front-r5/image.raw",
+    "sha256": "4c4994c638caeeeaf31202ce3a7aa6e614f1aa92a9fc836527ffb0f92e59b73d",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-01/out/review.tsv",
+    "role": "digital-model-07",
+    "src": "/img/apparel-7210/digital-model-07.webp"
+  },
+  {
+    "key": "cotton430-hoodie-8611__model-08",
+    "slug": "cotton430-hoodie-8611",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fcotton430-hoodie-8611%2Fcolour-dark-green-overview-only-front-r5/image.raw",
+    "sha256": "285b1ff6541487a2144d3611eac3c39139d9bdfbe30552baf15cfab73ee2d697",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-02/out/review.tsv",
+    "role": "digital-model-08",
+    "src": "/img/cotton430-hoodie-8611/digital-model-08.webp"
+  },
+  {
+    "key": "cotton430-hoodie-8611__model-09",
+    "slug": "cotton430-hoodie-8611",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fcotton430-hoodie-8611%2Fcolour-navy-overview-only-front-r5/image.raw",
+    "sha256": "b057a3fff2352e87b772660ae98082a66312067b3071ff09c3b8b828414eab7c",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-02/out/review.tsv",
+    "role": "digital-model-09",
+    "src": "/img/cotton430-hoodie-8611/digital-model-09.webp"
+  },
+  {
+    "key": "hoodie-set-k06__model-04",
+    "slug": "hoodie-set-k06",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fhoodie-set-k06%2Fcolour-white-cream-overview-only-no-model-photo-front-r5/image.raw",
+    "sha256": "6f5670acfee39f2d8ef66bb8109a5a8b794cdd751364606c32f8bfe7bb5abeea",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-02/out/review.tsv",
+    "role": "digital-model-04",
+    "src": "/img/hoodie-set-k06/digital-model-04.webp"
+  },
+  {
+    "key": "hoodie-set-k18-3906__model-03",
+    "slug": "hoodie-set-k18-3906",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fhoodie-set-k18-3906%2Fcolour-black-overview-only-front-r5/image.raw",
+    "sha256": "cbbe2b48e034605bb9147d632a96f3051ce016ba30e7f88edffb1ed286fd5f5a",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-02/out/review.tsv",
+    "role": "digital-model-03",
+    "src": "/img/hoodie-set-k18-3906/digital-model-03.webp"
+  },
+  {
+    "key": "hoodie-set-k24-tz2803-5__model-02",
+    "slug": "hoodie-set-k24-tz2803-5",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fhoodie-set-k24-tz2803-5%2Fcolour-black-front-r5/image.raw",
+    "sha256": "3dc54aaf810a7c1b39c30298768363303095ddd97059e147ad7a91285718156d",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-02/out/review.tsv",
+    "role": "digital-model-02",
+    "src": "/img/hoodie-set-k24-tz2803-5/digital-model-02.webp"
+  },
+  {
+    "key": "hoodie-set-k24-tz2803-5__model-03",
+    "slug": "hoodie-set-k24-tz2803-5",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fhoodie-set-k24-tz2803-5%2Fcolour-navy-front-r5/image.raw",
+    "sha256": "8c76c850778b9695bfb076fc40f97040db0ab44159a2ab44a1a20582c108c882",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-02/out/review.tsv",
+    "role": "digital-model-03",
+    "src": "/img/hoodie-set-k24-tz2803-5/digital-model-03.webp"
+  },
+  {
+    "key": "hoodie-set-k25-tz2803-6__model-02",
+    "slug": "hoodie-set-k25-tz2803-6",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fhoodie-set-k25-tz2803-6%2Fcolour-black-front-r5/image.raw",
+    "sha256": "fff9f679ac4c6696fc128337e9acc35c972399a0993cef0d7951eb52a5230c5f",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-02/out/review.tsv",
+    "role": "digital-model-02",
+    "src": "/img/hoodie-set-k25-tz2803-6/digital-model-02.webp"
+  },
+  {
+    "key": "hoodie-set-k25-tz2803-6__model-03",
+    "slug": "hoodie-set-k25-tz2803-6",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fhoodie-set-k25-tz2803-6%2Fcolour-navy-front-r5/image.raw",
+    "sha256": "fb4ba6a2c564dd6d0028195235ed915f1954249d5844af366d292eee584c6e9b",
+    "wave": "W2",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-02/out/review.tsv",
+    "role": "digital-model-03",
+    "src": "/img/hoodie-set-k25-tz2803-6/digital-model-03.webp"
+  },
+  {
+    "key": "hoodie-set-k20-70083--back",
+    "slug": "hoodie-set-k20-70083",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fhoodie-set-k20-70083%2Fmodel-01-back-r5/image.raw",
+    "sha256": "c9abe0f848153754d1910a8c262c64c07233fe7e506da930c4e58952ff2a3c22",
+    "wave": "W3",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R5-02/out/review.tsv",
+    "role": "digital-back",
+    "src": "/img/hoodie-set-k20-70083/digital-back.webp",
+    "backReference": "same-color"
   }
 ]

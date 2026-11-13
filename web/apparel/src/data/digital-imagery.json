@@ -5726,5 +5726,189 @@
     "garment": "hoodie",
     "view": "turn",
     "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-70173/digital-model-04.webp",
+    "slug": "apparel-70173",
+    "color": "t",
+    "garment": "tee",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/apparel-70186/digital-model-04.webp",
+    "slug": "apparel-70186",
+    "color": "t",
+    "garment": "tee",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/apparel-70191/digital-model-06.webp",
+    "slug": "apparel-70191",
+    "color": "t",
+    "garment": "tee",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/apparel-7210/digital-model-04.webp",
+    "slug": "apparel-7210",
+    "color": "t",
+    "garment": "tee",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/pullover-hoodie-69012/digital-model-04.webp",
+    "slug": "pullover-hoodie-69012",
+    "color": "t",
+    "garment": "hoodie",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/pullover-hoodie-69015/digital-model-04.webp",
+    "slug": "pullover-hoodie-69015",
+    "color": "t",
+    "garment": "hoodie",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/cotton430-hoodie-58065/digital-model-03.webp",
+    "slug": "cotton430-hoodie-58065",
+    "color": "k",
+    "garment": "hoodie",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/cotton430-hoodie-8610/digital-model-09.webp",
+    "slug": "cotton430-hoodie-8610",
+    "color": "g",
+    "garment": "hoodie",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/crew-fleece-8900-34/digital-model-04.webp",
+    "slug": "crew-fleece-8900-34",
+    "color": "t",
+    "garment": "sweatshirt",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/hoodie-set-k10-1102-dj121/digital-model-03.webp",
+    "slug": "hoodie-set-k10-1102-dj121",
+    "color": "n",
+    "garment": "set",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/apparel-70171/digital-model-05.webp",
+    "slug": "apparel-70171",
+    "color": "p",
+    "garment": "tee",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/apparel-70190/digital-model-04.webp",
+    "slug": "apparel-70190",
+    "color": "w",
+    "garment": "tee",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/apparel-70190/digital-model-05.webp",
+    "slug": "apparel-70190",
+    "color": "e",
+    "garment": "tee",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/apparel-7210/digital-model-07.webp",
+    "slug": "apparel-7210",
+    "color": "k",
+    "garment": "tee",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/cotton430-hoodie-8611/digital-model-08.webp",
+    "slug": "cotton430-hoodie-8611",
+    "color": "e",
+    "garment": "hoodie",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/cotton430-hoodie-8611/digital-model-09.webp",
+    "slug": "cotton430-hoodie-8611",
+    "color": "n",
+    "garment": "hoodie",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/hoodie-set-k06/digital-model-04.webp",
+    "slug": "hoodie-set-k06",
+    "color": "c",
+    "garment": "set",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/hoodie-set-k18-3906/digital-model-03.webp",
+    "slug": "hoodie-set-k18-3906",
+    "color": "k",
+    "garment": "jacket",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/hoodie-set-k24-tz2803-5/digital-model-02.webp",
+    "slug": "hoodie-set-k24-tz2803-5",
+    "color": "k",
+    "garment": "set",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/hoodie-set-k24-tz2803-5/digital-model-03.webp",
+    "slug": "hoodie-set-k24-tz2803-5",
+    "color": "n",
+    "garment": "set",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/hoodie-set-k25-tz2803-6/digital-model-02.webp",
+    "slug": "hoodie-set-k25-tz2803-6",
+    "color": "k",
+    "garment": "set",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/hoodie-set-k25-tz2803-6/digital-model-03.webp",
+    "slug": "hoodie-set-k25-tz2803-6",
+    "color": "n",
+    "garment": "set",
+    "view": "front",
+    "wave": "W2"
+  },
+  {
+    "src": "/img/hoodie-set-k20-70083/digital-back.webp",
+    "slug": "hoodie-set-k20-70083",
+    "color": "k",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
   }
 ]
