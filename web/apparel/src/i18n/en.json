@@ -64,6 +64,8 @@
   "style": "Style",
   "send": "Send inquiry",
   "sending": "Sending inquiry…",
+  "sent": "Sent",
+  "backToProducts": "Back to products",
   "success": "Inquiry received. Your requirements have been saved.",
   "error.network": "Inquiry not sent. Check your connection and try again.",
   "error.storage": "Inquiry not saved. Please try again.",

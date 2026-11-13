@@ -64,6 +64,8 @@
   "style": "Modelo",
   "send": "Enviar consulta",
   "sending": "Enviando consulta…",
+  "sent": "Enviado",
+  "backToProducts": "Voltar aos produtos",
   "success": "Consulta recebida. Seus requisitos foram salvos.",
   "error.network": "Consulta não enviada. Verifique sua conexão e tente novamente.",
   "error.storage": "Consulta não salva. Tente novamente.",

@@ -64,6 +64,8 @@
   "style": "Modèle",
   "send": "Envoyer la demande",
   "sending": "Envoi en cours…",
+  "sent": "Envoyé",
+  "backToProducts": "Retour aux produits",
   "success": "Demande reçue. Vos besoins ont été enregistrés.",
   "error.network": "Demande non envoyée. Vérifiez votre connexion et réessayez.",
   "error.storage": "Demande non enregistrée. Veuillez réessayer.",

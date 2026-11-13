@@ -64,6 +64,8 @@
   "style": "款号",
   "send": "发送询价",
   "sending": "正在发送…",
+  "sent": "已发送",
+  "backToProducts": "返回产品",
   "success": "询价已收到，您的需求已保存。",
   "error.network": "询价未发送，请检查网络后重试。",
   "error.storage": "询价未保存，请重试。",
