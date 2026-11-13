@@ -17,7 +17,7 @@
   "cotton": "Molleton de coton",
   "sets": "Sweats et ensembles",
   "samples": "Échantillons",
-  "partnerTitle": "De l’idée à une demande précise.",
+  "partnerTitle": "Un chemin plus clair de l’idée à la demande.",
   "styleFirst": "Choisissez un modèle",
   "styleText": "Explorez les coupes et notez les références adaptées à votre projet.",
   "fabricFirst": "Précisez le tissu et la coupe",
@@ -50,7 +50,7 @@
   "contactTitle": "Parlez-nous de votre projet.",
   "contactText": "Indiquez une référence ou décrivez votre projet, avec vos besoins en tissu, coupe et échantillons.",
   "faq": "Avant d’envoyer",
-  "sampleQuestion": "Puis-je demander un échantillon ?",
+  "sampleQuestion": "Puis-je me renseigner sur un échantillon ?",
   "techQuestion": "Et si je n’ai pas de dossier technique ?",
   "termsQuestion": "Quelles sont les conditions de commande ?",
   "name": "Nom",
@@ -123,5 +123,5 @@
   "cookieEssential": "Nécessaires uniquement",
   "cookieAccept": "Accepter",
   "cookieSettings": "Paramètres",
-  "cookieDetails": "GA4 mesure les visites et les demandes envoyées uniquement avec votre consentement. Cookies : _ga et _ga_<ID>, jusqu’à 2 ans. Vous pouvez retirer votre consentement ici à tout moment."
+  "cookieDetails": "GA4 mesure les visites et les demandes envoyées avec succès uniquement avec votre consentement. Cookies : _ga et _ga_<ID>, jusqu’à 2 ans. Vous pouvez retirer votre consentement ici à tout moment."
 }

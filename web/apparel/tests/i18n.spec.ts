@@ -41,3 +41,9 @@ test('Spanish form renders server message keys as Spanish strings', async ({ pag
   await page.locator('button[type="submit"]').click();
   await expect(page.locator('.form-status')).toContainText('Introduce una dirección de correo válida.');
 });
+
+// Cross-check regression: the clearer path qualifies the process in every locale.
+for (const [locale, phrase] of Object.entries({es: 'Un camino más claro de la idea a la consulta.', fr: 'Un chemin plus clair de l’idée à la demande.', de: 'Ein klarerer Weg von der Idee zur Anfrage.', pt: 'Um caminho mais claro da ideia à consulta.', ru: 'Более ясный путь от идеи к запросу.'})) test(`reviewed path wording ${locale}`, async ({ page }) => {
+  await page.goto(`/${locale}/`);
+  await expect(page.locator('body')).toContainText(phrase);
+});
