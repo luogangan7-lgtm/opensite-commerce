@@ -11,7 +11,7 @@ const code = locale === 'ar' ? `\u2068${product}\u2069` : product;
 const siteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY;
 const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entries(t).filter(([key]) => key.startsWith('error.') || ['sending', 'success'].includes(key))) };
 ---
-<form id="rfq-form" class="rfq" action="/api/rfq" method="post" data-success-url={getRelativeLocaleUrl(locale, "/contact/") + "?sent=1"} data-messages={JSON.stringify(messages)}>
+<form id="rfq-form" class="rfq" action="/api/rfq" method="post" data-success-url={getRelativeLocaleUrl(locale, "/contact/") + "?sent=1"} data-sample-label={t.requestSample} data-messages={JSON.stringify(messages)}>
 <input type="hidden" name="locale" value={locale} />
 <div class="form-pair"><label>{t.name}<input name="name" placeholder={t.namePlaceholder} autocomplete="name" required maxlength="100" /></label>
 <label>{t.email}<input name="email" type="email" placeholder={t.emailPlaceholder} autocomplete="email" required maxlength="254" dir="ltr" /></label></div>
@@ -37,7 +37,7 @@ const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entrie
       const message = form.querySelector<HTMLTextAreaElement>('[name="message"]')!;
       const lines = [
         prefill.product ? `${prefill.product.slug} (${prefill.product.style_codes.join(' / ')})` : '',
-        prefill.type || '', prefill.subject || '',
+        prefill.type === 'sample' ? form.dataset.sampleLabel! : '', prefill.subject || '',
       ].filter(Boolean);
       if (lines.length) message.value = lines.join('\n');
       if (prefill.product) {
