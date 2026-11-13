@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { verifyBuildReceipt } from './build-receipt';
 import products from './src/data/products.json';
+import { packageDigital } from './digital-images';
 import digital from './digital-sources.json';
 import details from './detail-sources.json';
 import { packageDetails, readDetailLedger, copyFallbackImage } from './detail-images';
@@ -69,7 +70,7 @@ for (const receipt of await packageDetails(plan.details, sourceRoot, destination
 }
 for (const image of plan.digital) {
   mkdirSync(dirname(join(destination, image.src)), { recursive: true });
-  await sharp(safeInput(sourceRoot, image.source)).resize({ width: 1024, withoutEnlargement: true }).webp({ quality: 82 }).toFile(join(destination, image.src));
+  await packageDigital(image, readFileSync(safeInput(sourceRoot, image.source)), join(destination, image.src));
   const outputMetadata = await sharp(join(destination, image.src)).metadata();
   dimensions.set(image.src, { w: outputMetadata.width!, h: outputMetadata.height! });
   record(image.src, image.sha256);

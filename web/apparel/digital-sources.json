@@ -5237,7 +5237,9 @@
     "wave": "W3",
     "acceptance": "fleet-20261104/w3-fin13-20261109/accepted.tsv",
     "role": "digital-turn",
-    "src": "/img/apparel-70174-x-small-logo/digital-turn.webp"
+    "src": "/img/apparel-70174-x-small-logo/digital-turn.webp",
+    "backReference": "same-color",
+    "nativeBytes": true
   },
   {
     "key": "apparel-70175--turn",
@@ -5768,7 +5770,8 @@
     "acceptance": "fleet-20261104/w3-fin-vr3b-20261109/accepted.tsv",
     "role": "digital-back",
     "src": "/img/cotton430-hoodie-8601/digital-back.webp",
-    "backReference": "same-color"
+    "backReference": "same-color",
+    "nativeBytes": true
   },
   {
     "key": "cotton430-hoodie-8611--back",
@@ -5804,13 +5807,14 @@
   {
     "key": "cotton430-hoodie-l8603--back",
     "slug": "cotton430-hoodie-l8603",
-    "source": "fleet-20261104/w3-b14-20261109/hold/cotton430-hoodie-l8603--back.png",
+    "source": "fleet-20261104/w3-b12-20261108/output/cotton430-hoodie-l8603--back.png",
     "sha256": "a1d19427614c40afc009229461f20b76f54281abd525b00f57af73fc36763dad",
     "wave": "W3",
     "acceptance": "fleet-20261104/w3-fin4-k2-20261109/accepted.tsv",
     "role": "digital-back",
     "src": "/img/cotton430-hoodie-l8603/digital-back.webp",
-    "backReference": "same-color"
+    "backReference": "same-color",
+    "nativeBytes": true
   },
   {
     "key": "cotton430-hoodie-l8604--turn",
@@ -6042,7 +6046,9 @@
     "wave": "W3",
     "acceptance": "fleet-20261104/w3-fin13-20261109/accepted.tsv",
     "role": "digital-turn",
-    "src": "/img/hoodie-set-k01-0256/digital-turn.webp"
+    "src": "/img/hoodie-set-k01-0256/digital-turn.webp",
+    "backReference": "same-color",
+    "nativeBytes": true
   },
   {
     "key": "hoodie-set-k01-0256-tz2804-7--turn",
@@ -6082,7 +6088,9 @@
     "wave": "W3",
     "acceptance": "fleet-20261104/w3-fin16-20261109/accepted.tsv",
     "role": "digital-turn",
-    "src": "/img/hoodie-set-k05/digital-turn.webp"
+    "src": "/img/hoodie-set-k05/digital-turn.webp",
+    "backReference": "same-color",
+    "nativeBytes": true
   },
   {
     "key": "hoodie-set-k07--turn",
@@ -6122,7 +6130,9 @@
     "wave": "W3",
     "acceptance": "fleet-20261104/w3-fin13-20261109/accepted.tsv",
     "role": "digital-turn",
-    "src": "/img/hoodie-set-k10-1102/digital-turn.webp"
+    "src": "/img/hoodie-set-k10-1102/digital-turn.webp",
+    "backReference": "same-color",
+    "nativeBytes": true
   },
   {
     "key": "hoodie-set-k10-1102-dj121--turn",
@@ -6152,7 +6162,9 @@
     "wave": "W3",
     "acceptance": "fleet-20261104/w3-fin13-20261109/accepted.tsv",
     "role": "digital-turn",
-    "src": "/img/hoodie-set-k12-3900-0253/digital-turn.webp"
+    "src": "/img/hoodie-set-k12-3900-0253/digital-turn.webp",
+    "backReference": "same-color",
+    "nativeBytes": true
   },
   {
     "key": "hoodie-set-k13-3901--turn",
@@ -6212,7 +6224,9 @@
     "wave": "W3",
     "acceptance": "fleet-20261104/w3-fin16-20261109/accepted.tsv",
     "role": "digital-turn",
-    "src": "/img/hoodie-set-k23-70080/digital-turn.webp"
+    "src": "/img/hoodie-set-k23-70080/digital-turn.webp",
+    "backReference": "same-color",
+    "nativeBytes": true
   },
   {
     "key": "crew-fleece-8900-35--back",
@@ -6320,7 +6334,8 @@
     "role": "digital-back",
     "src": "/img/hoodie-set-k12-3900-0253/digital-back.webp",
     "backReference": "owner-plain",
-    "reviewEvidence": "fleet-20261104/w3-fin-lpv-20261109/hoodie-set-k12-3900-0253--back/review.json"
+    "reviewEvidence": "fleet-20261104/w3-fin-lpv-20261109/hoodie-set-k12-3900-0253--back/review.json",
+    "nativeBytes": true
   },
   {
     "key": "aston-hoodie-69009--back",
@@ -6344,7 +6359,8 @@
     "role": "digital-back",
     "src": "/img/hoodie-set-k10-1102/digital-back.webp",
     "backReference": "owner-plain",
-    "reviewEvidence": "fleet-20261104/w3-fin-lpv-20261109/hoodie-set-k10-1102--back/review.json"
+    "reviewEvidence": "fleet-20261104/w3-fin-lpv-20261109/hoodie-set-k10-1102--back/review.json",
+    "nativeBytes": true
   },
   {
     "key": "apparel-70171--back",
@@ -6368,7 +6384,8 @@
     "role": "digital-back",
     "src": "/img/apparel-70174-x-small-logo/digital-back.webp",
     "backReference": "owner-plain",
-    "reviewEvidence": "fleet-20261104/w3-fin-pba-20261109/apparel-70174-x-small-logo--back/review.json"
+    "reviewEvidence": "fleet-20261104/w3-fin-pba-20261109/apparel-70174-x-small-logo--back/review.json",
+    "nativeBytes": true
   },
   {
     "key": "apparel-70178-x-loropiana-crest--back",
@@ -6512,7 +6529,8 @@
     "role": "digital-back",
     "src": "/img/hoodie-set-k03/digital-back.webp",
     "backReference": "owner-plain",
-    "reviewEvidence": "fleet-20261104/w3-fin-pbf-20261109/hoodie-set-k03--back--review.json"
+    "reviewEvidence": "fleet-20261104/w3-fin-pbf-20261109/hoodie-set-k03--back--review.json",
+    "nativeBytes": true
   },
   {
     "key": "hoodie-set-k07--back",
@@ -6524,7 +6542,8 @@
     "role": "digital-back",
     "src": "/img/hoodie-set-k07/digital-back.webp",
     "backReference": "owner-plain",
-    "reviewEvidence": "fleet-20261104/w3-fin-pbf-20261109/hoodie-set-k07--back--review.json"
+    "reviewEvidence": "fleet-20261104/w3-fin-pbf-20261109/hoodie-set-k07--back--review.json",
+    "nativeBytes": true
   },
   {
     "key": "aston-hoodie-69011--back",
@@ -6560,7 +6579,8 @@
     "role": "digital-back",
     "src": "/img/hoodie-set-k02/digital-back.webp",
     "backReference": "owner-plain",
-    "reviewEvidence": "fleet-20261104/w3-fin-pbf-20261109/hoodie-set-k02--back--review.json"
+    "reviewEvidence": "fleet-20261104/w3-fin-pbf-20261109/hoodie-set-k02--back--review.json",
+    "nativeBytes": true
   },
   {
     "key": "aston-hoodie-69010--back",
@@ -6620,7 +6640,8 @@
     "role": "digital-back",
     "src": "/img/hoodie-set-k08/digital-back.webp",
     "backReference": "owner-plain",
-    "reviewEvidence": "fleet-20261104/w3-gate3-20261109/final-pbh/hoodie-set-k08--back/review.json"
+    "reviewEvidence": "fleet-20261104/w3-gate3-20261109/final-pbh/hoodie-set-k08--back/review.json",
+    "nativeBytes": true
   },
   {
     "key": "apparel-70173--back",
@@ -6764,7 +6785,8 @@
     "role": "digital-back",
     "src": "/img/hoodie-set-k01-0256-x-croc/digital-back.webp",
     "backReference": "owner-plain",
-    "reviewEvidence": "fleet-20261104/w3-fin-pbm-20261109/hoodie-set-k01-0256-x-croc--back.json"
+    "reviewEvidence": "fleet-20261104/w3-fin-pbm-20261109/hoodie-set-k01-0256-x-croc--back.json",
+    "nativeBytes": true
   },
   {
     "key": "hoodie-set-k01-0256-tz2804-8--back",
@@ -6776,7 +6798,8 @@
     "role": "digital-back",
     "src": "/img/hoodie-set-k01-0256-tz2804-8/digital-back.webp",
     "backReference": "owner-plain",
-    "reviewEvidence": "fleet-20261104/w3-fin-pbm-20261109/hoodie-set-k01-0256-tz2804-8--back.json"
+    "reviewEvidence": "fleet-20261104/w3-fin-pbm-20261109/hoodie-set-k01-0256-tz2804-8--back.json",
+    "nativeBytes": true
   },
   {
     "key": "crew-fleece-8900-40--back",
@@ -6800,7 +6823,8 @@
     "role": "digital-back",
     "src": "/img/hoodie-set-k01-0256-tz2800-10/digital-back.webp",
     "backReference": "owner-plain",
-    "reviewEvidence": "fleet-20261104/w3-fin-pbm-20261109/hoodie-set-k01-0256-tz2800-10--back.json"
+    "reviewEvidence": "fleet-20261104/w3-fin-pbm-20261109/hoodie-set-k01-0256-tz2800-10--back.json",
+    "nativeBytes": true
   },
   {
     "key": "crew-fleece-8900-31--turn",
@@ -7695,5 +7719,17 @@
     "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fapparel-70179%2Fmodel-03-front-r6/image.raw",
     "sha256": "74329f4472b481e5c4a795081ef4c2d5a9a2be8b72266a2fbafa055075e5a2f4",
     "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN1/out/review.tsv"
+  },
+  {
+    "key": "crew-fleece-8900-34--turn",
+    "slug": "crew-fleece-8900-34",
+    "source": "fleet-20261104/w3-lr1-20261109/hold/crew-fleece-8900-34--turn.png",
+    "sha256": "530ddebf027b926e0ffc2e78568a3b7bdb1559e1e4af7306fe71425b964e1f4f",
+    "wave": "W3",
+    "acceptance": "fleet-20261104/w3-fin-projectcontrol-20261112/accepted.tsv",
+    "role": "digital-turn",
+    "src": "/img/crew-fleece-8900-34/digital-turn.webp",
+    "backReference": "same-color",
+    "nativeBytes": true
   }
 ]
