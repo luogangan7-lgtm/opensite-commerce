@@ -5342,5 +5342,389 @@
     "garment": "set",
     "view": "back",
     "wave": "W3"
+  },
+  {
+    "src": "/img/crew-fleece-8900-31/digital-turn.webp",
+    "slug": "crew-fleece-8900-31",
+    "color": "c",
+    "garment": "sweatshirt",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/crew-fleece-8900-32/digital-back.webp",
+    "slug": "crew-fleece-8900-32",
+    "color": "c",
+    "garment": "sweatshirt",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/crew-fleece-8900-37/digital-turn.webp",
+    "slug": "crew-fleece-8900-37",
+    "color": "c",
+    "garment": "sweatshirt",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/crew-fleece-8900-40/digital-turn.webp",
+    "slug": "crew-fleece-8900-40",
+    "color": "b",
+    "garment": "sweatshirt",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-7203/digital-turn.webp",
+    "slug": "apparel-7203",
+    "color": "w",
+    "garment": "tee",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-7700-9/digital-turn.webp",
+    "slug": "apparel-7700-9",
+    "color": "k",
+    "garment": "tee",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-58064/digital-turn.webp",
+    "slug": "cotton430-hoodie-58064",
+    "color": "c",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-58065/digital-turn.webp",
+    "slug": "cotton430-hoodie-58065",
+    "color": "c",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-70046/digital-turn.webp",
+    "slug": "cotton430-hoodie-70046",
+    "color": "c",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-8601/digital-turn.webp",
+    "slug": "cotton430-hoodie-8601",
+    "color": "g",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-l8603/digital-turn.webp",
+    "slug": "cotton430-hoodie-l8603",
+    "color": "w",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-l8615/digital-turn.webp",
+    "slug": "cotton430-hoodie-l8615",
+    "color": "t",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k01-0256-x-croc/digital-turn.webp",
+    "slug": "hoodie-set-k01-0256-x-croc",
+    "color": "g",
+    "garment": "set",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k01-0256-tz2804-8/digital-turn.webp",
+    "slug": "hoodie-set-k01-0256-tz2804-8",
+    "color": "g",
+    "garment": "set",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k01-0256-tz2800-10/digital-turn.webp",
+    "slug": "hoodie-set-k01-0256-tz2800-10",
+    "color": "g",
+    "garment": "set",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k02/digital-turn.webp",
+    "slug": "hoodie-set-k02",
+    "color": "g",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k06/digital-turn.webp",
+    "slug": "hoodie-set-k06",
+    "color": "g",
+    "garment": "set",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k09/digital-back.webp",
+    "slug": "hoodie-set-k09",
+    "color": "k",
+    "garment": "set",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k12-3900-0252/digital-turn.webp",
+    "slug": "hoodie-set-k12-3900-0252",
+    "color": "n",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k12-3900/digital-turn.webp",
+    "slug": "hoodie-set-k12-3900",
+    "color": "g",
+    "garment": "jacket",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k12-3900/digital-back.webp",
+    "slug": "hoodie-set-k12-3900",
+    "color": "g",
+    "garment": "jacket",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k16-3904/digital-turn.webp",
+    "slug": "hoodie-set-k16-3904",
+    "color": "k",
+    "garment": "jacket",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k18-3906/digital-turn.webp",
+    "slug": "hoodie-set-k18-3906",
+    "color": "g",
+    "garment": "jacket",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k21-70046/digital-back.webp",
+    "slug": "hoodie-set-k21-70046",
+    "color": "o",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k22-6000-2/digital-turn.webp",
+    "slug": "hoodie-set-k22-6000-2",
+    "color": "g",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/crew-fleece-8900-31/digital-back.webp",
+    "slug": "crew-fleece-8900-31",
+    "color": "c",
+    "garment": "sweatshirt",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/crew-fleece-8900-33/digital-back.webp",
+    "slug": "crew-fleece-8900-33",
+    "color": "c",
+    "garment": "sweatshirt",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/crew-fleece-8900-36/digital-back.webp",
+    "slug": "crew-fleece-8900-36",
+    "color": "c",
+    "garment": "sweatshirt",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-70174/digital-back.webp",
+    "slug": "apparel-70174",
+    "color": "k",
+    "garment": "tee",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-70176/digital-turn.webp",
+    "slug": "apparel-70176",
+    "color": "w",
+    "garment": "tee",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-70179/digital-turn.webp",
+    "slug": "apparel-70179",
+    "color": "p",
+    "garment": "tee",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-70194/digital-back.webp",
+    "slug": "apparel-70194",
+    "color": "k",
+    "garment": "tee",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-7700-38/digital-back.webp",
+    "slug": "apparel-7700-38",
+    "color": "k",
+    "garment": "tee",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-7700-9/digital-back.webp",
+    "slug": "apparel-7700-9",
+    "color": "k",
+    "garment": "tee",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-78187/digital-back.webp",
+    "slug": "apparel-78187",
+    "color": "w",
+    "garment": "tee",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-58066/digital-turn.webp",
+    "slug": "cotton430-hoodie-58066",
+    "color": "c",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-7339/digital-turn.webp",
+    "slug": "cotton430-hoodie-7339",
+    "color": "c",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-7339/digital-back.webp",
+    "slug": "cotton430-hoodie-7339",
+    "color": "c",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-l8602/digital-back.webp",
+    "slug": "cotton430-hoodie-l8602",
+    "color": "w",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-l8604/digital-back.webp",
+    "slug": "cotton430-hoodie-l8604",
+    "color": "w",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-l8606/digital-back.webp",
+    "slug": "cotton430-hoodie-l8606",
+    "color": "w",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-l8705/digital-back.webp",
+    "slug": "cotton430-hoodie-l8705",
+    "color": "w",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k01-0256-tz2804-7/digital-back.webp",
+    "slug": "hoodie-set-k01-0256-tz2804-7",
+    "color": "g",
+    "garment": "set",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k01-0256/digital-back.webp",
+    "slug": "hoodie-set-k01-0256",
+    "color": "g",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k10-1102-dj121/digital-back.webp",
+    "slug": "hoodie-set-k10-1102-dj121",
+    "color": "k",
+    "garment": "set",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k13-3901/digital-back.webp",
+    "slug": "hoodie-set-k13-3901",
+    "color": "n",
+    "garment": "jacket",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-8610/digital-turn.webp",
+    "slug": "cotton430-hoodie-8610",
+    "color": "k",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/cotton430-hoodie-l8612/digital-turn.webp",
+    "slug": "cotton430-hoodie-l8612",
+    "color": "w",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
   }
 ]

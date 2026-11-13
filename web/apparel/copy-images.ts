@@ -69,7 +69,7 @@ for (const receipt of await packageDetails(plan.details, sourceRoot, destination
 }
 for (const image of plan.digital) {
   mkdirSync(dirname(join(destination, image.src)), { recursive: true });
-  await sharp(safeInput(sourceRoot, image.source)).resize({ width: 1024 }).webp({ quality: 82 }).toFile(join(destination, image.src));
+  await sharp(safeInput(sourceRoot, image.source)).resize({ width: 1024, withoutEnlargement: true }).webp({ quality: 82 }).toFile(join(destination, image.src));
   const outputMetadata = await sharp(join(destination, image.src)).metadata();
   dimensions.set(image.src, { w: outputMetadata.width!, h: outputMetadata.height! });
   record(image.src, image.sha256);

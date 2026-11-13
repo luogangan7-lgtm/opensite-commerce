@@ -32,7 +32,7 @@ export function imagePlan({ slots, review, provenance, published, digital = [], 
   }).sort((a, b) => a.slug.localeCompare(b.slug));
   if (new Set(packshots.map(row => row.slug)).size !== packshots.length) throw Error('Duplicate packshot review');
   const models = digital.map(row => {
-    if (publicId(row.key.split(/--|__/)[0]) !== row.slug || !published.includes(row.slug) || !/^[a-z0-9-]+$/.test(row.slug) || !/^digital-(?:front|turn|back|model-\d+)$/.test(row.role) || row.src !== `/img/${row.slug}/${row.role}.webp` || !/^[a-f0-9]{64}$/.test(row.sha256) || row.source.startsWith('/') || row.source.split(/[\\/]/).some(p => p === '..') || !row.source.endsWith('.png')) throw Error('Invalid digital model source or catalog identity');
+    if (publicId(row.key.split(/--|__/)[0]) !== row.slug || !published.includes(row.slug) || !/^[a-z0-9-]+$/.test(row.slug) || !/^digital-(?:front|turn|back|model-\d+)$/.test(row.role) || row.src !== `/img/${row.slug}/${row.role}.webp` || !/^[a-f0-9]{64}$/.test(row.sha256) || row.source.startsWith('/') || row.source.split(/[\\/]/).some(p => p === '..') || !/\.(?:png|raw)$/.test(row.source)) throw Error('Invalid digital model source or catalog identity');
     return row;
   });
   if (new Set(models.map(row => row.src)).size !== models.length) throw Error('Duplicate digital model view');
