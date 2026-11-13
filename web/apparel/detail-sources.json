@@ -1,0 +1,802 @@
+[
+  {
+    "slug": "crew-fleece-8900-31",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-31--fabric.png",
+    "src": "/img/crew-fleece-8900-31/fabric.webp",
+    "sha256": "772b5ee31ce011c8739df32f4628deee37f66b9cb18013593dd8db03ac32a719",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-31--fabric/review.json",
+    "sourceSha256": "cbfe4ad2773022dcc4cce99d5805616e21c4daaa93d78420b74132738b021190"
+  },
+  {
+    "slug": "crew-fleece-8900-32",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-32--fabric.png",
+    "src": "/img/crew-fleece-8900-32/fabric.webp",
+    "sha256": "302dc2b7f53dfb4e67a9c95e46caa540f54d73053cc3cf55099b2b65fb504163",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-32--fabric/review.json",
+    "sourceSha256": "47ba9a60703753e04b185a00dbb42dd33a07408533fa8d6b0d774811c37df705"
+  },
+  {
+    "slug": "crew-fleece-8900-33",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-33--fabric.png",
+    "src": "/img/crew-fleece-8900-33/fabric.webp",
+    "sha256": "3b8a592b57834c34c3b1b187bd6511a9609435e31e42e05faceda37d487e97bf",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-33--fabric/review.json",
+    "sourceSha256": "ef5ab8bbc70dff1e2ea6300f0ce807a8366eff4edbf913d2bb3993ab6c4e6ab4"
+  },
+  {
+    "slug": "crew-fleece-8900-34",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-34--fabric.png",
+    "src": "/img/crew-fleece-8900-34/fabric.webp",
+    "sha256": "6e54602ac2df70a4cc2ef9b519efd4ab97d86b1333e82964ef8d04dac436567c",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-34--fabric/review.json",
+    "sourceSha256": "6305758ae8925c48183bc1a73f1ecba33b2242a13c849f4bdb5b2ad5ab7b758e"
+  },
+  {
+    "slug": "crew-fleece-8900-35",
+    "role": "fabric",
+    "colour": "sage/olive grey",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-35--fabric.png",
+    "src": "/img/crew-fleece-8900-35/fabric.webp",
+    "sha256": "52ab647a98e8e7ad2c31a2340488cb3f943fce5238b92a705c70cb679310ca74",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-35--fabric/review.json",
+    "sourceSha256": "949ada50f3db70e0e5bbc6504c359a1266ad5ec7313c1c8dd023633683afb939"
+  },
+  {
+    "slug": "crew-fleece-8900-36",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-36--fabric.png",
+    "src": "/img/crew-fleece-8900-36/fabric.webp",
+    "sha256": "0a70dcc88e65edcfefbed885f515b6058283bf38005dc5af77b3ee115ab60226",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-36--fabric/review.json",
+    "sourceSha256": "28474bf50b7a6393a0ab5992a8e8a107b8d93cc4b46a1066a1d5b2509d9bb258"
+  },
+  {
+    "slug": "crew-fleece-8900-37",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-37--fabric.png",
+    "src": "/img/crew-fleece-8900-37/fabric.webp",
+    "sha256": "ba069638ac206d8f840d70909490772fbd5febd03fbb3e377fd1279b02a4c3e8",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-37--fabric/review.json",
+    "sourceSha256": "df85fe40ea8c72dce4832f1f5495828dbdafbdc20bc9a895007bc2f5bf71ccdd"
+  },
+  {
+    "slug": "crew-fleece-8900-38",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-38--fabric.png",
+    "src": "/img/crew-fleece-8900-38/fabric.webp",
+    "sha256": "0b57db4cced83ea64be2a17918fe7c1eba3c5bede2213d738891bbec4cb7672c",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-38--fabric/review.json",
+    "sourceSha256": "4563809293e79c949433b82b2f1945e20aaaa60242dae7e77ed64b4bd2296e9d"
+  },
+  {
+    "slug": "crew-fleece-8900-39",
+    "role": "fabric",
+    "colour": "sage/olive grey",
+    "source": "fleet-20261104/detail-20261110/d14/crew-fleece-8900-39--fabric/final.png",
+    "src": "/img/crew-fleece-8900-39/fabric.webp",
+    "sha256": "b22754045fcc2bc433f69a8493ef6e7519e6b0ebbdb25f1bf63f30af38e1cd1a",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/crew-fleece-8900-39--fabric/review.json",
+    "sourceSha256": "2d81a72d90bbb8bedb2c518deabf309df4b0b05649902b40edced3582bfd36df"
+  },
+  {
+    "slug": "crew-fleece-8900-41",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-41--fabric.png",
+    "src": "/img/crew-fleece-8900-41/fabric.webp",
+    "sha256": "975c6c288cc8159e26611e6a0b28c02c196eb1d9d8251eec5c7bd6391994c26d",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-41--fabric/review.json",
+    "sourceSha256": "9ad7856d8fdac06c6cfec028e18f9aff423e0d7b1789f45e6d96ea15fe90c17f"
+  },
+  {
+    "slug": "crew-fleece-8900-42",
+    "role": "fabric",
+    "colour": "red",
+    "source": "fleet-20261104/detail-20261110/d14/crew-fleece-8900-42--fabric/final.png",
+    "src": "/img/crew-fleece-8900-42/fabric.webp",
+    "sha256": "c6d8b9ae6119232ff78ae9eb36023d12ea44aef6466b663a7a196122f0a24b29",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/crew-fleece-8900-42--fabric/review.json",
+    "sourceSha256": "26c6850300e84d5f5bb226de6eb75db26d979405adc566f24118036620913a7d"
+  },
+  {
+    "slug": "crew-fleece-8900-43",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-43--fabric.png",
+    "src": "/img/crew-fleece-8900-43/fabric.webp",
+    "sha256": "8846a80eff652ac76a57a693ee5ea2f97f0908ac656aa0eba3874e3672882ed5",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-43--fabric/review.json",
+    "sourceSha256": "0bbb9fbbd2bd2488daadfa17d3f733804fb29950a40b76ca718c3249d10d160a"
+  },
+  {
+    "slug": "crew-fleece-8900-44",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-44--fabric.png",
+    "src": "/img/crew-fleece-8900-44/fabric.webp",
+    "sha256": "0e9d0f779c6d38752ab4bdaecb45a6e6391ea81394b7122137ac9b4acc9b2434",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-44--fabric/review.json",
+    "sourceSha256": "9f4a6fc63c22d59725114e8a75a5508935d36996ac3fc146d214ff1a62e0920d"
+  },
+  {
+    "slug": "crew-fleece-8900-45",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-45--fabric.png",
+    "src": "/img/crew-fleece-8900-45/fabric.webp",
+    "sha256": "5d107fe0cf02a8183d76fc193824684a716004b7b58d6927917f2db0d3519575",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-45--fabric/review.json",
+    "sourceSha256": "8c6c4b8fa22d5cbd662a23f00566e7d78f32f0723e27c10b95c45a1f96e6d47b"
+  },
+  {
+    "slug": "crew-fleece-8900-46",
+    "role": "fabric",
+    "colour": "sage/olive grey",
+    "source": "fleet-20261104/detail-20261110/d14/crew-fleece-8900-46--fabric/final.png",
+    "src": "/img/crew-fleece-8900-46/fabric.webp",
+    "sha256": "a8d63db06a9b63f36b2186cc8fe7732005ec18e60173f2b757f6ae345964ad81",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/crew-fleece-8900-46--fabric/review.json",
+    "sourceSha256": "a54a6867d7c550ae44a2d4f6a3002d4c4b2db882a54a117c74c75099bc18d6f5"
+  },
+  {
+    "slug": "crew-fleece-8900-48",
+    "role": "fabric",
+    "colour": "red",
+    "source": "fleet-20261104/detail-20261110/d14/crew-fleece-8900-48--fabric/final.png",
+    "src": "/img/crew-fleece-8900-48/fabric.webp",
+    "sha256": "70b7a324b79829f3db7bab570da2374568a11ec0f5af30e990ba94d197757ba4",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/crew-fleece-8900-48--fabric/review.json",
+    "sourceSha256": "46e5789e614b484b35379ec36278b4189314cdb99828b9ca8ec423ef203d809e"
+  },
+  {
+    "slug": "crew-fleece-8900-49",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-49--fabric.png",
+    "src": "/img/crew-fleece-8900-49/fabric.webp",
+    "sha256": "adb4d41f2485e458227af56dfa31c4db7f41b5d926ddc64055cfe0cae357fcd8",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-49--fabric/review.json",
+    "sourceSha256": "21ce08922fee1a777c463004c9469e1fdb08beb2c274d6d991a5a870fb898874"
+  },
+  {
+    "slug": "crew-fleece-8900-50",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-50--fabric.png",
+    "src": "/img/crew-fleece-8900-50/fabric.webp",
+    "sha256": "7bf38a8120ba9b6c5e05a1354a4a5dd798176c7685e012e70dcc5525528f39b2",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-50--fabric/review.json",
+    "sourceSha256": "9bd1e1c223a80ae0c7e2c43ddec101e137e62be616d4a910e6f3481f281070af"
+  },
+  {
+    "slug": "crew-fleece-8900-53",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d8/hold/crew-fleece-8900-53--fabric.png",
+    "src": "/img/crew-fleece-8900-53/fabric.webp",
+    "sha256": "7849576635dae3778294db51ce5b2c83de8f68a083c094653eb07f37ae9ffb16",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/crew-fleece-8900-53--fabric/review.json",
+    "sourceSha256": "34636ef155e1edd8e752234ea0d61c3dfcb76aa385b640a67a9c3a172cf14d85"
+  },
+  {
+    "slug": "apparel-59011",
+    "role": "fabric",
+    "colour": "dark green",
+    "source": "fleet-20261104/detail-20261110/d8/hold/apparel-59011--fabric.png",
+    "src": "/img/apparel-59011/fabric.webp",
+    "sha256": "fc04914015c74ee10c0b8eb6f5029c1b59bf9e16c93b1f3519245ae1b4ffe4ef",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/apparel-59011--fabric/review.json",
+    "sourceSha256": "f9a03d00dc0ead3313f7b62b0d2db895ef83fde195eb803e0dab786c6b456a23"
+  },
+  {
+    "slug": "apparel-59043",
+    "role": "fabric",
+    "colour": "dark green",
+    "source": "fleet-20261104/detail-20261110/d8/hold/apparel-59043--fabric.png",
+    "src": "/img/apparel-59043/fabric.webp",
+    "sha256": "0a27c19208800967c28c99dc570e4b6144b205eae860282d5e1730ae88c17d20",
+    "acceptance": "fleet-20261104/detail-20261110/d11/items/apparel-59043--fabric/review.json",
+    "sourceSha256": "eefb28712b4f5e3637b3284df11f5b2a3812270d593e7041402309f2a7db290b"
+  },
+  {
+    "slug": "apparel-70108",
+    "role": "fabric",
+    "colour": "brown",
+    "source": "fleet-20261104/detail-20261110/d13/pass/apparel-70108--fabric.png",
+    "src": "/img/apparel-70108/fabric.webp",
+    "sha256": "f5941b4e3beaef35c5bb0b638d77b783c26e16ae12b88c3f5dc0abdebeceb397",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/apparel-70108--fabric/review.json",
+    "sourceSha256": "c8f59f78c8f6993884e8065637ce3a67eb344f01a9f6ba4b8f56e0ddd4189846"
+  },
+  {
+    "slug": "apparel-70159",
+    "role": "fabric",
+    "colour": "brown",
+    "source": "fleet-20261104/detail-20261110/d13/pass/apparel-70159--fabric.png",
+    "src": "/img/apparel-70159/fabric.webp",
+    "sha256": "9eb4e3869d7e6a926e0ed292c4e1a5af9abed9d3a48ca6da9785eeb739378a43",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/apparel-70159--fabric/review.json",
+    "sourceSha256": "45991f8eacdb80e127d79b9e338ec1bf8cf2b38693586a86fbe6d679a899a13f"
+  },
+  {
+    "slug": "apparel-70171",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/detail-20261110/d13/pass/apparel-70171--fabric.png",
+    "src": "/img/apparel-70171/fabric.webp",
+    "sha256": "36ba7680a3da53a89f8af3b4c6e0c5b23745eb62683dba1498ce9172f926ab8e",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/apparel-70171--fabric/review.json",
+    "sourceSha256": "d14a4edfd46bb7faeb10ac0c76446a85c65154f9c123689d4e49793213ccc2c8"
+  },
+  {
+    "slug": "apparel-70172",
+    "role": "fabric",
+    "colour": "brown",
+    "source": "fleet-20261104/detail-20261110/d13/pass/apparel-70172--fabric.png",
+    "src": "/img/apparel-70172/fabric.webp",
+    "sha256": "c8ab33b0be0d70da7cab61a57f912592817570b53bd15dc89668e1db66e00325",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/apparel-70172--fabric/review.json",
+    "sourceSha256": "5e1a736256ddd64afb85bf563769201e7900c2303e9685795cf5563d89ab38d9"
+  },
+  {
+    "slug": "apparel-70173",
+    "role": "fabric",
+    "colour": "brown",
+    "source": "fleet-20261104/detail-20261110/d13/pass/apparel-70173--fabric.png",
+    "src": "/img/apparel-70173/fabric.webp",
+    "sha256": "5edd27fd91cf92b5c85337055e3c461233f96e44abf1ae21ddc37cbaa7458a3a",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/apparel-70173--fabric/review.json",
+    "sourceSha256": "6f2591074380f2f32ce4d05e604ec84c5070bb025bb5318c00b924548f1274cc"
+  },
+  {
+    "slug": "apparel-70174",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/detail-20261110/d13/pass/apparel-70174--fabric.png",
+    "src": "/img/apparel-70174/fabric.webp",
+    "sha256": "6b83a88671967835633c6923b23ec46632a927508c0ef084bf7e493243c9c1e3",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/apparel-70174--fabric/review.json",
+    "sourceSha256": "1e1189ab8a2a6e9d8d11c7c9e9e98e07af1f84ba88028cdb862da9b0efcee34e"
+  },
+  {
+    "slug": "apparel-70176",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d21/pass/apparel-70176--fabric.png",
+    "src": "/img/apparel-70176/fabric.webp",
+    "sha256": "b77c49977f6bb63aca9320e195e9a7dfe73c2bcf5e3d7613097e50ea0c9a479b",
+    "acceptance": "fleet-20261104/detail-20261110/d24a/items/apparel-70176--fabric/acceptance-evidence.json",
+    "sourceSha256": "60ee1d739f5fd2b521afda37477b393804fefddd3d24e94757196ee807d8001a"
+  },
+  {
+    "slug": "apparel-70178",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d21/pass/apparel-70178--fabric.png",
+    "src": "/img/apparel-70178/fabric.webp",
+    "sha256": "1eb803b10e9d641868758eaa15d0e48a2839c6205a9fc492b22a46004f106822",
+    "acceptance": "fleet-20261104/detail-20261110/d24a/items/apparel-70178--fabric/acceptance-evidence.json",
+    "sourceSha256": "7ca0ff22f9bd8091880c5cb152d6b024c7bafb87402a0bb3aac718f55fa4febf"
+  },
+  {
+    "slug": "apparel-70179",
+    "role": "fabric",
+    "colour": "pink",
+    "source": "fleet-20261104/detail-20261110/d13/hold/apparel-70179--fabric.png",
+    "src": "/img/apparel-70179/fabric.webp",
+    "sha256": "1b22f99d991d1ae87aa82583d8163a01b74b5af33cf722e324b359b0e96f9105",
+    "acceptance": "fleet-20261104/detail-20261110/d26/evidence.json",
+    "sourceSha256": "36053fc1125eac3f5be62a23dcfc9dbe9ff12999eb2d6985f59899c179b0efe9"
+  },
+  {
+    "slug": "apparel-70185",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d21/pass/apparel-70185--fabric.png",
+    "src": "/img/apparel-70185/fabric.webp",
+    "sha256": "38fcd9589d54973453cb736ea38979b6dd85bf63ef9a991aca05fc74f60e567f",
+    "acceptance": "fleet-20261104/detail-20261110/d24a/items/apparel-70185--fabric/acceptance-evidence.json",
+    "sourceSha256": "f2886b9b89b863d300a75a5dcdab4ebca780adbd72381dc05579f5a6eebc6147"
+  },
+  {
+    "slug": "apparel-70186",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d21/pass/apparel-70186--fabric.png",
+    "src": "/img/apparel-70186/fabric.webp",
+    "sha256": "d9c8c56d3ce55abe41ec03b5abfa2ec9d11bdd7c57708cf9e4a62ea0b5546477",
+    "acceptance": "fleet-20261104/detail-20261110/d24a/items/apparel-70186--fabric/acceptance-evidence.json",
+    "sourceSha256": "4e206f59c7700994406dc135c76bc6e548d1ec29d0305fc17dfaca87b3e5f415"
+  },
+  {
+    "slug": "apparel-70188",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d21/pass/apparel-70188--fabric.png",
+    "src": "/img/apparel-70188/fabric.webp",
+    "sha256": "493087efe17507961f7add4e117073d89e542bd2071eb5db2c21a83c2a4d1c85",
+    "acceptance": "fleet-20261104/detail-20261110/d24a/items/apparel-70188--fabric/acceptance-evidence.json",
+    "sourceSha256": "8dd3c49c4a649d8c40a8674e565cb76acd0aa21601e6aab887115001cb951b62"
+  },
+  {
+    "slug": "apparel-70189",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d21/pass/apparel-70189--fabric.png",
+    "src": "/img/apparel-70189/fabric.webp",
+    "sha256": "697cfdc24a4b7e375e66ac7412aea80ee4bbca160a3d6e12a9c9a00d6557f9da",
+    "acceptance": "fleet-20261104/detail-20261110/d24a/items/apparel-70189--fabric/acceptance-evidence.json",
+    "sourceSha256": "b13954a28ab1efef13d9a89ea11719df5338bc8a933b0fca7bf9d3e71ae26e1e"
+  },
+  {
+    "slug": "apparel-70191",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d21/pass/apparel-70191--fabric.png",
+    "src": "/img/apparel-70191/fabric.webp",
+    "sha256": "9d51f7fcd730c4d02bc67c07f4b8c55d3998055d5b15eca9eba24cd9d273f76f",
+    "acceptance": "fleet-20261104/detail-20261110/d24a/items/apparel-70191--fabric/acceptance-evidence.json",
+    "sourceSha256": "4a7de13e815d33a1730206eb8bc819a117c4b1fcd02bc65da9806501867d6177"
+  },
+  {
+    "slug": "apparel-70192",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d21/pass/apparel-70192--fabric.png",
+    "src": "/img/apparel-70192/fabric.webp",
+    "sha256": "a8c41e96f9211d9ddc9b6cb95f85e851a210ff402c6f85c250653121c5789373",
+    "acceptance": "fleet-20261104/detail-20261110/d24a/items/apparel-70192--fabric/acceptance-evidence.json",
+    "sourceSha256": "9765f60fffde6370d6b94a9ba7e2422223b99bce565d62aa1fbd7de92914f915"
+  },
+  {
+    "slug": "apparel-70193",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d22/pass/apparel-70193--fabric.png",
+    "src": "/img/apparel-70193/fabric.webp",
+    "sha256": "54d206e6fdb760cbc2ff5ebc8b1865ac5c38e9d03075987107cb262afe8dd9be",
+    "acceptance": "fleet-20261104/detail-20261110/d24b/items/apparel-70193--fabric/evidence.json",
+    "sourceSha256": "0362b0e17dbd204ebc9fe0fe78d8df79ee5448eaf9666b9ea15b6681f7dd00d2"
+  },
+  {
+    "slug": "apparel-70194",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/detail-20261110/d13/pass/apparel-70194--fabric.png",
+    "src": "/img/apparel-70194/fabric.webp",
+    "sha256": "66c1768da197e40b76db82515427fc95a5467a252a5d754f2bebac67160c366b",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/apparel-70194--fabric/review.json",
+    "sourceSha256": "58262326a4dd5087e554acaa132a4b05c02781168d9909c3768e5cb8cdabee5e"
+  },
+  {
+    "slug": "apparel-7201",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/detail-20261110/d13/pass/apparel-7201--fabric.png",
+    "src": "/img/apparel-7201/fabric.webp",
+    "sha256": "98de779076ef28a28ad5c34027b0858d76e639e97d33112bb2ab960c4da12fff",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/apparel-7201--fabric/review.json",
+    "sourceSha256": "e5d65b8d4991da046bc7ebe75977156fb8c344e47b3fcfa5247ba4237fb069bf"
+  },
+  {
+    "slug": "apparel-7202",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d22/pass/apparel-7202--fabric.png",
+    "src": "/img/apparel-7202/fabric.webp",
+    "sha256": "6964e0ddc72998bec12caa8c7e804580bcb27317b000f2f0020780e5e54d679f",
+    "acceptance": "fleet-20261104/detail-20261110/d24b/items/apparel-7202--fabric/evidence.json",
+    "sourceSha256": "ad5603b0c1b29e89b08070dbbdbc116c5f34caf420a63630f192d9ca03da5ad8"
+  },
+  {
+    "slug": "apparel-7208",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d22/pass/apparel-7208--fabric.png",
+    "src": "/img/apparel-7208/fabric.webp",
+    "sha256": "67cbbfc3ac24ad2f486162047ba473309f30378dd77bdd2c2be6b0ceeb6e5bd2",
+    "acceptance": "fleet-20261104/detail-20261110/d24b/items/apparel-7208--fabric/evidence.json",
+    "sourceSha256": "48d0194f912082a56672e7062420e25b4ff3987d7afcba7d348cad7014f0abf1"
+  },
+  {
+    "slug": "apparel-7210",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d22/pass/apparel-7210--fabric.png",
+    "src": "/img/apparel-7210/fabric.webp",
+    "sha256": "5e6559e2b62abacae9007fb2405e6d484bb8368d30805657efb579a1dab8c6fd",
+    "acceptance": "fleet-20261104/detail-20261110/d24b/items/apparel-7210--fabric/evidence.json",
+    "sourceSha256": "9a62b1afd4c4f5afa66d26ded77325f7de45f3fa7f75f5a6c5570d01b077d940"
+  },
+  {
+    "slug": "apparel-7213",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d22/pass/apparel-7213--fabric.png",
+    "src": "/img/apparel-7213/fabric.webp",
+    "sha256": "ef1182a2b51391eb941785cc5e26b1c697cdd68d47ebf63f152af39e5803ad80",
+    "acceptance": "fleet-20261104/detail-20261110/d24b/items/apparel-7213--fabric/evidence.json",
+    "sourceSha256": "1d15cf3d4c34814bb7aef2ca3360549314f91dd49664ce4ee0ef11f8f92e58f9"
+  },
+  {
+    "slug": "apparel-7214",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d22/pass/apparel-7214--fabric.png",
+    "src": "/img/apparel-7214/fabric.webp",
+    "sha256": "c95ba634a533609f22afdfadc868d23c7954f8fac390f964daae621fea1e6f1d",
+    "acceptance": "fleet-20261104/detail-20261110/d24b/items/apparel-7214--fabric/evidence.json",
+    "sourceSha256": "fbbbfa22bf2ffa245da0cbdd03dfedc3e641e88f368bfcb885f55e7859976bb6"
+  },
+  {
+    "slug": "apparel-7217",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d22/pass/apparel-7217--fabric.png",
+    "src": "/img/apparel-7217/fabric.webp",
+    "sha256": "7d5586175ab735fc668620ad17a1e75614bff2a5616dd919f0f5fd749c2a7b77",
+    "acceptance": "fleet-20261104/detail-20261110/d24b/items/apparel-7217--fabric/evidence.json",
+    "sourceSha256": "08c1cf3af9cf3a76043afb4cb3aaa048659301edc93ec335a69f93073c66de17"
+  },
+  {
+    "slug": "apparel-7700-38",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/detail-20261110/d13/pass/apparel-7700-38--fabric.png",
+    "src": "/img/apparel-7700-38/fabric.webp",
+    "sha256": "cfd2a2c03afca59f4a88d9748cabd6c50e51b15fb6c5cc9a15fddb9ce2732050",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/apparel-7700-38--fabric/review.json",
+    "sourceSha256": "765940988407874c6461e511f758af2bcc69d381825cd94bd2d0561b4588ee90"
+  },
+  {
+    "slug": "apparel-7700-9",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/detail-20261110/d13/pass/apparel-7700-9--fabric.png",
+    "src": "/img/apparel-7700-9/fabric.webp",
+    "sha256": "b0d71bf62eaa3b75f3a5f7b76ceb36ee96d171b5e413133cd57be5863cf96a33",
+    "acceptance": "fleet-20261104/detail-20261110/d16/items/apparel-7700-9--fabric/review.json",
+    "sourceSha256": "98ffabad83dc0df8a5f6a72814e9219f1992f897dface9c8eeda4b26e519fbfc"
+  },
+  {
+    "slug": "apparel-78187",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d22/pass/apparel-78187--fabric.png",
+    "src": "/img/apparel-78187/fabric.webp",
+    "sha256": "f6ed1b0abb542e91c7a3baf423da5294aae92d806612e2e7bd661427b3f96fcc",
+    "acceptance": "fleet-20261104/detail-20261110/d24b/items/apparel-78187--fabric/evidence.json",
+    "sourceSha256": "65dd0e7a9498c956299176f29fdc9c19a4045566a3b5db0d2d1f746d349b7818"
+  },
+  {
+    "slug": "cotton430-hoodie-58063",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-58063--fabric.png",
+    "src": "/img/cotton430-hoodie-58063/fabric.webp",
+    "sha256": "9fd572af1934cfe565fc9b907efa4af5f8133f0b392f41cc3c33b09899dd8120",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/cotton430-hoodie-58063--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "e10737216935e27454a5693902ef98cd4f3cc8faa96bb8dd08bdfec4fb06d84d"
+  },
+  {
+    "slug": "cotton430-hoodie-58064",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-58064--fabric.png",
+    "src": "/img/cotton430-hoodie-58064/fabric.webp",
+    "sha256": "ec20916def2b777bc57cca77e2309638c8b690f6d33f8c34dcca18382aaf7178",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/cotton430-hoodie-58064--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "ad7abe85be630b627e191492ad5bb8887d8a01ec4f3656be7eea63322875a1cf"
+  },
+  {
+    "slug": "cotton430-hoodie-58065",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-58065--fabric.png",
+    "src": "/img/cotton430-hoodie-58065/fabric.webp",
+    "sha256": "37cf4e79ca60fa5205856183f67953c7a9b60f445f08a32141f8f67d57ab74ea",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/cotton430-hoodie-58065--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "b06150dedab1073393a4b5dde378c75ef70917eca922f959478af6386c45e0a7"
+  },
+  {
+    "slug": "cotton430-hoodie-58066",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-58066--fabric.png",
+    "src": "/img/cotton430-hoodie-58066/fabric.webp",
+    "sha256": "e55fa13fc0430b39c2c3e305b1dfa5ef616c9a53d2582ec1dcb1718d6404b187",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/cotton430-hoodie-58066--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "6f6afb29791b656fb7949e00f0cf30b43c78ec06571bfa63f456b20876322fb4"
+  },
+  {
+    "slug": "cotton430-hoodie-70046",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-70046--fabric.png",
+    "src": "/img/cotton430-hoodie-70046/fabric.webp",
+    "sha256": "d445567003d894da2f402762721dda2a0e3fc2ae39f6b9a897697f96081bfa45",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/cotton430-hoodie-70046--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "11e7313a71df100572c995ddffe4dbf0706ffe9cd6e3def4e4abe54c7cb1b12d"
+  },
+  {
+    "slug": "cotton430-hoodie-7339",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-7339--fabric.png",
+    "src": "/img/cotton430-hoodie-7339/fabric.webp",
+    "sha256": "2e1a1344727174cd49fe345b4609e816a61495375e15a12b793fd1b366f17339",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/cotton430-hoodie-7339--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "586b59c816012c694e1df632d70e37296804df1f383e5109d7773afbc02c48d4"
+  },
+  {
+    "slug": "cotton430-hoodie-l8602",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-l8602--fabric.png",
+    "src": "/img/cotton430-hoodie-l8602/fabric.webp",
+    "sha256": "8eb4cafb101e8eaf91f8e7c28bd2bb2f24844ab3abdbd23896d235fe3efce318",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/cotton430-hoodie-l8602--fabric/result.json",
+    "sourceSha256": "c0e471f1658c25040bb181228f9703eb86a56e5d0ff300c0305f8beb035da801"
+  },
+  {
+    "slug": "cotton430-hoodie-l8603",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-l8603--fabric.png",
+    "src": "/img/cotton430-hoodie-l8603/fabric.webp",
+    "sha256": "2ea34537e9fa98254ada395a8bd739e77058e045bdb9949c214f409e4a645452",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/cotton430-hoodie-l8603--fabric/result.json",
+    "sourceSha256": "7d5c5692f1b14ce5f8f3de74435ddb73124a84cc246f38b9264d5d1d48a6b2f3"
+  },
+  {
+    "slug": "cotton430-hoodie-l8604",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-l8604--fabric.png",
+    "src": "/img/cotton430-hoodie-l8604/fabric.webp",
+    "sha256": "79ee2bfa1face4bfd272d1add10004ab34e2edfc4bf687e84a814ea2ddf83c54",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/cotton430-hoodie-l8604--fabric/result.json",
+    "sourceSha256": "900dcd4cc257992a8c84bf7201f0a1b087b8609d075f99a2417c928f19c09977"
+  },
+  {
+    "slug": "cotton430-hoodie-l8606",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-l8606--fabric.png",
+    "src": "/img/cotton430-hoodie-l8606/fabric.webp",
+    "sha256": "4d05423593ab6676c5a6bbd57921bdd3e773ac46470f88eb8cf1295e201a380b",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/cotton430-hoodie-l8606--fabric/result.json",
+    "sourceSha256": "a08475f2bb4518ed3be23f985ec3cea82c3247274de129fa92cb6173e32c24e2"
+  },
+  {
+    "slug": "cotton430-hoodie-l8612",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-l8612--fabric.png",
+    "src": "/img/cotton430-hoodie-l8612/fabric.webp",
+    "sha256": "001b92aa9291786f4992d8f6ae0de7dde915065e0d5af4eaeed0009d81725ed9",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/cotton430-hoodie-l8612--fabric/result.json",
+    "sourceSha256": "f7d07cd141df00bc9ab17bd11934e1f25a04bd7cb652590bdc21fd12248923e1"
+  },
+  {
+    "slug": "cotton430-hoodie-l8615",
+    "role": "fabric",
+    "colour": "sand/beige",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-l8615--fabric.png",
+    "src": "/img/cotton430-hoodie-l8615/fabric.webp",
+    "sha256": "a30057b554fa8c2577197d741bde658dc43efd0d1ca37106484a6070e0035110",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/cotton430-hoodie-l8615--fabric/result.json",
+    "sourceSha256": "ae502c436f96d056243b0c556244adffd6e5b989cb46084bb79882a2df432418"
+  },
+  {
+    "slug": "cotton430-hoodie-l8705",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/cotton430-hoodie-l8705--fabric.png",
+    "src": "/img/cotton430-hoodie-l8705/fabric.webp",
+    "sha256": "63a5229b87e134bf903666fd608d7a0cd011f27b37446daa2eb6466e1648dfc0",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/cotton430-hoodie-l8705--fabric/result.json",
+    "sourceSha256": "19cdffda6e97b94000df35fac5adc623e7e8a07af495111e431fe8149d0f0127"
+  },
+  {
+    "slug": "hoodie-set-k11-1103",
+    "role": "fabric",
+    "colour": "light grey",
+    "source": "fleet-20261104/detail-20261110/d17/pass/hoodie-set-k11-1103--fabric.png",
+    "src": "/img/hoodie-set-k11-1103/fabric.webp",
+    "sha256": "9f051582660ca50257221665c8d50123031b06a3d0389699ea786444d034e79a",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/hoodie-set-k11-1103--fabric/result.json",
+    "sourceSha256": "72b9dec7add2dffb562d595cff2d8bc0dc641e01ba4f2c10b3c2d19a87b77ffc"
+  },
+  {
+    "slug": "hoodie-set-k13-3901",
+    "role": "fabric",
+    "colour": "navy",
+    "source": "fleet-20261104/detail-20261110/d17/pass/hoodie-set-k13-3901--fabric.png",
+    "src": "/img/hoodie-set-k13-3901/fabric.webp",
+    "sha256": "adaf151f6da4d200009beff2d9afe415147d34cacfdbc9dfa047963081d6c512",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/hoodie-set-k13-3901--fabric/result.json",
+    "sourceSha256": "c6a9e9d1cad210535ff0b4292558a263034403a0037e9b5d18a2aa9134c5d3de"
+  },
+  {
+    "slug": "hoodie-set-k14-3902",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/detail-20261110/d17/pass/hoodie-set-k14-3902--fabric.png",
+    "src": "/img/hoodie-set-k14-3902/fabric.webp",
+    "sha256": "6507b26e80a6f236891e93203cc4bed037e1d94a12cd10e49752bf5cb1e2d8c5",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/hoodie-set-k14-3902--fabric/result.json",
+    "sourceSha256": "6d627e2dfdc140d46c44cedc3a55f4bad3efc6be2d8b32d84340174729e6d523"
+  },
+  {
+    "slug": "hoodie-set-k15-3903",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/detail-20261110/d17/pass/hoodie-set-k15-3903--fabric.png",
+    "src": "/img/hoodie-set-k15-3903/fabric.webp",
+    "sha256": "1c0d0ccb532e275aa9446c838d46ebf715a8c37368283305717c54cfac6ba9a0",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/hoodie-set-k15-3903--fabric/result.json",
+    "sourceSha256": "34e80ec24644c1f66efccc7f282342360d26c5f3d53866ada701e41e28b35375"
+  },
+  {
+    "slug": "hoodie-set-k16-3904",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/detail-20261110/d17/pass/hoodie-set-k16-3904--fabric.png",
+    "src": "/img/hoodie-set-k16-3904/fabric.webp",
+    "sha256": "ec61aa459467f19ee7d89747fb43189a2a33a2abfb4e8bcefbca1e404925ee9c",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/hoodie-set-k16-3904--fabric/result.json",
+    "sourceSha256": "92a9ceca8fea502c971e202d5afbc8aa9c636f471f7bd56f146470f884823649"
+  },
+  {
+    "slug": "hoodie-set-k17-3905",
+    "role": "fabric",
+    "colour": "navy",
+    "source": "fleet-20261104/detail-20261110/d17/pass/hoodie-set-k17-3905--fabric.png",
+    "src": "/img/hoodie-set-k17-3905/fabric.webp",
+    "sha256": "4b103434f8771a1be150f92eea8d00cd64e39aac851cb8992bade6d400c82cc7",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/hoodie-set-k17-3905--fabric/result.json",
+    "sourceSha256": "691f627c444c3a88009a6b206cfc8b5d8abf8fa620d8688bdcc75b86f93b373a"
+  },
+  {
+    "slug": "hoodie-set-k18-3906",
+    "role": "fabric",
+    "colour": "light grey",
+    "source": "fleet-20261104/detail-20261110/d21/hold/hoodie-set-k18-3906--fabric.png",
+    "src": "/img/hoodie-set-k18-3906/fabric.webp",
+    "sha256": "6974547b88fca2e13584c3ade2815e810510f9065d0b8c189b3edd09fc2c0444",
+    "acceptance": "fleet-20261104/detail-20261110/d24b/items/hoodie-set-k18-3906--fabric/evidence.json",
+    "sourceSha256": "b918e0df6dff950cf3954cdfb923886f4eb93891f9ef593d169e25e6229612cb"
+  },
+  {
+    "slug": "hoodie-set-k19-3907",
+    "role": "fabric",
+    "colour": "navy",
+    "source": "fleet-20261104/detail-20261110/d17/pass/hoodie-set-k19-3907--fabric.png",
+    "src": "/img/hoodie-set-k19-3907/fabric.webp",
+    "sha256": "569f2382184434141c8fd1abd2cb9fdd02bffb10f70edc3e8f95e606c6863e10",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19b/hoodie-set-k19-3907--fabric/result.json",
+    "sourceSha256": "351eff22cd34df2ad691d215a6a666261b2283fc4e8dedb8ccf73638788ea59d"
+  },
+  {
+    "slug": "pullover-hoodie-69008",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/aston-hoodie-69008--fabric.png",
+    "src": "/img/pullover-hoodie-69008/fabric.webp",
+    "sha256": "9f83472090bd6f920b19d0a206d45acad05b37ab1085850cf3b83bc9db8a4f1c",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/aston-hoodie-69008--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "e122f823b161c8ef4ca3915f42eb4f776dbff83035375b5754df572f97ac7a0a"
+  },
+  {
+    "slug": "pullover-hoodie-69009",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/aston-hoodie-69009--fabric.png",
+    "src": "/img/pullover-hoodie-69009/fabric.webp",
+    "sha256": "570102235971a48d9beadde36115c71b0f26a8dbff7491ae392558039393bfef",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/aston-hoodie-69009--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "515ebe750fee0d15b42290975b70162fcceb0917870a53e1333329e626d995dd"
+  },
+  {
+    "slug": "pullover-hoodie-69010",
+    "role": "fabric",
+    "colour": "stone/light greige",
+    "source": "fleet-20261104/detail-20261110/d17/pass/aston-hoodie-69010--fabric.png",
+    "src": "/img/pullover-hoodie-69010/fabric.webp",
+    "sha256": "4810acb260e6f36212cf5d9b6191c679bccf03c6b5d637763f40f06e351b9539",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/aston-hoodie-69010--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "2661d462344508660c0c7e27d3da0845373edd1d91f4b8f18a23f0cf351ed79b"
+  },
+  {
+    "slug": "pullover-hoodie-69011",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/aston-hoodie-69011--fabric.png",
+    "src": "/img/pullover-hoodie-69011/fabric.webp",
+    "sha256": "02a713cdfae1d2f9fb25ce65961165ed76d9d13d04f4254cef99d30f801b953d",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/aston-hoodie-69011--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "8527cdde167445cc4d3775e5cc3259d32f9feb358931c41a1d55603fa4111dec"
+  },
+  {
+    "slug": "pullover-hoodie-69012",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/aston-hoodie-69012--fabric.png",
+    "src": "/img/pullover-hoodie-69012/fabric.webp",
+    "sha256": "ebadf0035b5afe49ae81c79975354016a5ed025d52ec97c1d08f84a5bc17eecf",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/aston-hoodie-69012--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "48504b703f49b73fd7f5c332f5a139b9c714fc6813910afb24e919af5edf3e78"
+  },
+  {
+    "slug": "pullover-hoodie-69013",
+    "role": "fabric",
+    "colour": "stone/light greige",
+    "source": "fleet-20261104/detail-20261110/d17/pass/aston-hoodie-69013--fabric.png",
+    "src": "/img/pullover-hoodie-69013/fabric.webp",
+    "sha256": "da49a890e884fc96dcccf622c7bc2e6c2bcc0e8c0d2dee35ab27c63ef6f3e1e6",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/aston-hoodie-69013--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "9342801da2cbeff7fcb32ce75968cbd3e274efa99816822113f4091241690737"
+  },
+  {
+    "slug": "pullover-hoodie-69014",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/aston-hoodie-69014--fabric.png",
+    "src": "/img/pullover-hoodie-69014/fabric.webp",
+    "sha256": "9c29d2e022434db9a0d941df50883e0f289d19268b17622c5fa730d33d034e16",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/aston-hoodie-69014--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "82d58d0f4c7b141f6dd7877efbc045a6c4ba8de29389d278afa3f49ce1220de7"
+  },
+  {
+    "slug": "pullover-hoodie-69015",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d17/pass/aston-hoodie-69015--fabric.png",
+    "src": "/img/pullover-hoodie-69015/fabric.webp",
+    "sha256": "e5717d27e575c7dbbdd93063d8f50f275035393e45ec155c1cc01c1635489065",
+    "acceptance": "fleet-20261104/w3-gate-g2-20261110/final-d19a/aston-hoodie-69015--fabric/result.json; /Volumes/data/OpenSite Commerce",
+    "sourceSha256": "85eb76a716cdaefddce89153aafebd0cb6f728ea574a774e55bb888856d3ab25"
+  },
+  {
+    "slug": "pullover-hoodie-69016",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/detail-20261110/d21/pass/aston-hoodie-69016--fabric.png",
+    "src": "/img/pullover-hoodie-69016/fabric.webp",
+    "sha256": "c4932dbb08cf09c91144f47eb16521211c21c4b2297721b557340d97e2295bd3",
+    "acceptance": "fleet-20261104/detail-20261110/d24a/items/aston-hoodie-69016--fabric/acceptance-evidence.json",
+    "sourceSha256": "309b8e0703f371b1655ad50402b5bc5f30ccbf4d82c1682ba33683961492690c"
+  },
+  {
+    "slug": "pullover-hoodie-69017",
+    "role": "fabric",
+    "colour": "sage/olive grey",
+    "source": "fleet-20261104/detail-20261110/d21/pass/aston-hoodie-69017--fabric.png",
+    "src": "/img/pullover-hoodie-69017/fabric.webp",
+    "sha256": "f7e21f2b827c7317717f64fefe592e97a5185f0081b9688850610b00c0cd7495",
+    "acceptance": "fleet-20261104/detail-20261110/d24a/items/aston-hoodie-69017--fabric/acceptance-evidence.json",
+    "sourceSha256": "e809575bb97ccdb484d57ae48619d995f3a3ed26f80a582d73007ff1e621e50e"
+  },
+  {
+    "slug": "pullover-hoodie-69018",
+    "role": "fabric",
+    "colour": "stone/light greige",
+    "source": "fleet-20261104/detail-20261110/d21/pass/aston-hoodie-69018--fabric.png",
+    "src": "/img/pullover-hoodie-69018/fabric.webp",
+    "sha256": "1a84ea30b24994657a089d6af1ee0e64a86bb88994044282be1921c0f966db49",
+    "acceptance": "fleet-20261104/detail-20261110/d24b/items/aston-hoodie-69018--fabric/evidence.json",
+    "sourceSha256": "ee7462b4ac5149114bdd9ba59bc5e8edced7f6073f89a86e330f8d6a5983b05e"
+  }
+]

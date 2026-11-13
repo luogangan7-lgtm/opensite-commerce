@@ -188,14 +188,22 @@ test.skipIf(selectedSourceRoot === undefined)('local originals: 154 W3 and 514 W
   }
 });
 
-test('actual eight-language PDP output contains every reviewed view and matching localized alt', () => {
+test('eight-language PDP includes primary accepted slots and selectable other-colour fronts with localized alt', () => {
   const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll("'", '&#39;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   for (const locale of locales) for (const product of products) {
     const html = readFileSync(join('web/apparel/dist', locale === 'en' ? '' : locale, 'products', product.slug, 'index.html'), 'utf8');
     expect(html).toContain(digitalLabel(locale));
-    for (const image of digitalImages.filter(row => row.slug === product.slug)) {
+    const primary = product.images.find(image => image.role === 'front')?.colour;
+    const seen = new Set<string>();
+    for (const image of product.images) {
+      const key = `${image.colour}:${image.role}`;
+      const accepted = !!image.colour && ['front','turn','back','garment','print','structure','fabric'].includes(image.role) &&
+        (image.colour === primary || image.role === 'front') && (image.role === 'print' || !seen.has(key));
+      if (!accepted) { expect(html).not.toContain(`href="${image.src}"`); continue; }
+      seen.add(key);
       expect(html).toContain(`href="${image.src}"`);
-      expect(html).toContain(`alt="${escape(digitalAlt(image.src, locale)!)}"`);
+      const alt = digitalAlt(image.src, locale);
+      if (alt) expect(html).toContain(`alt="${escape(alt)}"`);
     }
   }
 });

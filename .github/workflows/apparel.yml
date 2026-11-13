@@ -70,7 +70,7 @@ jobs:
         run: |
           status=0
           bun web/apparel/tests/slots-gate.ts || status=1
-          bun test web/apparel/tests/imagery.test.ts || status=1
+          bun test web/apparel/tests/imagery.test.ts web/apparel/tests/gallery.test.ts || status=1
           exit "$status"
       - run: bunx playwright install --with-deps chromium
       - name: Playwright 390px
