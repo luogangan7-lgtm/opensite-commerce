@@ -4084,6 +4084,13 @@
         "colour": "pink",
         "sha256_16": "aa36bccaa1e451a7",
         "web_sha256": ""
+      },
+      {
+        "src": "/img/apparel-70179/digital-model-03.webp",
+        "role": "front",
+        "colour": "beige/sand",
+        "sha256_16": "74329f4472b481e5",
+        "web_sha256": ""
       }
     ],
     "size_chart": [
@@ -5091,6 +5098,13 @@
         "role": "back",
         "colour": "black",
         "sha256_16": "5b8d72a2889249c3",
+        "web_sha256": ""
+      },
+      {
+        "src": "/img/apparel-70194/structure.webp",
+        "role": "structure",
+        "colour": "black",
+        "sha256_16": "7680b5df5c81233d",
         "web_sha256": ""
       }
     ],
@@ -11575,6 +11589,13 @@
         "colour": "stone/light greige",
         "sha256_16": "4810acb260e6f362",
         "web_sha256": ""
+      },
+      {
+        "src": "/img/pullover-hoodie-69010/structure.webp",
+        "role": "structure",
+        "colour": "stone/light greige",
+        "sha256_16": "852c339b1616ad3c",
+        "web_sha256": ""
       }
     ],
     "size_chart": [
@@ -11802,6 +11823,13 @@
         "colour": "stone/light greige",
         "sha256_16": "b3344910567fc302",
         "web_sha256": ""
+      },
+      {
+        "src": "/img/pullover-hoodie-69012/structure.webp",
+        "role": "structure",
+        "colour": "white",
+        "sha256_16": "b0f2e776e5695c82",
+        "web_sha256": ""
       }
     ],
     "size_chart": [
@@ -12022,6 +12050,13 @@
         "colour": "white",
         "sha256_16": "9c29d2e022434db9",
         "web_sha256": ""
+      },
+      {
+        "src": "/img/pullover-hoodie-69014/structure.webp",
+        "role": "structure",
+        "colour": "white",
+        "sha256_16": "b5363d28366a039f",
+        "web_sha256": ""
       }
     ],
     "size_chart": [
@@ -12131,6 +12166,13 @@
         "role": "front",
         "colour": "stone/light greige",
         "sha256_16": "02b216bbc85dc8e7",
+        "web_sha256": ""
+      },
+      {
+        "src": "/img/pullover-hoodie-69015/structure.webp",
+        "role": "structure",
+        "colour": "white",
+        "sha256_16": "c07e9102032b9a85",
         "web_sha256": ""
       }
     ],

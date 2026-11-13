@@ -10,11 +10,11 @@ import { packageDetails } from '../detail-images';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-test('108 independently accepted structures bind primary galleries; #552 colour conflicts stay excluded',()=>{
- expect(accepted).toHaveLength(110);
+test('113 independently accepted structures bind primary galleries; #552 colour conflicts stay excluded',()=>{
+ expect(accepted).toHaveLength(115);
  const placed=accepted.filter(r=>!r.skipped);
  const structures=details.filter(r=>r.role==='structure');
- expect(placed).toHaveLength(108); expect(structures).toHaveLength(108); expect(ledger).toHaveLength(108);
+ expect(placed).toHaveLength(113); expect(structures).toHaveLength(113); expect(ledger).toHaveLength(113);
  const plan=imagePlan({slots:{},review:[],provenance:{},published:products.map(p=>p.slug),details:structures as DetailSource[],detailLedger:ledger});
  for(const row of placed) {
   const source=plan.details.find(i=>i.slug===row.slug)!;
@@ -28,7 +28,7 @@ test('108 independently accepted structures bind primary galleries; #552 colour 
  for(const slug of ['crew-fleece-8900-53','apparel-70190']) expect(structures.some(i=>i.slug===slug)).toBe(false);
  expect(Object.values(detailCaption)).toHaveLength(8);
 });
-test.skipIf(!process.env.APPAREL_SOURCE_DIR)('108 raw hashes and independent reviews package as native square structures', async()=>{
+test.skipIf(!process.env.APPAREL_SOURCE_DIR)('113 raw hashes and independent reviews package as native square structures', async()=>{
  const root=process.env.APPAREL_SOURCE_DIR!;
  const rows=details.filter(r=>r.role==='structure');
  for(const row of accepted.filter(r=>!r.skipped)) {
@@ -42,7 +42,7 @@ test.skipIf(!process.env.APPAREL_SOURCE_DIR)('108 raw hashes and independent rev
   expect(link).toContain('data-fit="contain"');
  }
  const receipts=await packageDetails(rows as DetailSource[],root,'web/apparel/dist');
- expect(receipts).toHaveLength(108);
+ expect(receipts).toHaveLength(113);
  for(const r of receipts) expect([r.w,r.h]).toEqual([1254,1254]);
 }, 30000);
 

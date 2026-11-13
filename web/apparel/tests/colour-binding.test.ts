@@ -10,9 +10,9 @@ import digital from '../digital-sources.json';
 import bindings from './colour-bindings.json';
 import { galleryColours, orderedGallery } from '../src/data/gallery';
 const backOnly = new Set(['/img/crew-fleece-8900-53/digital-front.webp', '/img/hoodie-set-k21-70046/digital-model-05.webp']);
-test('all 496 bound catalog colours resolve to existing product and accepted image entries', () => {
+test('all 497 bound catalog colours resolve to existing product and accepted image entries', () => {
   const bound = bindings.filter(row => row.src);
-  expect(bound).toHaveLength(496);
+  expect(bound).toHaveLength(497);
   let selectable = 0;
   for (const row of bound) {
     const product = products.find(p => p.slug === row.slug)!;
@@ -30,11 +30,11 @@ test('all 496 bound catalog colours resolve to existing product and accepted ima
       selectable++;
     }
   }
-  expect(selectable).toBe(494);
+  expect(selectable).toBe(495);
 });
 test('remaining null mapping do not invent a front binding', () => {
   const missing = bindings.filter(row => !row.src);
-  expect(missing).toHaveLength(1);
+  expect(missing).toHaveLength(0);
   for (const row of missing) {
     const product = products.find(p => p.slug === row.slug)!;
     expect(galleryColours(product.images).some(image => image.colour === row.colour)).toBe(false);
