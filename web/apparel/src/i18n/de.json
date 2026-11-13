@@ -64,6 +64,8 @@
   "style": "Modell",
   "send": "Anfrage senden",
   "sending": "Anfrage wird gesendet…",
+  "sent": "Gesendet",
+  "backToProducts": "Zurück zu den Produkten",
   "success": "Anfrage erhalten. Ihre Anforderungen wurden gespeichert.",
   "error.network": "Anfrage nicht gesendet. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
   "error.storage": "Anfrage nicht gespeichert. Bitte erneut versuchen.",
