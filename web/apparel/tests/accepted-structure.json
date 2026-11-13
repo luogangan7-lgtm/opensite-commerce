@@ -768,5 +768,40 @@
     "src": "review-G-08m/out/review.tsv",
     "slug": "hoodie-set-k25-tz2803-6",
     "skipped": false
+  },
+  {
+    "exactId": "regen-queue-01/apparel-70194/primary-structure-g2",
+    "sha256": "7680b5df5c81233d4d018b2619779eaf408c9803d4b4ad63d11ece317c8031eb",
+    "slug": "apparel-70194",
+    "src": "review-FIN1/out/review.tsv",
+    "skipped": false
+  },
+  {
+    "exactId": "regen-queue-01/aston-hoodie-69012/primary-structure-g2",
+    "sha256": "b0f2e776e5695c82524732eb20a5f238b40f5f0727955fc9f13608f667b541b8",
+    "slug": "pullover-hoodie-69012",
+    "src": "review-FIN1/out/review.tsv",
+    "skipped": false
+  },
+  {
+    "exactId": "regen-queue-01/aston-hoodie-69015/primary-structure-g2",
+    "sha256": "c07e9102032b9a8511f2807f37592ceaaacc9ef6732c9d3bd69bf3f827db385c",
+    "slug": "pullover-hoodie-69015",
+    "src": "review-FIN1/out/review.tsv",
+    "skipped": false
+  },
+  {
+    "exactId": "regen-queue-01/aston-hoodie-69014/primary-structure-g2",
+    "sha256": "b5363d28366a039f9a9a38354e99ad8b432af72f1a0186f68ef0b98b1518d339",
+    "slug": "pullover-hoodie-69014",
+    "src": "review-FIN1/out/review.tsv",
+    "skipped": false
+  },
+  {
+    "exactId": "regen-queue-01/aston-hoodie-69010/primary-structure-g2",
+    "sha256": "852c339b1616ad3c7c74c22d6a5aeba365d9cdbf5e93acd300049e18b68a607f",
+    "slug": "pullover-hoodie-69010",
+    "src": "review-FIN2/out/review.tsv",
+    "skipped": false
   }
 ]

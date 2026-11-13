@@ -1878,5 +1878,55 @@
     "sha256": "a77f157f11c83c6d98d809c8a98ee63b3c878729b9a3bddb8b53b1b7c8a0a4a0",
     "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-G-08m/out/review.tsv",
     "sourceSha256": "10ca1c78020cb5437da54af279937123202a95d9cb4acc38bfca3029be7dd644"
+  },
+  {
+    "slug": "apparel-70194",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/FIN-PLACE/assets/apparel-70194--structure.png",
+    "src": "/img/apparel-70194/structure.webp",
+    "sha256": "7680b5df5c81233d4d018b2619779eaf408c9803d4b4ad63d11ece317c8031eb",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN1/out/review.tsv",
+    "sourceSha256": "58262326a4dd5087e554acaa132a4b05c02781168d9909c3768e5cb8cdabee5e"
+  },
+  {
+    "slug": "pullover-hoodie-69012",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/FIN-PLACE/assets/pullover-hoodie-69012--structure.png",
+    "src": "/img/pullover-hoodie-69012/structure.webp",
+    "sha256": "b0f2e776e5695c82524732eb20a5f238b40f5f0727955fc9f13608f667b541b8",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN1/out/review.tsv",
+    "sourceSha256": "48504b703f49b73fd7f5c332f5a139b9c714fc6813910afb24e919af5edf3e78"
+  },
+  {
+    "slug": "pullover-hoodie-69015",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/FIN-PLACE/assets/pullover-hoodie-69015--structure.png",
+    "src": "/img/pullover-hoodie-69015/structure.webp",
+    "sha256": "c07e9102032b9a8511f2807f37592ceaaacc9ef6732c9d3bd69bf3f827db385c",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN1/out/review.tsv",
+    "sourceSha256": "85eb76a716cdaefddce89153aafebd0cb6f728ea574a774e55bb888856d3ab25"
+  },
+  {
+    "slug": "pullover-hoodie-69014",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/FIN-PLACE/assets/pullover-hoodie-69014--structure.png",
+    "src": "/img/pullover-hoodie-69014/structure.webp",
+    "sha256": "b5363d28366a039f9a9a38354e99ad8b432af72f1a0186f68ef0b98b1518d339",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN1/out/review.tsv",
+    "sourceSha256": "82d58d0f4c7b141f6dd7877efbc045a6c4ba8de29389d278afa3f49ce1220de7"
+  },
+  {
+    "slug": "pullover-hoodie-69010",
+    "role": "structure",
+    "colour": "stone/light greige",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/FIN-PLACE/assets/pullover-hoodie-69010--structure.png",
+    "src": "/img/pullover-hoodie-69010/structure.webp",
+    "sha256": "852c339b1616ad3c7c74c22d6a5aeba365d9cdbf5e93acd300049e18b68a607f",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN2/out/review.tsv",
+    "sourceSha256": "2661d462344508660c0c7e27d3da0845373edd1d91f4b8f18a23f0cf351ed79b"
   }
 ]

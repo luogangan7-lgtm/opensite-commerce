@@ -135,17 +135,19 @@ const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest(
 // Private originals are optional only when not explicitly selected. Tracked code under work/ is not a bundle.
 const selectedSourceRoot = privateSourceRoot(process.env);
 const sourceRoot = selectedSourceRoot ?? '';
-test('115 licensed catalog identities; all 753 digital models join by exact style and role', async () => {
+// FIN adds one W2 front (70179 model-03); its five G structures are outside this digital-model inventory.
+test('115 licensed catalog identities; all 754 digital models join by exact style and role', async () => {
   const { imagePlan } = await load();
   expect(approval.products.length).toBe(115);
   expect(products.map(p => p.slug).sort()).toEqual(approval.products.map(p => publicId(p.slug)).sort());
   for (const p of approval.products) expect(['ok','owner-licensed']).toContain(p.rights);
-  expect(digital.length).toBe(753);
+  expect(digital.length).toBe(754);
   expect(digital.filter(p => p.wave === 'W3').length).toBe(217);
-  expect(digital.filter(p => p.wave !== 'W3').length).toBe(536);
+  expect(digital.filter(p => p.wave !== 'W3').length).toBe(537);
   const plan = imagePlan({ ...fixture(), published: products.map(p => p.slug), digital });
-  expect(plan.digital.length).toBe(753);
-  expect(new Set(digital.map(p => p.key)).size).toBe(753);
+  expect(plan.digital.length).toBe(754);
+  expect(new Set(digital.map(p => p.key)).size).toBe(754);
+  expect(new Set(digital.map(p => p.src)).size).toBe(754);
   expect(digitalImages.map(p => p.src).sort()).toEqual(digital.map(p => p.src).sort());
   for (const image of digital) {
     expect(publicId(image.key.split(/--|__/)[0])).toBe(image.slug);
@@ -214,7 +216,7 @@ test('eight-language PDP includes primary accepted slots and selectable other-co
 });
 
 test('public imagery metadata loads under the Node ESM runtime used by Playwright', () => {
-  const result = Bun.spawnSync(['node', '--experimental-strip-types', '--input-type=module', '-e', "import('./web/apparel/src/data/imagery.ts').then(m => { if (m.digitalImages.length !== 753) process.exit(1); })"]);
+  const result = Bun.spawnSync(['node', '--experimental-strip-types', '--input-type=module', '-e', "import('./web/apparel/src/data/imagery.ts').then(m => { if (m.digitalImages.length !== 754) process.exit(1); })"]);
   expect(result.exitCode).toBe(0);
 });
 

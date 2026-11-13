@@ -7685,5 +7685,15 @@
     "role": "digital-back",
     "src": "/img/hoodie-set-k20-70083/digital-back.webp",
     "backReference": "same-color"
+  },
+  {
+    "key": "apparel-70179__model-03",
+    "slug": "apparel-70179",
+    "role": "digital-model-03",
+    "src": "/img/apparel-70179/digital-model-03.webp",
+    "wave": "W2",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fapparel-70179%2Fmodel-03-front-r6/image.raw",
+    "sha256": "74329f4472b481e5c4a795081ef4c2d5a9a2be8b72266a2fbafa055075e5a2f4",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN1/out/review.tsv"
   }
 ]
