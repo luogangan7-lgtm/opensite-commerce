@@ -10915,42 +10915,6 @@
         "colour": "light grey"
       },
       {
-        "src": "/img/hoodie-set-k20-70083/model-01.webp",
-        "role": "model",
-        "sha256_16": "8cbae3a8a30e9665",
-        "web_sha256": "dbe45e59a18bef46a59e77542a24383268dc4ea9ffacfd985fcb587b527115e0"
-      },
-      {
-        "src": "/img/hoodie-set-k20-70083/model-02.webp",
-        "role": "model",
-        "sha256_16": "bfec8a0d9b9777a8",
-        "web_sha256": "74fdb7f99cce3bdc91344501f7d92e44da32fd492e8eeb13141b4a2d42175c20"
-      },
-      {
-        "src": "/img/hoodie-set-k20-70083/model-03.webp",
-        "role": "model",
-        "sha256_16": "24713d8ab33b6962",
-        "web_sha256": "4b147c30f2ec305ac7504e3164c7daa349a47b1f34c3062426a78e12d3b1698d"
-      },
-      {
-        "src": "/img/hoodie-set-k20-70083/model-04.webp",
-        "role": "model",
-        "sha256_16": "8bcb386688b728c4",
-        "web_sha256": "0a31f277c90ab9e3144212f4c6efdfa799c55f903660fd29b089666131ce6192"
-      },
-      {
-        "src": "/img/hoodie-set-k20-70083/model-05.webp",
-        "role": "model",
-        "sha256_16": "45523711b9da2bc2",
-        "web_sha256": "06ebca74d4730e28d4346571028950183135419c8709107210cf27d5b77c2ce8"
-      },
-      {
-        "src": "/img/hoodie-set-k20-70083/overview-01.webp",
-        "role": "overview",
-        "sha256_16": "42104d8cec535add",
-        "web_sha256": "5d1de37b1c00603ac3c9217d3b81ed939bdc6599f3674b2722043168cd89b169"
-      },
-      {
         "src": "/img/hoodie-set-k20-70083/digital-turn.webp",
         "role": "turn",
         "colour": "black",
@@ -11021,42 +10985,6 @@
         "sha256_16": "727cb67d7adc0666",
         "web_sha256": "",
         "colour": "light grey (back view, img 5)"
-      },
-      {
-        "src": "/img/hoodie-set-k21-70046/model-01.webp",
-        "role": "model",
-        "sha256_16": "15b1f984372ff513",
-        "web_sha256": "013ed239aad8e1c046e66ab836fd39e8511a20f291c0508f7bc234576c7bce42"
-      },
-      {
-        "src": "/img/hoodie-set-k21-70046/model-02.webp",
-        "role": "model",
-        "sha256_16": "451eec3cb175c0a4",
-        "web_sha256": "4581102348fd868da5eaff0190dea4711a7b892757081e8b89973e85dac9c6b4"
-      },
-      {
-        "src": "/img/hoodie-set-k21-70046/model-03.webp",
-        "role": "model",
-        "sha256_16": "75299db93ea1c928",
-        "web_sha256": "e525ef1b8a8f0a90a5d1b00a05f226e4d1bebf4c4057a6b8892106f4dacf75f4"
-      },
-      {
-        "src": "/img/hoodie-set-k21-70046/model-04.webp",
-        "role": "model",
-        "sha256_16": "290c67fd5eccc336",
-        "web_sha256": "6a42267a5cda56dc0856150188b70a1c3f14ee48aea8a38b98f3133f75be8480"
-      },
-      {
-        "src": "/img/hoodie-set-k21-70046/model-05.webp",
-        "role": "model",
-        "sha256_16": "c6c97814edec4348",
-        "web_sha256": "6b4cd983bb46872e01b518a9be3ff54123036bf436c2c6e8129e73c512ed98e7"
-      },
-      {
-        "src": "/img/hoodie-set-k21-70046/overview-01.webp",
-        "role": "overview",
-        "sha256_16": "ef84b178435f211a",
-        "web_sha256": "1d2976e2d7612c75a6fa0666088c7a4a9a583e6637054c0e154831705b5208a6"
       },
       {
         "src": "/img/hoodie-set-k21-70046/digital-back.webp",
