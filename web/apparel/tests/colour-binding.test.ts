@@ -9,7 +9,7 @@ import products from '../src/data/products.json';
 import digital from '../digital-sources.json';
 import bindings from './colour-bindings.json';
 import { galleryColours, orderedGallery } from '../src/data/gallery';
-const backOnly = new Set(['/img/crew-fleece-8900-53/digital-front.webp', '/img/hoodie-set-k21-70046/digital-model-05.webp']);
+const backOnly = new Set(['/img/hoodie-set-k21-70046/digital-model-05.webp']);
 test('all 497 bound catalog colours resolve to existing product and accepted image entries', () => {
   const bound = bindings.filter(row => row.src);
   expect(bound).toHaveLength(497);
@@ -30,7 +30,7 @@ test('all 497 bound catalog colours resolve to existing product and accepted ima
       selectable++;
     }
   }
-  expect(selectable).toBe(495);
+  expect(selectable).toBe(496);
 });
 test('remaining null mapping do not invent a front binding', () => {
   const missing = bindings.filter(row => !row.src);

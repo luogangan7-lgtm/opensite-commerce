@@ -26,20 +26,13 @@ test('primary slots are ordered, other colours require selection, unknown roles 
 test('G plan requires exact asset and original source SHA from the acceptance ledger', () => {
  const rows=details as DetailSource[], ledger=ledgerFor(rows);
  const input={slots:{},review:[],provenance:{},published:products.map(p=>p.slug),details:rows,detailLedger:ledger};
- expect(imagePlan(input).details).toHaveLength(193);
+ expect(imagePlan(input).details).toHaveLength(195);
  expect(()=>imagePlan({...input,detailLedger:[]})).toThrow(/ledger/i);
  for(const patch of [{sha256:'b'.repeat(64)},{sourceSha256:'b'.repeat(64)},{acceptance:'forged.md'},{colour:'wrong'}]) expect(()=>imagePlan({...input,details:[{...rows[0],...patch}]})).toThrow(/ledger/i);
  expect(()=>imagePlan({...input,detailLedger:[ledger[0],ledger[0]],details:[rows[0]]})).toThrow(/ledger/i);
  for(const row of rows) {
   const p=products.find(p=>p.slug===row.slug)!;
-  // #552: catalog binding makes the only front red; accepted cream fabric must not leak into it.
-  const creamBackOnly = row.slug === 'crew-fleece-8900-53' && row.src === '/img/crew-fleece-8900-53/fabric.webp';
-  if (creamBackOnly) {
-   expect(row.colour).toBe('cream');
-   expect(p.images.find(i=>i.src==='/img/crew-fleece-8900-53/digital-front.webp')?.role).toBe('back');
-   expect(p.images.find(i=>i.role==='front')?.colour).toBe('red');
-  }
-  expect(orderedGallery(p.images).some(i=>i.src===row.src)).toBe(!creamBackOnly);
+  expect(orderedGallery(p.images).some(i=>i.src===row.src)).toBe(true);
  }
 });
 test('64px detail is RED; native 1200 is GREEN; tampered file and source SHA fail before writing', async () => {

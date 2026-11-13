@@ -14,10 +14,10 @@ for (const slug of styles) test(`catalog colour selects its bound front: ${slug}
   }
 });
 
-test('#552 cream back-only detail does not enter the red default gallery', async ({ page }) => {
+test('8900-53 cream front and details appear in the default gallery', async ({ page }) => {
   await page.goto('/products/crew-fleece-8900-53/');
-  await expect(page.locator('[data-gallery-main]')).toHaveAttribute('src', '/img/crew-fleece-8900-53/digital-model-02.webp');
-  await expect(page.locator('[data-gallery-swatch="red"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('[data-gallery-swatch="cream"]')).toHaveCount(0);
-  await expect(page.locator('.gallery-thumbs:not([hidden]) a[data-role="fabric"]')).toHaveCount(0);
+  await expect(page.locator('[data-gallery-main]')).toHaveAttribute('src', '/img/crew-fleece-8900-53/digital-front.webp');
+  await expect(page.locator('[data-gallery-swatch="cream"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.gallery-thumbs:not([hidden]) a[data-role="fabric"]')).toHaveCount(1);
+  await expect(page.locator('.gallery-thumbs:not([hidden]) a[data-role="structure"]')).toHaveCount(1);
 });

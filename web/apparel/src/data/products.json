@@ -2423,7 +2423,7 @@
     "images": [
       {
         "src": "/img/crew-fleece-8900-53/digital-front.webp",
-        "role": "back",
+        "role": "front",
         "sha256_16": "3846fb6f66fa13f8",
         "web_sha256": "",
         "colour": "cream"
@@ -2511,6 +2511,13 @@
         "role": "fabric",
         "colour": "cream",
         "sha256_16": "7849576635dae377",
+        "web_sha256": ""
+      },
+      {
+        "src": "/img/crew-fleece-8900-53/structure.webp",
+        "role": "structure",
+        "colour": "cream",
+        "sha256_16": "ca507fd5dae91ce9",
         "web_sha256": ""
       }
     ],
@@ -4568,7 +4575,7 @@
         "role": "front",
         "sha256_16": "8722fd0d6ed330a2",
         "web_sha256": "",
-        "colour": "black (overview only; photos filed in 70192)"
+        "colour": "black"
       },
       {
         "src": "/img/apparel-70190/digital-model-03.webp",
@@ -4632,6 +4639,13 @@
         "role": "front",
         "colour": "sage green",
         "sha256_16": "dfcdb3ce89b0104c",
+        "web_sha256": ""
+      },
+      {
+        "src": "/img/apparel-70190/structure.webp",
+        "role": "structure",
+        "colour": "black",
+        "sha256_16": "2edb311285917a79",
         "web_sha256": ""
       }
     ],

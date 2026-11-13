@@ -660,7 +660,7 @@
     "slug": "crew-fleece-8900-53",
     "color": "c",
     "garment": "sweatshirt",
-    "view": "back",
+    "view": "front",
     "wave": "W1"
   },
   {
@@ -5090,7 +5090,7 @@
   {
     "src": "/img/crew-fleece-8900-53/digital-back.webp",
     "slug": "crew-fleece-8900-53",
-    "color": "r",
+    "color": "c",
     "garment": "sweatshirt",
     "view": "back",
     "wave": "W3"
