@@ -80,7 +80,14 @@ const canonical = new URL(getRelativeLocaleUrl(locale, path), origin).href;
   backdrop.addEventListener('click', event => { if (event.target === backdrop) closeMenu(); });
   document.addEventListener('keydown', event => {
     if (backdrop.hidden) return;
-    if (event.key === 'Escape') { event.preventDefault(); closeMenu(); }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      const languages = menu.querySelector<HTMLDetailsElement>('.mobile-languages[open]');
+      if (languages) {
+        languages.open = false;
+        languages.querySelector('summary')!.focus();
+      } else closeMenu();
+    }
     if (event.key === 'Tab') {
       const targets = [...menu.querySelectorAll<HTMLElement>('a, button, summary')].filter(element => element.checkVisibility());
       const first = targets[0], last = targets[targets.length - 1];
