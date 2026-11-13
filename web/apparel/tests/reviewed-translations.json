@@ -1,0 +1,142 @@
+[
+  {
+    "locale": "es",
+    "key": "cookieDetails",
+    "new": "GA4 mide visitas y consultas enviadas con éxito solo con consentimiento. Cookies: _ga y _ga_<ID>, hasta 2 años. Puedes retirar tu consentimiento aquí en cualquier momento."
+  },
+  {
+    "locale": "fr",
+    "key": "cookieDetails",
+    "new": "GA4 mesure les visites et les demandes envoyées avec succès uniquement avec votre consentement. Cookies : _ga et _ga_<ID>, jusqu’à 2 ans. Vous pouvez retirer votre consentement ici à tout moment."
+  },
+  {
+    "locale": "de",
+    "key": "cookieDetails",
+    "new": "GA4 erfasst Besuche und erfolgreich gesendete Anfragen nur mit Einwilligung. Cookies: _ga und _ga_<ID>, bis zu 2 Jahre. Sie können Ihre Einwilligung hier jederzeit widerrufen."
+  },
+  {
+    "locale": "pt",
+    "key": "cookieDetails",
+    "new": "O GA4 mede visitas e consultas enviadas com sucesso apenas com consentimento. Cookies: _ga e _ga_<ID>, até 2 anos. Você pode retirar seu consentimento aqui a qualquer momento."
+  },
+  {
+    "locale": "ru",
+    "key": "cookieDetails",
+    "new": "GA4 учитывает посещения и успешно отправленные запросы только с согласия. Cookie: _ga и _ga_<ID>, до 2 лет. Здесь можно отозвать согласие в любое время."
+  },
+  {
+    "locale": "ar",
+    "key": "cookieDetails",
+    "new": "تقيس ⁦GA4⁩ الزيارات والاستفسارات المرسلة بنجاح بموافقتك فقط. ملفات تعريف الارتباط: ⁦_ga⁩ و ⁦_ga_<ID>⁩، لمدة تصل إلى سنتين. يمكنك سحب موافقتك هنا في أي وقت."
+  },
+  {
+    "locale": "es",
+    "key": "aboutText",
+    "new": "Sourcyo Apparel reúne modelos para que marcas y compradores mayoristas los exploren y comenten."
+  },
+  {
+    "locale": "es",
+    "key": "hoodie-set",
+    "new": "Sudaderas con capucha y conjuntos"
+  },
+  {
+    "locale": "pt",
+    "key": "hoodie-set",
+    "new": "Moletons com capuz e conjuntos"
+  },
+  {
+    "locale": "es",
+    "key": "heroTitle",
+    "new": "Sudaderas y sudaderas con capucha, según tus especificaciones."
+  },
+  {
+    "locale": "es",
+    "key": "partnerTitle",
+    "new": "Un camino más claro de la idea a la consulta."
+  },
+  {
+    "locale": "fr",
+    "key": "partnerTitle",
+    "new": "Un chemin plus clair de l’idée à la demande."
+  },
+  {
+    "locale": "de",
+    "key": "partnerTitle",
+    "new": "Ein klarerer Weg von der Idee zur Anfrage."
+  },
+  {
+    "locale": "pt",
+    "key": "partnerTitle",
+    "new": "Um caminho mais claro da ideia à consulta."
+  },
+  {
+    "locale": "ru",
+    "key": "partnerTitle",
+    "new": "Более ясный путь от идеи к запросу."
+  },
+  {
+    "locale": "pt",
+    "key": "illustrativeNotice",
+    "new": "Cenas ilustrativas geradas por IA; as pessoas e instalações não identificam uma equipe nem um local real."
+  },
+  {
+    "locale": "pt",
+    "key": "alt.home.track_custom",
+    "new": "Ilustração do planejamento de roupa personalizada"
+  },
+  {
+    "locale": "ar",
+    "key": "cookieText",
+    "new": "نستخدم التخزين الضروري. تظل ⁦Google Analytics 4 (Google LLC)⁩ معطلة حتى توافق."
+  },
+  {
+    "locale": "ar",
+    "key": "illustrativeNotice",
+    "new": "مشاهد توضيحية مولدة بالذكاء الاصطناعي؛ الأشخاص والمرافق لا يمثلون فريقًا أو موقعًا حقيقيًا بعينه."
+  },
+  {
+    "locale": "es",
+    "key": "style",
+    "new": "Estilo"
+  },
+  {
+    "locale": "es",
+    "key": "sampleFirst",
+    "new": "Habla sobre una muestra"
+  },
+  {
+    "locale": "es",
+    "key": "sampleQuestion",
+    "new": "¿Puedo consultar sobre una muestra?"
+  },
+  {
+    "locale": "es",
+    "key": "cotton430-hoodie",
+    "new": "Sudaderas de felpa de algodón con capucha"
+  },
+  {
+    "locale": "fr",
+    "key": "sampleQuestion",
+    "new": "Puis-je me renseigner sur un échantillon ?"
+  },
+  {
+    "locale": "de",
+    "key": "sizeText",
+    "new": "Referenzmaße aus der bereitgestellten Tabelle. Bestätigen Sie die endgültigen Spezifikationen im Angebot."
+  },
+  {
+    "locale": "pt",
+    "key": "sampleQuestion",
+    "new": "Posso pedir informações sobre uma amostra?"
+  },
+  {
+    "locale": "pt",
+    "key": "cotton430-hoodie",
+    "new": "Moletons de felpa de algodão com capuz"
+  },
+  {
+    "locale": "ru",
+    "key": "sampleQuestion",
+    "new": "Можно узнать об образце?"
+  }
+]

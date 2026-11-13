@@ -17,7 +17,7 @@
   "cotton": "Baumwollfleece",
   "sets": "Sweatshirts und Sets",
   "samples": "Muster",
-  "partnerTitle": "Von der Idee zur konkreten Anfrage.",
+  "partnerTitle": "Ein klarerer Weg von der Idee zur Anfrage.",
   "styleFirst": "Mit einem Modell beginnen",
   "styleText": "Entdecken Sie Schnitte und notieren Sie passende Modellnummern.",
   "fabricFirst": "Stoff und Passform festlegen",
@@ -82,7 +82,7 @@
   "commercial": "Konditionen",
   "requestSample": "Muster anfragen",
   "sizeChart": "Größentabelle",
-  "sizeText": "Referenzmaße aus der bereitgestellten Tabelle. Bestätigen Sie die endgültigen Maße im Angebot.",
+  "sizeText": "Referenzmaße aus der bereitgestellten Tabelle. Bestätigen Sie die endgültigen Spezifikationen im Angebot.",
   "specText": "Bestätigen Sie Maße, Materialien und endgültige Spezifikationen in Ihrer Anfrage.",
   "productViews": "Produktansichten",
   "view": "Ansicht",
@@ -123,5 +123,5 @@
   "cookieEssential": "Nur notwendige",
   "cookieAccept": "Akzeptieren",
   "cookieSettings": "Einstellungen",
-  "cookieDetails": "GA4 erfasst Besuche und gesendete Anfragen nur mit Einwilligung. Cookies: _ga und _ga_<ID>, bis zu 2 Jahre. Sie können Ihre Einwilligung hier jederzeit widerrufen."
+  "cookieDetails": "GA4 erfasst Besuche und erfolgreich gesendete Anfragen nur mit Einwilligung. Cookies: _ga und _ga_<ID>, bis zu 2 Jahre. Sie können Ihre Einwilligung hier jederzeit widerrufen."
 }

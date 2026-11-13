@@ -45,3 +45,13 @@ test('empty-code titles retain catalog identity without inventing style codes', 
     expect(d['hoodie-set-k01-0256-x-croc'].name).toContain('TBD');
   }
 });
+
+// Reviewed wording is fixed against the English meaning; the shared contract above checks all eight dictionaries.
+import reviewedTranslations from './reviewed-translations.json';
+test('cross-check fixes retain the reviewed wording and consent placeholders', () => {
+  for (const {locale, key, new: expected} of reviewedTranslations) expect(read(locale)[key]).toBe(expected);
+  for (const locale of locales) {
+    expect(read(locale).cookieDetails).toContain('_ga_<ID>');
+    expect(read(locale)['hoodie-set']).not.toBe(read(locale).sets);
+  }
+});
