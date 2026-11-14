@@ -273,6 +273,13 @@
         "colour": "cream"
       },
       {
+        "src": "/img/crew-fleece-8900-33/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "1cf772d79924e150",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
         "src": "/img/crew-fleece-8900-33/digital-back.webp",
         "role": "back",
         "colour": "cream",
@@ -313,13 +320,6 @@
         "sha256_16": "5c986d4821a1f66c",
         "web_sha256": "",
         "colour": "black"
-      },
-      {
-        "src": "/img/crew-fleece-8900-33/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "67aeb9838cc52526",
-        "web_sha256": "",
-        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-33/model-01.webp",
@@ -403,6 +403,13 @@
         "colour": "cream"
       },
       {
+        "src": "/img/crew-fleece-8900-34/digital-back.webp",
+        "role": "back",
+        "sha256_16": "261b894291d097d1",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
         "src": "/img/crew-fleece-8900-34/digital-model-02.webp",
         "role": "back",
         "sha256_16": "278fa5a34ab42c41",
@@ -429,13 +436,6 @@
         "sha256_16": "54d869d41ef68681",
         "web_sha256": "",
         "colour": "charcoal"
-      },
-      {
-        "src": "/img/crew-fleece-8900-34/digital-back.webp",
-        "role": "back",
-        "sha256_16": "0be9dd62cfa7d8b1",
-        "web_sha256": "",
-        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-34/model-01.webp",
@@ -533,6 +533,20 @@
         "colour": "sage/olive grey"
       },
       {
+        "src": "/img/crew-fleece-8900-35/digital-back.webp",
+        "role": "back",
+        "sha256_16": "a089987de20088b5",
+        "web_sha256": "",
+        "colour": "sage/olive grey"
+      },
+      {
+        "src": "/img/crew-fleece-8900-35/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "1ad56b8e7e47770d",
+        "web_sha256": "",
+        "colour": "sage/olive grey"
+      },
+      {
         "src": "/img/crew-fleece-8900-35/digital-model-02.webp",
         "role": "front",
         "sha256_16": "ec601d52106cf4d1",
@@ -559,13 +573,6 @@
         "sha256_16": "4610972847df4f8a",
         "web_sha256": "",
         "colour": "black"
-      },
-      {
-        "src": "/img/crew-fleece-8900-35/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "1c25b3153bd30f5d",
-        "web_sha256": "",
-        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-35/model-01.webp",
@@ -608,13 +615,6 @@
         "role": "overview",
         "sha256_16": "b2933a8d8dd2e617",
         "web_sha256": "1f55a6e11a0e14ab7de1553f15c2c4761767df2d8e8f2fda66e64a9abe2baedf"
-      },
-      {
-        "src": "/img/crew-fleece-8900-35/digital-back.webp",
-        "role": "back",
-        "sha256_16": "883a4c2ebdb53873",
-        "web_sha256": "",
-        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-35/fabric.webp",
@@ -786,6 +786,13 @@
         "colour": "cream"
       },
       {
+        "src": "/img/crew-fleece-8900-37/digital-back.webp",
+        "role": "back",
+        "sha256_16": "47bddb90e47e67d3",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
         "src": "/img/crew-fleece-8900-37/digital-model-02.webp",
         "role": "front",
         "sha256_16": "740f6fc27f71a396",
@@ -850,13 +857,6 @@
         "web_sha256": "3708eec646c4a19e9ee4f8c5a0ab53ae61dba88edb1cf07e60db72b083e88ec8"
       },
       {
-        "src": "/img/crew-fleece-8900-37/digital-back.webp",
-        "role": "back",
-        "sha256_16": "5325611e071f4bf0",
-        "web_sha256": "",
-        "colour": "cream"
-      },
-      {
         "src": "/img/crew-fleece-8900-37/fabric.webp",
         "role": "fabric",
         "colour": "cream",
@@ -903,6 +903,13 @@
         "colour": "cream"
       },
       {
+        "src": "/img/crew-fleece-8900-38/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "c2f5423137a3ccf9",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
         "src": "/img/crew-fleece-8900-38/digital-model-02.webp",
         "role": "front",
         "sha256_16": "5836df1e34e9a4e9",
@@ -929,13 +936,6 @@
         "sha256_16": "9397b7c1fd6a9c54",
         "web_sha256": "",
         "colour": "sage/olive grey"
-      },
-      {
-        "src": "/img/crew-fleece-8900-38/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "0155165d36da5757",
-        "web_sha256": "",
-        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-38/model-01.webp",
@@ -1020,6 +1020,13 @@
         "colour": "sage/olive grey"
       },
       {
+        "src": "/img/crew-fleece-8900-39/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "0f7d917df22e52f8",
+        "web_sha256": "",
+        "colour": "sage/olive grey"
+      },
+      {
         "src": "/img/crew-fleece-8900-39/digital-model-02.webp",
         "role": "front",
         "sha256_16": "47170f87975ebbd0",
@@ -1053,13 +1060,6 @@
         "sha256_16": "116d64bf2d965168",
         "web_sha256": "",
         "colour": "cream"
-      },
-      {
-        "src": "/img/crew-fleece-8900-39/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "d5f79870fd2285b5",
-        "web_sha256": "",
-        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-39/model-01.webp",
@@ -1267,6 +1267,20 @@
         "colour": "cream"
       },
       {
+        "src": "/img/crew-fleece-8900-41/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "e24622ee03422329",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
+        "src": "/img/crew-fleece-8900-41/digital-back.webp",
+        "role": "back",
+        "sha256_16": "647ee6c1a2cd6635",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
         "src": "/img/crew-fleece-8900-41/digital-model-02.webp",
         "role": "back",
         "sha256_16": "e3dbe16eff0b05f6",
@@ -1300,20 +1314,6 @@
         "sha256_16": "90b5b421176c2ad7",
         "web_sha256": "",
         "colour": "stone/greige"
-      },
-      {
-        "src": "/img/crew-fleece-8900-41/digital-back.webp",
-        "role": "back",
-        "sha256_16": "3b7cc539020c68e5",
-        "web_sha256": "",
-        "colour": "cream"
-      },
-      {
-        "src": "/img/crew-fleece-8900-41/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "4618bddda722bddb",
-        "web_sha256": "",
-        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-41/model-01.webp",
@@ -1397,6 +1397,13 @@
         "colour": "red"
       },
       {
+        "src": "/img/crew-fleece-8900-42/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "2e07567943241626",
+        "web_sha256": "",
+        "colour": "red"
+      },
+      {
         "src": "/img/crew-fleece-8900-42/digital-model-02.webp",
         "role": "front",
         "sha256_16": "aac61cd8637403fc",
@@ -1423,13 +1430,6 @@
         "sha256_16": "af6d307c028bdbd8",
         "web_sha256": "",
         "colour": "brown"
-      },
-      {
-        "src": "/img/crew-fleece-8900-42/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "36b0c79244fc2d72",
-        "web_sha256": "",
-        "colour": "red"
       },
       {
         "src": "/img/crew-fleece-8900-42/model-01.webp",
@@ -1514,6 +1514,13 @@
         "colour": "cream"
       },
       {
+        "src": "/img/crew-fleece-8900-43/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "ea3ef41fd0ef6b32",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
         "src": "/img/crew-fleece-8900-43/digital-model-02.webp",
         "role": "front",
         "sha256_16": "a6fd9b0c54c4d046",
@@ -1540,13 +1547,6 @@
         "sha256_16": "fd82c31cf70e3fdd",
         "web_sha256": "",
         "colour": "red"
-      },
-      {
-        "src": "/img/crew-fleece-8900-43/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "affec1ec1802b96a",
-        "web_sha256": "",
-        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-43/model-01.webp",
@@ -1631,6 +1631,13 @@
         "colour": "cream"
       },
       {
+        "src": "/img/crew-fleece-8900-44/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "32fb901045169867",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
         "src": "/img/crew-fleece-8900-44/digital-model-02.webp",
         "role": "front",
         "sha256_16": "6b44ac825b53c1e9",
@@ -1657,13 +1664,6 @@
         "sha256_16": "5290096519da4c28",
         "web_sha256": "",
         "colour": "stone/greige"
-      },
-      {
-        "src": "/img/crew-fleece-8900-44/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "e43ca83b9f01c68f",
-        "web_sha256": "",
-        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-44/model-01.webp",
@@ -1748,6 +1748,13 @@
         "colour": "cream"
       },
       {
+        "src": "/img/crew-fleece-8900-45/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "8881e5cec5a25c2b",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
         "src": "/img/crew-fleece-8900-45/digital-model-02.webp",
         "role": "front",
         "sha256_16": "465ef39dd18051e2",
@@ -1774,13 +1781,6 @@
         "sha256_16": "8f52b5e48467ab12",
         "web_sha256": "",
         "colour": "brown"
-      },
-      {
-        "src": "/img/crew-fleece-8900-45/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "b8fb97d5b3d56cd7",
-        "web_sha256": "",
-        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-45/model-01.webp",
@@ -1865,6 +1865,13 @@
         "colour": "sage/olive grey"
       },
       {
+        "src": "/img/crew-fleece-8900-46/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "6c65212f267f5a3c",
+        "web_sha256": "",
+        "colour": "sage/olive grey"
+      },
+      {
         "src": "/img/crew-fleece-8900-46/digital-model-02.webp",
         "role": "front",
         "sha256_16": "7e613f1b540c04c7",
@@ -1891,13 +1898,6 @@
         "sha256_16": "4a78bd9be21a67e5",
         "web_sha256": "",
         "colour": "red"
-      },
-      {
-        "src": "/img/crew-fleece-8900-46/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "cd5668cafa0f859f",
-        "web_sha256": "",
-        "colour": "sage/olive grey"
       },
       {
         "src": "/img/crew-fleece-8900-46/model-01.webp",
@@ -1982,6 +1982,13 @@
         "colour": "cream"
       },
       {
+        "src": "/img/crew-fleece-8900-47/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "ebcab1f893959310",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
         "src": "/img/crew-fleece-8900-47/digital-model-02.webp",
         "role": "front",
         "sha256_16": "e31e7362a35e9651",
@@ -2008,13 +2015,6 @@
         "sha256_16": "2b06bfe8ca9767dd",
         "web_sha256": "",
         "colour": "charcoal"
-      },
-      {
-        "src": "/img/crew-fleece-8900-47/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "58464a3bfc2a84a7",
-        "web_sha256": "",
-        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-47/model-01.webp",
@@ -2099,6 +2099,13 @@
         "colour": "red"
       },
       {
+        "src": "/img/crew-fleece-8900-48/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "1566b6ba57a0382b",
+        "web_sha256": "",
+        "colour": "red"
+      },
+      {
         "src": "/img/crew-fleece-8900-48/digital-model-02.webp",
         "role": "front",
         "sha256_16": "866cd6fa20798291",
@@ -2125,13 +2132,6 @@
         "sha256_16": "2bb1644ea7a95b59",
         "web_sha256": "",
         "colour": "brown"
-      },
-      {
-        "src": "/img/crew-fleece-8900-48/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "6cc1e51e97ac486b",
-        "web_sha256": "",
-        "colour": "red"
       },
       {
         "src": "/img/crew-fleece-8900-48/model-01.webp",
@@ -2216,6 +2216,13 @@
         "colour": "black"
       },
       {
+        "src": "/img/crew-fleece-8900-49/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "da9afff43835beb0",
+        "web_sha256": "",
+        "colour": "black"
+      },
+      {
         "src": "/img/crew-fleece-8900-49/digital-model-02.webp",
         "role": "front",
         "sha256_16": "7e41335d6c208ee1",
@@ -2242,13 +2249,6 @@
         "sha256_16": "2627e060672f3430",
         "web_sha256": "",
         "colour": "brown"
-      },
-      {
-        "src": "/img/crew-fleece-8900-49/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "7928a97023884e52",
-        "web_sha256": "",
-        "colour": "black"
       },
       {
         "src": "/img/crew-fleece-8900-49/model-01.webp",
@@ -2333,6 +2333,20 @@
         "colour": "cream"
       },
       {
+        "src": "/img/crew-fleece-8900-50/digital-back.webp",
+        "role": "back",
+        "sha256_16": "45b2dade38c577e2",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
+        "src": "/img/crew-fleece-8900-50/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "47234dc731034a18",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
         "src": "/img/crew-fleece-8900-50/digital-model-02.webp",
         "role": "front",
         "sha256_16": "3e7f6f46dfcde55b",
@@ -2359,13 +2373,6 @@
         "sha256_16": "b39e61ab4c1804f2",
         "web_sha256": "",
         "colour": "black"
-      },
-      {
-        "src": "/img/crew-fleece-8900-50/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "112fc43ff4b34b70",
-        "web_sha256": "",
-        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-50/model-01.webp",
@@ -2402,13 +2409,6 @@
         "role": "overview",
         "sha256_16": "704b376bbcf35ecf",
         "web_sha256": "f4a282512ea9112c2ee1fad8c992b9b6d2666921eaac14e824780742af728848"
-      },
-      {
-        "src": "/img/crew-fleece-8900-50/digital-back.webp",
-        "role": "back",
-        "sha256_16": "994752eef5fb93d1",
-        "web_sha256": "",
-        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-50/fabric.webp",
@@ -2450,6 +2450,13 @@
         "colour": "cream"
       },
       {
+        "src": "/img/crew-fleece-8900-53/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "f5a2a9d9d0539260",
+        "web_sha256": "",
+        "colour": "cream"
+      },
+      {
         "src": "/img/crew-fleece-8900-53/digital-model-02.webp",
         "role": "front",
         "sha256_16": "ed545d95a7b7ef8d",
@@ -2476,13 +2483,6 @@
         "sha256_16": "b2ee76e038be32f7",
         "web_sha256": "",
         "colour": "sage/olive grey"
-      },
-      {
-        "src": "/img/crew-fleece-8900-53/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "b10a7d19f5a37fe0",
-        "web_sha256": "",
-        "colour": "cream"
       },
       {
         "src": "/img/crew-fleece-8900-53/model-01.webp",
@@ -3112,6 +3112,13 @@
         "colour": "black"
       },
       {
+        "src": "/img/apparel-70171/digital-back.webp",
+        "role": "back",
+        "sha256_16": "86845ea3ec62b555",
+        "web_sha256": "",
+        "colour": "black"
+      },
+      {
         "src": "/img/apparel-70171/digital-model-02.webp",
         "role": "front",
         "sha256_16": "ed1d800c69d476e7",
@@ -3168,13 +3175,6 @@
         "role": "overview",
         "sha256_16": "23d569d39de90a31",
         "web_sha256": "a2ff70b6f244508f2694f91c3f47c6609b6b93d1f6a4d1fc68a8610393946940"
-      },
-      {
-        "src": "/img/apparel-70171/digital-back.webp",
-        "role": "back",
-        "sha256_16": "5976170c8bf5b552",
-        "web_sha256": "",
-        "colour": "black"
       },
       {
         "src": "/img/apparel-70171/fabric.webp",
@@ -4019,17 +4019,17 @@
         "colour": "black"
       },
       {
+        "src": "/img/apparel-70178-x-loropiana-crest/digital-back.webp",
+        "role": "back",
+        "sha256_16": "9d58522170e4bcae",
+        "web_sha256": "",
+        "colour": "black"
+      },
+      {
         "src": "/img/apparel-70178/model-04.webp",
         "role": "model",
         "sha256_16": "a2ab73e658a7cfe4",
         "web_sha256": "6724b6d446df7435830747ad5d00da008daffe629675e38ac2280020cc3578f3"
-      },
-      {
-        "src": "/img/apparel-70178-x-loropiana-crest/digital-back.webp",
-        "role": "back",
-        "sha256_16": "eb654888d53a056b",
-        "web_sha256": "",
-        "colour": "black"
       },
       {
         "src": "/img/apparel-70178-x-loropiana-crest/structure.webp",
@@ -7973,6 +7973,13 @@
         "colour": "white"
       },
       {
+        "src": "/img/cotton430-hoodie-l8604/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "64536bac8d6d4fc5",
+        "web_sha256": "",
+        "colour": "white"
+      },
+      {
         "src": "/img/cotton430-hoodie-l8604/digital-back.webp",
         "role": "back",
         "colour": "white",
@@ -8006,13 +8013,6 @@
         "sha256_16": "408104deb25b1412",
         "web_sha256": "",
         "colour": "tan/beige"
-      },
-      {
-        "src": "/img/cotton430-hoodie-l8604/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "bf9c72626a84de68",
-        "web_sha256": "",
-        "colour": "white"
       },
       {
         "src": "/img/cotton430-hoodie-l8604/model-01.webp",
@@ -8096,6 +8096,13 @@
         "colour": "white"
       },
       {
+        "src": "/img/cotton430-hoodie-l8606/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "bf27398d6626536b",
+        "web_sha256": "",
+        "colour": "white"
+      },
+      {
         "src": "/img/cotton430-hoodie-l8606/digital-back.webp",
         "role": "back",
         "colour": "white",
@@ -8129,13 +8136,6 @@
         "sha256_16": "f010c0bbabb5f27b",
         "web_sha256": "",
         "colour": "black"
-      },
-      {
-        "src": "/img/cotton430-hoodie-l8606/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "976af078ed596327",
-        "web_sha256": "",
-        "colour": "white"
       },
       {
         "src": "/img/cotton430-hoodie-l8606/model-01.webp",
@@ -8330,6 +8330,13 @@
         "colour": "sand/beige"
       },
       {
+        "src": "/img/cotton430-hoodie-l8615/digital-back.webp",
+        "role": "back",
+        "sha256_16": "f4b2dd1cc37e9ef4",
+        "web_sha256": "",
+        "colour": "sand/beige"
+      },
+      {
         "src": "/img/cotton430-hoodie-l8615/digital-model-02.webp",
         "role": "front",
         "sha256_16": "058368a146edfdb7",
@@ -8381,13 +8388,6 @@
         "web_sha256": "669ecde72994f50b97a389aa326c4e664c84e6cb95920d7784ba7358f1aa7007"
       },
       {
-        "src": "/img/cotton430-hoodie-l8615/digital-back.webp",
-        "role": "back",
-        "sha256_16": "742c10cbad0633d6",
-        "web_sha256": "",
-        "colour": "sand/beige"
-      },
-      {
         "src": "/img/cotton430-hoodie-l8615/fabric.webp",
         "role": "fabric",
         "colour": "sand/beige",
@@ -8434,6 +8434,13 @@
         "colour": "white"
       },
       {
+        "src": "/img/cotton430-hoodie-l8705/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "25eaba4a8e1947d3",
+        "web_sha256": "",
+        "colour": "white"
+      },
+      {
         "src": "/img/cotton430-hoodie-l8705/digital-model-02.webp",
         "role": "back",
         "sha256_16": "f9bf96162510635f",
@@ -8460,13 +8467,6 @@
         "sha256_16": "2024884fe5cd93e8",
         "web_sha256": "",
         "colour": "tan/beige"
-      },
-      {
-        "src": "/img/cotton430-hoodie-l8705/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "d2891caf1c284cb5",
-        "web_sha256": "",
-        "colour": "white"
       },
       {
         "src": "/img/cotton430-hoodie-l8705/model-01.webp",
@@ -9741,6 +9741,13 @@
         "colour": "black"
       },
       {
+        "src": "/img/hoodie-set-k09/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "c58edcee3dd026ae",
+        "web_sha256": "",
+        "colour": "black"
+      },
+      {
         "src": "/img/hoodie-set-k09/digital-model-02.webp",
         "role": "front",
         "sha256_16": "2283306fc5b94358",
@@ -9760,13 +9767,6 @@
         "sha256_16": "89ba352ed2223bf5",
         "web_sha256": "",
         "colour": "white/cream"
-      },
-      {
-        "src": "/img/hoodie-set-k09/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "f80d763e32e2b02b",
-        "web_sha256": "",
-        "colour": "black"
       },
       {
         "src": "/img/hoodie-set-k09/model-02.webp",
@@ -9843,18 +9843,18 @@
         "colour": "black"
       },
       {
+        "src": "/img/hoodie-set-k10-1102-dj121/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "dac596bc8238a238",
+        "web_sha256": "",
+        "colour": "black"
+      },
+      {
         "src": "/img/hoodie-set-k10-1102-dj121/digital-model-02.webp",
         "role": "front",
         "sha256_16": "6f2b0a7fb91c93e5",
         "web_sha256": "",
         "colour": "light grey"
-      },
-      {
-        "src": "/img/hoodie-set-k10-1102-dj121/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "33e562e5128a1277",
-        "web_sha256": "",
-        "colour": "black"
       },
       {
         "src": "/img/hoodie-set-k10-1102/model-01.webp",
@@ -10041,6 +10041,13 @@
         "colour": "light grey"
       },
       {
+        "src": "/img/hoodie-set-k11-1103/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "0fe5187d987dccfc",
+        "web_sha256": "",
+        "colour": "light grey"
+      },
+      {
         "src": "/img/hoodie-set-k11-1103/digital-model-02.webp",
         "role": "front",
         "sha256_16": "21c41bdd7f50cd60",
@@ -10067,13 +10074,6 @@
         "sha256_16": "40bc760f190f505b",
         "web_sha256": "",
         "colour": "blue"
-      },
-      {
-        "src": "/img/hoodie-set-k11-1103/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "80215761995b300a",
-        "web_sha256": "",
-        "colour": "light grey"
       },
       {
         "src": "/img/hoodie-set-k11-1103/model-01.webp",
@@ -10476,6 +10476,13 @@
         "colour": "navy"
       },
       {
+        "src": "/img/hoodie-set-k13-3901/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "601d07df77c7a23c",
+        "web_sha256": "",
+        "colour": "navy"
+      },
+      {
         "src": "/img/hoodie-set-k13-3901/digital-model-02.webp",
         "role": "front",
         "sha256_16": "a26498662ca37417",
@@ -10488,13 +10495,6 @@
         "sha256_16": "15f95c3fb5041e63",
         "web_sha256": "",
         "colour": "black"
-      },
-      {
-        "src": "/img/hoodie-set-k13-3901/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "687b7f415ba7011b",
-        "web_sha256": "",
-        "colour": "navy"
       },
       {
         "src": "/img/hoodie-set-k13-3901/model-01.webp",
@@ -10565,6 +10565,13 @@
         "colour": "black"
       },
       {
+        "src": "/img/hoodie-set-k14-3902/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "001501dd1a146d1c",
+        "web_sha256": "",
+        "colour": "black"
+      },
+      {
         "src": "/img/hoodie-set-k14-3902/digital-model-02.webp",
         "role": "front",
         "sha256_16": "020536cb7cd878ac",
@@ -10584,13 +10591,6 @@
         "sha256_16": "502b44d7ce75cb09",
         "web_sha256": "",
         "colour": "light grey"
-      },
-      {
-        "src": "/img/hoodie-set-k14-3902/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "81a64140348412a5",
-        "web_sha256": "",
-        "colour": "black"
       },
       {
         "src": "/img/hoodie-set-k14-3902/model-01.webp",
@@ -10667,6 +10667,20 @@
         "colour": "black"
       },
       {
+        "src": "/img/hoodie-set-k15-3903/digital-back.webp",
+        "role": "back",
+        "sha256_16": "fffee4e46567af8f",
+        "web_sha256": "",
+        "colour": "black"
+      },
+      {
+        "src": "/img/hoodie-set-k15-3903/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "7df1033c22bb4b1b",
+        "web_sha256": "",
+        "colour": "black"
+      },
+      {
         "src": "/img/hoodie-set-k15-3903/digital-model-02.webp",
         "role": "front",
         "sha256_16": "6c1db1c6d1df25da",
@@ -10679,13 +10693,6 @@
         "sha256_16": "b154cf19e58738bf",
         "web_sha256": "",
         "colour": "light grey"
-      },
-      {
-        "src": "/img/hoodie-set-k15-3903/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "6925d86579b40296",
-        "web_sha256": "",
-        "colour": "black"
       },
       {
         "src": "/img/hoodie-set-k15-3903/model-01.webp",
@@ -10710,13 +10717,6 @@
         "role": "overview",
         "sha256_16": "19352821cb7ce8d3",
         "web_sha256": "36a48bac24dc704e6d95ccbc31d8cb7ea5d5c1f89b0a4d676ff62f240baeae5a"
-      },
-      {
-        "src": "/img/hoodie-set-k15-3903/digital-back.webp",
-        "role": "back",
-        "sha256_16": "0ca9bbe687b712b6",
-        "web_sha256": "",
-        "colour": "black"
       },
       {
         "src": "/img/hoodie-set-k15-3903/fabric.webp",
@@ -10752,6 +10752,13 @@
         "src": "/img/hoodie-set-k16-3904/digital-front.webp",
         "role": "front",
         "sha256_16": "39361d942a5916d1",
+        "web_sha256": "",
+        "colour": "black"
+      },
+      {
+        "src": "/img/hoodie-set-k16-3904/digital-back.webp",
+        "role": "back",
+        "sha256_16": "06c17ff4da3b154c",
         "web_sha256": "",
         "colour": "black"
       },
@@ -10807,13 +10814,6 @@
         "web_sha256": "7fcf72682d72e2a8ce28feb7e1fb3b78633a14ea496af0310af5029ad9289e59"
       },
       {
-        "src": "/img/hoodie-set-k16-3904/digital-back.webp",
-        "role": "back",
-        "sha256_16": "0a5599e2bc6d043b",
-        "web_sha256": "",
-        "colour": "black"
-      },
-      {
         "src": "/img/hoodie-set-k16-3904/fabric.webp",
         "role": "fabric",
         "colour": "black",
@@ -10858,6 +10858,13 @@
         "colour": "navy"
       },
       {
+        "src": "/img/hoodie-set-k17-3905/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "5eff6673f2bd26e6",
+        "web_sha256": "",
+        "colour": "navy"
+      },
+      {
         "src": "/img/hoodie-set-k17-3905/digital-model-02.webp",
         "role": "front",
         "sha256_16": "2cce721a372d6f3b",
@@ -10870,13 +10877,6 @@
         "sha256_16": "225a59e7b3807cf0",
         "web_sha256": "",
         "colour": "black"
-      },
-      {
-        "src": "/img/hoodie-set-k17-3905/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "071de2629b9c6cb6",
-        "web_sha256": "",
-        "colour": "navy"
       },
       {
         "src": "/img/hoodie-set-k17-3905/model-01.webp",
@@ -11030,6 +11030,20 @@
         "colour": "navy"
       },
       {
+        "src": "/img/hoodie-set-k19-3907/digital-back.webp",
+        "role": "back",
+        "sha256_16": "6920ce4d643b06cd",
+        "web_sha256": "",
+        "colour": "navy"
+      },
+      {
+        "src": "/img/hoodie-set-k19-3907/digital-turn.webp",
+        "role": "turn",
+        "sha256_16": "6d05ac1475969bb2",
+        "web_sha256": "",
+        "colour": "navy"
+      },
+      {
         "src": "/img/hoodie-set-k19-3907/digital-model-02.webp",
         "role": "front",
         "sha256_16": "625d59044c92276d",
@@ -11049,13 +11063,6 @@
         "sha256_16": "c466a5dabdd543bf",
         "web_sha256": "",
         "colour": "grey"
-      },
-      {
-        "src": "/img/hoodie-set-k19-3907/digital-turn.webp",
-        "role": "turn",
-        "sha256_16": "3c577fbacf1cad96",
-        "web_sha256": "",
-        "colour": "navy"
       },
       {
         "src": "/img/hoodie-set-k19-3907/model-01.webp",
@@ -11086,13 +11093,6 @@
         "role": "overview",
         "sha256_16": "5eeb5759f9ada6e6",
         "web_sha256": "4dd4ce6e4abbdc664645cdab28ed39ad74fca791dfcd4d0789a26fffdd0f4540"
-      },
-      {
-        "src": "/img/hoodie-set-k19-3907/digital-back.webp",
-        "role": "back",
-        "sha256_16": "19dc8c9e57edf5a5",
-        "web_sha256": "",
-        "colour": "navy"
       },
       {
         "src": "/img/hoodie-set-k19-3907/fabric.webp",
@@ -11604,6 +11604,13 @@
         "colour": "white"
       },
       {
+        "src": "/img/pullover-hoodie-69009/digital-back.webp",
+        "role": "back",
+        "sha256_16": "0d5dc5160c22b427",
+        "web_sha256": "",
+        "colour": "white"
+      },
+      {
         "src": "/img/pullover-hoodie-69009/digital-turn.webp",
         "role": "turn",
         "sha256_16": "1643942230f4c2f3",
@@ -11673,13 +11680,6 @@
         "role": "overview",
         "sha256_16": "51685519429e950c",
         "web_sha256": "c5809cef50b65f1dc9b6419aef56e5422eb29f8e68b7c3c7045ee761b45a4d7d"
-      },
-      {
-        "src": "/img/pullover-hoodie-69009/digital-back.webp",
-        "role": "back",
-        "sha256_16": "b9283615c06a4b8a",
-        "web_sha256": "",
-        "colour": "white"
       },
       {
         "src": "/img/pullover-hoodie-69009/fabric.webp",
