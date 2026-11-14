@@ -12,6 +12,7 @@ import { packageDetails, readDetailLedger, copyFallbackImage } from './detail-im
 import { assertDetailDigest, imageDimensions, type DetailSource } from './image-plan';
 import { assertSingleRelease, assertDigitalDigest, imagePlan, publishSlotMarkup, assertSlotReferences, type Review, type Approved } from './image-plan';
 import { widths, imageBase } from './src/data/imagery';
+import { packageDigital } from './digital-images';
 const sharp = createRequire(import.meta.resolve('astro/package.json'))('sharp');
 const common = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
 const sourceRoot = process.env.APPAREL_SOURCE_DIR || resolve(dirname(resolve(common)), 'work/apparel-b2b');
@@ -68,8 +69,7 @@ for (const receipt of await packageDetails(plan.details, sourceRoot, destination
   record(receipt.src, receipt.sourceSha256);
 }
 for (const image of plan.digital) {
-  mkdirSync(dirname(join(destination, image.src)), { recursive: true });
-  await sharp(safeInput(sourceRoot, image.source)).resize({ width: 1024, withoutEnlargement: true }).webp({ quality: 82 }).toFile(join(destination, image.src));
+  await packageDigital(image, sourceRoot, destination);
   const outputMetadata = await sharp(join(destination, image.src)).metadata();
   dimensions.set(image.src, { w: outputMetadata.width!, h: outputMetadata.height! });
   record(image.src, image.sha256);

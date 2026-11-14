@@ -34,10 +34,28 @@ test('C24 derived counts and eight-locale rendered slots',()=>{
  }
 });
 
-test.skipIf(!process.env.APPAREL_SOURCE_DIR)('C24 native WebP conversion preserves all 23 source dimensions',async()=>{
+test.skipIf(!process.env.APPAREL_SOURCE_DIR)('C24 real digital packager binds masters and downscales derivatives',async()=>{
+ const {packageDigital}=await import('../digital-images');
+ const {mkdtempSync,rmSync}=await import('node:fs');
+ const {resolve}=await import('node:path');
+ const destination=mkdtempSync(resolve('web/apparel/.c24-packaging-'));
+ try {
  for(const row of accepted){
+ const descriptor=digital.find(d=>d.src===row.src)!;
  const bytes=readFileSync(`${process.env.APPAREL_SOURCE_DIR}/${row.source}`);
- const output=await sharp(bytes).webp({quality:82}).toBuffer();
- const meta=await sharp(output).metadata();expect([meta.width,meta.height]).toEqual([1122,1402]);
+ expect(createHash('sha256').update(bytes).digest('hex')).toBe(row.sha256);
+ const master=await sharp(bytes).metadata();expect([master.width,master.height]).toEqual([1122,1402]);
+ const output=await packageDigital(descriptor,process.env.APPAREL_SOURCE_DIR!,destination);
+ const meta=await sharp(output).metadata();
+ expect(meta.format).toBe('webp');expect(meta.width).toBe(1024);
+ expect(meta.height).toBe(Math.round(1402*1024/1122));
+ expect(meta.width!).toBeLessThanOrEqual(master.width!);expect(meta.height!).toBeLessThanOrEqual(master.height!);
+ expect(createHash('sha256').update(readFileSync(`${process.env.APPAREL_SOURCE_DIR}/${row.source}`)).digest('hex')).toBe(row.sha256);
  }
+ // A smaller input exercises the same production path's never-upscale option.
+ const small=await sharp({create:{width:512,height:640,channels:3,background:'white'}}).png().toBuffer();
+ const {writeFileSync}=await import('node:fs');writeFileSync(`${destination}/small.png`,small);
+ const output=await packageDigital({source:'small.png',src:'/small.webp',sha256:createHash('sha256').update(small).digest('hex')},destination,destination);
+ const meta=await sharp(output).metadata();expect([meta.width,meta.height]).toEqual([512,640]);
+ } finally {rmSync(destination,{recursive:true,force:true});}
 });
