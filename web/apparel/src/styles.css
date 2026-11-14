@@ -84,8 +84,9 @@ picture img { width: 100%; }
 .pdp { margin-block-start: var(--sy-space-grid-y); grid-template-columns: 7fr 5fr; }
 .pdp h1 { font-size: var(--sy-text-h2); }
 .gallery { min-width: 0; }
+.gallery > picture { display: contents; }
 .gallery img { width: 100%; }
-.gallery > img { aspect-ratio: 4 / 5; object-fit: cover; }
+.gallery > picture > img { aspect-ratio: 4 / 5; object-fit: cover; }
 .gallery-thumbs { display: flex; gap: .75rem; overflow-x: auto; padding: .5rem; margin-block-start: .75rem; }
 .gallery-thumbs a { flex: 0 0 64px; }
 .gallery-thumbs [aria-current] { outline: 2px solid var(--sy-color-accent); outline-offset: 2px; }
@@ -144,7 +145,7 @@ footer { padding-block-end: var(--sy-space-section-sm); }
 .contact-form .rfq { padding: var(--sy-space-gutter-md); border: 1px solid var(--sy-color-hairline); border-radius: var(--sy-radius-card); background: var(--sy-color-surface); }
 .form-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-grid-x); }
 .pdp-section { padding-block-start: var(--sy-space-grid-x); }
-.gallery > img { border-radius: var(--sy-radius-card); }
+.gallery > picture > img { border-radius: var(--sy-radius-card); }
 .product-info .actions { display: grid; }
 @media (max-width: 650px) { .contact-form, .form-pair { grid-template-columns: minmax(0, 1fr); } .contact-form .rfq { padding: var(--sy-space-grid-x); } }
 

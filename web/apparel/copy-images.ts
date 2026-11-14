@@ -9,7 +9,7 @@ import products from './src/data/products.json';
 import digital from './digital-sources.json';
 import details from './detail-sources.json';
 import { packageDetails, readDetailLedger, copyFallbackImage } from './detail-images';
-import { assertDetailDigest, imageDimensions, type DetailSource } from './image-plan';
+import { digitalDelivery, assertDetailDigest, imageDimensions, type DetailSource } from './image-plan';
 import { assertSingleRelease, assertDigitalDigest, imagePlan, publishSlotMarkup, assertSlotReferences, type Review, type Approved } from './image-plan';
 import { widths, imageBase } from './src/data/imagery';
 import { packageDigital } from './digital-images';
@@ -70,9 +70,11 @@ for (const receipt of await packageDetails(plan.details, sourceRoot, destination
 }
 for (const image of plan.digital) {
   await packageDigital(image, sourceRoot, destination);
-  const outputMetadata = await sharp(join(destination, image.src)).metadata();
-  dimensions.set(image.src, { w: outputMetadata.width!, h: outputMetadata.height! });
-  record(image.src, image.sha256);
+  for (const delivery of digitalDelivery(image)) {
+    const outputMetadata = await sharp(join(destination, delivery.src)).metadata();
+    dimensions.set(delivery.src, { w: outputMetadata.width!, h: outputMetadata.height! });
+    record(delivery.src, delivery.sourceSha256);
+  }
 }
 for (const image of [...plan.slots, ...plan.packshots]) {
   const input = safeInput(hd, image.source);
@@ -110,6 +112,6 @@ for (const locale of ['en', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) for (const page
   for (const route of targets[page]) assertSlotReferences(readFileSync(join(destination, locale === 'en' ? '' : locale, route, 'index.html'), 'utf8'), plan.slots, page);
 }
 const receipt = (image: Approved) => ({ id: image.id, slug: image.slug, role: image.id ? 'illustrative' : image.role, src: image.src, sha256: image.sha256, w: image.w, h: image.h, rights: image.rights });
-const manifest = { schema: 1, sha: build.sha, buildRunId: build.runId, buildReceiptSha256: process.env.APPAREL_BUILD_RECEIPT_SHA256, packagerSha, details: plan.details.map(({slug, role, colour, src, sha256}) => ({slug, role, colour, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src)})), slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), digital: plan.digital.map(({ slug, role, src, sha256 }) => ({ slug, role, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src) })), files };
+const manifest = { schema: 1, sha: build.sha, buildRunId: build.runId, buildReceiptSha256: process.env.APPAREL_BUILD_RECEIPT_SHA256, packagerSha, details: plan.details.map(({slug, role, colour, src, sha256}) => ({slug, role, colour, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src)})), slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), digital: plan.digital.flatMap(image => digitalDelivery(image).map(({src,sourceSha256}) => ({slug:image.slug,role:image.role,src,sha256:sourceSha256,rights:'ai-generated-illustrative',...dimensions.get(src)}))), files };
 writeFileSync(join(destination, 'deploy-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 console.log(JSON.stringify({ sha: manifest.sha, slots: plan.slots.length, packshots: plan.packshots.map(p => p.slug), files: files.length, hero1024: files.filter(p => p.url.includes('illustrative_home_hero-1024')) }));

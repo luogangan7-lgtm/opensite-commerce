@@ -96,3 +96,9 @@ export function imageDimensions(role: string | undefined, metadata: {width?: num
   if (role === 'print' && (metadata.width !== 1200 || metadata.height !== 1200)) throw Error('G/C detail requires native 1200×1200 pixels');
   return {w:metadata.width, h:metadata.height};
 }
+
+/** Exact delivery inventory shared by packaging, its manifest and the output allow-list. */
+export function digitalDelivery(image: {src: string; sha256: string}) {
+ if (!/^\/img\/[a-z0-9_/-]+\.webp$/.test(image.src) || !/^[a-f0-9]{64}$/.test(image.sha256)) throw Error('Invalid digital delivery master');
+ return [{src:image.src,width:1024,sourceSha256:image.sha256},{src:image.src.replace(/\.webp$/, '-640.webp'),width:640,sourceSha256:image.sha256}];
+}

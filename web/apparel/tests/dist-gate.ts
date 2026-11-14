@@ -2,6 +2,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import digital from '../digital-sources.json';
+import { digitalDelivery } from '../image-plan';
 import products from '../src/data/products.json';
 import { dictionaries, locales, type Locale } from '../src/i18n';
 import { imageBase, widths } from '../src/data/imagery';
@@ -14,6 +16,12 @@ if (routes.version !== 1 || routes.exclude.length !== 0 || JSON.stringify([...ro
 function files(path: string): string[] { return readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(join(path, e.name)) : [join(path, e.name)]); }
 const allowed = new Set(products.map(p => p.slug));
 const images = new Set(products.flatMap(p => [...p.images.map(i => i.src), ...p.size_chart]));
+// Admit exact derivatives only when the accepted master is bound to a published catalog image.
+for (const master of digital) {
+ const published = products.find(product => product.slug === master.slug)?.images.find(image => image.src === master.src);
+ if (!published || published.sha256_16 !== master.sha256.slice(0,16)) throw Error('Digital master differs from published catalog');
+ for (const delivery of digitalDelivery(master)) images.add(delivery.src);
+}
 // Dictionary-backed slot references only; source review stays deploy-only.
 for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.'))) for (const width of widths) for (const format of ['avif', 'webp']) images.add(`${imageBase(key.slice(4).replace('.', '/'))}-${width}.${format}`);
 if (products.length !== 115 || allowed.size !== 115) throw Error('Published catalog count changed');
