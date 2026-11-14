@@ -2288,5 +2288,15 @@
     "sha256": "f0ab6eb257386758b35f62190d0293e989120303bb55aefae0de8b9f42dfe9ce",
     "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R9-01m/out/review.tsv",
     "sourceSha256": "fd2125ce8c6ce175bdf80891b180b5b04af458dd887ee4947581633541f875ff"
+  },
+  {
+    "slug": "cotton430-hoodie-8610",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C25/assets/cotton430-hoodie-8610--fabric.png",
+    "src": "/img/cotton430-hoodie-8610/fabric.webp",
+    "sha256": "7c07d8200ef0a930abc1ff06a794b79ca6d4e517e6feb0f3aa896d3a7be7ee0d",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-I/out/review.tsv",
+    "sourceSha256": "ce3be449d8c2a1d304bea5c90b26a38af36f99bf7bb0448b1ffdaae369d54cc9"
   }
 ]

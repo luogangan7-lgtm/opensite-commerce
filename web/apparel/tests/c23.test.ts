@@ -27,7 +27,7 @@ test('C23 exactly 38 W3 replacements and eight AI captions',()=>{expect(accepted
 
 // Built output confirms each replacement remains reachable in every localized PDP.
 test('C23 derived counts and eight-locale rendered slots',()=>{
- expect(digital.length).toBe(767);expect(digital.filter(d=>d.wave==='W3').length).toBe(230);expect(details.length).toBe(229);
+ expect(digital.length).toBe(767);expect(digital.filter(d=>d.wave==='W3').length).toBe(230);expect(details.length).toBe(230);
  for(const row of accepted) for(const locale of ['','zh/','es/','fr/','de/','pt/','ru/','ar/']) {
  const html=readFileSync(`web/apparel/dist/${locale}products/${row.slug}/index.html`,'utf8');
  expect(html).toContain(row.src);expect(html).toContain('data-role="'+row.view+'"');
