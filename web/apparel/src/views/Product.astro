@@ -60,9 +60,7 @@ const relatedCards = (featuredRelated ? [featuredRelated, ...related.filter(p =>
     if (!main) return; event.preventDefault(); main.removeAttribute('srcset'); main.src = link.getAttribute('href')!;
     const thumbnail = link.querySelector('img')!;
     main.alt = thumbnail.alt;
-    const lcpSrcset = digitalAlt(gallery[0].src, locale) ? `${gallery[0].src.replace(/\.webp$/, '-640.webp')} 640w, ${gallery[0].src} 1024w` : undefined;
-const lcpSizes = '(max-width: 650px) calc(100vw - 48px), 58vw';
-const label = document.querySelector('[data-digital-label]');
+    const label = document.querySelector('[data-digital-label]');
     if (label) label.textContent = link.dataset.digital || '';
     main.dataset.fit = link.dataset.fit || '';
     document.querySelectorAll('.gallery-thumbs a').forEach(item => item.removeAttribute('aria-current'));
