@@ -42,7 +42,7 @@ test('empty-code titles retain catalog identity without inventing style codes', 
     const d = read(`products.${locale}`);
     expect(d['apparel-70174-x-small-logo'].name).toContain('70174');
     expect(d['apparel-70178-x-loropiana-crest'].name).toContain('70178');
-    expect(d['hoodie-set-k01-0256-x-croc'].name).toContain('TBD');
+    expect(d['hoodie-set-k01-0256-x-croc'].name).toContain('01_0256');
   }
 });
 
@@ -53,5 +53,31 @@ test('cross-check fixes retain the reviewed wording and consent placeholders', (
   for (const locale of locales) {
     expect(read(locale).cookieDetails).toContain('_ga_<ID>');
     expect(read(locale)['hoodie-set']).not.toBe(read(locale).sets);
+  }
+});
+
+test('illustration alt descriptions are localized across all eight locales', () => {
+  const en = read('en');
+  for (const locale of locales.filter(l => l !== 'en')) for (const key of Object.keys(en).filter(k => k.startsWith('alt.'))) {
+    expect(read(locale)[key], `${locale}:${key}`).not.toBe(en[key]);
+  }
+});
+test('Arabic fleece descriptions never claim wool fibre', () => {
+  expect(JSON.stringify([read('ar'), read('products.ar')])).not.toMatch(/صوف/);
+});
+test('all localized product card and page content is free of placeholders', () => {
+  for (const locale of locales) for (const product of Object.values(read(`products.${locale}`))) {
+    expect(JSON.stringify(product)).not.toMatch(/\b(?:TBD|TODO|placeholder|lorem ipsum)\b/i);
+  }
+});
+
+test('built product pages and collection cards never render placeholder text', () => {
+  const { Glob } = require('bun');
+  const paths = [...new Glob('**/*.html').scanSync('web/apparel/dist')].filter((path: string) => /(?:^|\/)(products|collections)\//.test(path));
+  expect(paths.length).toBeGreaterThanOrEqual(products.length * locales.length);
+  for (const path of paths) {
+    const html = readFileSync(`web/apparel/dist/${path}`, 'utf8');
+    const text = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<[^>]*>/g, ' ');
+    expect(text, path).not.toMatch(/\b(?:TBD|TODO|placeholder|lorem ipsum)\b/i);
   }
 });
