@@ -70,14 +70,3 @@ test('all localized product card and page content is free of placeholders', () =
     expect(JSON.stringify(product)).not.toMatch(/\b(?:TBD|TODO|placeholder|lorem ipsum)\b/i);
   }
 });
-
-test('built product pages and collection cards never render placeholder text', () => {
-  const { Glob } = require('bun');
-  const paths = [...new Glob('**/*.html').scanSync('web/apparel/dist')].filter((path: string) => /(?:^|\/)(products|collections)\//.test(path));
-  expect(paths.length).toBeGreaterThanOrEqual(products.length * locales.length);
-  for (const path of paths) {
-    const html = readFileSync(`web/apparel/dist/${path}`, 'utf8');
-    const text = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<[^>]*>/g, ' ');
-    expect(text, path).not.toMatch(/\b(?:TBD|TODO|placeholder|lorem ipsum)\b/i);
-  }
-});

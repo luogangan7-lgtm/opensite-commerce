@@ -4,19 +4,28 @@ import { join } from 'node:path';
 import { cluster, validateCluster, validateSitemap } from '../seo/contract';
 import { isProduction, placeholderOrigin } from '../seo/mode';
 import { seoOrigin, publishedPaths } from '../seo/published';
+import products from '../src/data/products.json';
+import { locales } from '../seo/contract';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 const read = (path: string) => readFileSync(join(root, path), 'utf8');
 const attrs = (tag: string) => Object.fromEntries([...tag.matchAll(/([\w:-]+)="([^"]*)"/g)].map(m => [m[1], m[2]]));
 function head(html: string) { return html.match(/<head>([\s\S]*?)<\/head>/)?.[1] || ''; }
 // All HTML, including routes excluded from the sitemap, must obey the indexing policy.
 function files(path: string): string[] { return readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(join(path, e.name)) : [join(path, e.name)]); }
+let productAndCollectionPages = 0;
 for (const file of files(root).filter(f => f.endsWith('.html'))) {
   const html = readFileSync(file, 'utf8');
+  if (/(?:^|\/)(products|collections)\//.test(file)) {
+    productAndCollectionPages++;
+    const text = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<[^>]*>/g, ' ');
+    if (/\b(?:TBD|TODO|placeholder|lorem ipsum)\b/i.test(text)) throw Error(`Product placeholder: ${file}`);
+  }
   const robots = [...head(html).matchAll(/<meta\b[^>]*>/g)].map(m => attrs(m[0])).filter(a => /^(robots|googlebot)$/i.test(a.name || ''));
   const noindex = robots.some(a => /\bnoindex\b/i.test(a.content || ''));
   if (isProduction ? noindex : !noindex) throw Error('HTML robots policy');
   if (isProduction && html.includes(placeholderOrigin)) throw Error('Production placeholder HTML');
 }
+if (productAndCollectionPages < products.length * locales.length) throw Error('Missing product/card output');
 const headers = read('_headers');
 const headerNoindex = /^\s*X-Robots-Tag:.*\bnoindex\b/im.test(headers);
 const globalNoindex = /^\/\*\r?\n(?:(?:[ \t]+[^\n]*|[ \t]*)\r?\n)*?[ \t]+X-Robots-Tag:[^\n]*\bnoindex\b/im.test(headers);
