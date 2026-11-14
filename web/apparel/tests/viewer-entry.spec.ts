@@ -8,7 +8,7 @@ for (const mode of ['click', 'tap', 'Enter'] as const) test(`main image opens vi
  if (mode === 'Enter') { await main.focus(); await main.press('Enter'); }
  else await main[mode]();
  await expect(page.locator('[data-gallery-viewer]')).toBeVisible();
- await expect(page.locator('[data-gallery-viewer] img')).toHaveAttribute('src', (await main.getAttribute('src'))!);
+ await expect(page.locator('[data-gallery-viewer] img')).toHaveAttribute('src', await main.evaluate((img: HTMLImageElement) => img.src));
  await page.keyboard.press('Escape');
  await expect(page.locator('[data-gallery-viewer]')).not.toBeVisible();
  await context.close();

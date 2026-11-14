@@ -15,8 +15,8 @@ import { isProduction } from '../../seo/mode';
 import { seoOrigin, publishedPaths } from '../../seo/published';
 import { page } from '../../seo/contract';
 import { imageSrcset, heroSizes } from '../data/imagery';
-interface Props { title: string }
-const { title } = Astro.props;
+interface Props { title: string; lcpImage?: string }
+const { title, lcpImage } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale], path = pagePath(Astro.url);
 const href = (route: string) => getRelativeLocaleUrl(locale, route);
 const closeMenu = { en: 'Close', zh: '关闭', ar: 'إغلاق', es: 'Cerrar', fr: 'Fermer', de: 'Schließen', pt: 'Fechar', ru: 'Закрыть' }[locale];
@@ -26,6 +26,7 @@ const canonical = new URL(getRelativeLocaleUrl(locale, path), origin).href;
 ---
 <!doctype html>
 <html lang={locale} dir={locale === 'ar' ? 'rtl' : 'ltr'}><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />{!isProduction && <meta name="robots" content="noindex" />}<title>{title} | Sourcyo Apparel</title><meta name="description" content={t.heroText} />
+{lcpImage && <link rel="preload" as="image" href={lcpImage} fetchpriority="high" />}
 <link rel="canonical" href={canonical} /><meta property="og:title" content={`${title} | Sourcyo Apparel`} /><meta property="og:description" content={t.heroText} /><meta property="og:type" content={seo?.structuredData ? 'product' : 'website'} /><meta property="og:url" content={canonical} /><meta property="og:site_name" content="Sourcyo Apparel" />
 {seo?.structuredData && <script type="application/ld+json" set:html={JSON.stringify(seo.structuredData)} />}
 {path === '/' && <link rel="preload" as="image" fetchpriority="high" type="image/avif" imagesrcset={imageSrcset('home/hero', 'avif')} imagesizes={heroSizes} />}
