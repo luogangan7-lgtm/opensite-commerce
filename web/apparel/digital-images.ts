@@ -4,7 +4,7 @@ import {dirname, join, resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 const sharp=createRequire(import.meta.resolve('astro/package.json'))('sharp');
-/** Preserve masters; delivery WebP may shrink to 1024px and must never enlarge. */
+/** Preserve masters; delivery WebP candidates may shrink to 640/1024px and must never enlarge. */
 export async function packageDigital(image: {source:string;src:string;sha256:string}, sourceRoot:string, destination:string) {
  const input=realpathSync(resolve(sourceRoot,image.source));
  if(!input.startsWith(realpathSync(sourceRoot)+'/')) throw Error('Source escaped approved directory');
@@ -13,5 +13,6 @@ export async function packageDigital(image: {source:string;src:string;sha256:str
  const output=join(destination,image.src);
  mkdirSync(dirname(output),{recursive:true});
  await sharp(bytes).resize({width:1024,withoutEnlargement:true}).webp({quality:82}).toFile(output);
+ await sharp(bytes).resize({width:640,withoutEnlargement:true}).webp({quality:82}).toFile(output.replace(/\.webp$/, '-640.webp'));
  return output;
 }

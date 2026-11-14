@@ -172,6 +172,3 @@ footer { padding-block-end: var(--sy-space-section-sm); }
  #mobile-navigation [data-menu-close] { display: flex; margin-inline-start: auto; min-width: 44px; min-height: 44px; }
  .mobile-languages { padding: 0; border: 0; }
 }
-
-/* Main gallery is also the viewer entry; preserve its existing image geometry. */
-[data-gallery-main] { cursor: zoom-in; }
