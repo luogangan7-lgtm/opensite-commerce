@@ -4,6 +4,7 @@ import accepted from './accepted-c25.json';
 import digital from '../digital-sources.json';
 import details from '../detail-sources.json';
 import products from '../src/data/products.json';
+import {orderedGallery} from '../src/data/gallery';
 import {packageDigital} from '../digital-images';
 import {packageDetails,readDetailLedger} from '../detail-images';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
@@ -30,4 +31,9 @@ for(const row of accepted) test(row.exactId,async()=>{
 test('C25 nine accepted slots, eight composite replacements and one new fabric',()=>{
  expect(accepted.length).toBe(9);expect(accepted.filter(r=>r.replaced).length).toBe(8);
  expect(digital.length).toBe(767);expect(details.length).toBe(230);
+});
+
+test('70174 accepted back is visible in the primary-colour gallery',()=>{
+ const product=products.find(p=>p.slug==='apparel-70174-x-small-logo')!;
+ expect(orderedGallery(product.images).some(i=>i.role==='back'&&i.src==='/img/apparel-70174-x-small-logo/digital-back.webp')).toBe(true);
 });
