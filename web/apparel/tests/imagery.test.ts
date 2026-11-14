@@ -1,3 +1,7 @@
+import c22 from './accepted-c22.json';
+import c23 from './accepted-c23.json';
+import c24 from './accepted-c24.json';
+import c25 from './accepted-c25.json';
 import c21 from './accepted-c21.json';
 /** CI-only deploy-plan contract; synthetic review rows are created in memory, never image generation. */
 import { test, expect } from 'bun:test';
@@ -123,7 +127,7 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
 import digital from '../digital-sources.json';
 import originalRegenerated from './accepted-regenerated.json';
 import r5 from './accepted-r5.json';
-const regenerated = [...originalRegenerated, ...r5];
+const regenerated = [...originalRegenerated, ...r5, ...c21, ...c22, ...c23, ...c24, ...c25];
 import approval from '../catalog-approval.json';
 import products from '../src/data/products.json';
 import { digitalImages, digitalAlt, digitalLabel, publicId } from '../src/data/imagery';
@@ -188,8 +192,9 @@ test.skipIf(selectedSourceRoot === undefined)('local originals: 217 W3 and 536 W
     const receipt = readFileSync(join(sourceRoot, image.acceptance), 'utf8');
     // W3 tables have mixed headers and one final.png path; SHA and full source are authoritative.
     expect(receipt).toContain(image.sha256);
-    const replacement = regenerated.find(row => row.src === image.src);
+    const replacement = regenerated.findLast(row => row.src === image.src);
     if (replacement) expect(receipt).toContain(`${replacement.exactId}\t${image.sha256}\tPASS`);
+    else if (image.source.includes('/quarantine/')) expect(receipt).toContain(`${decodeURIComponent(image.source.split('/').at(-2)!)}\t${image.sha256}\tPASS`);
     else expect(receipt).toContain(image.wave === 'W3' ? source : image.key);
     if (image.acceptance.endsWith('/r5-one-visual-20261107/REPORT.md')) assertSingleRelease(receipt, image.key, image.sha256);
     if (image.wave === 'W3') expect(image.source).toMatch(/\.(?:png|raw)$/);
@@ -239,11 +244,12 @@ test.skipIf(selectedSourceRoot === undefined)('historical W3 tables plus accepte
       expect(digest(readFileSync(path))).toBe(sha);
     }
   }
-  expect(accepted.size).toBe(154);
-  for (const row of regenerated.filter(row => row.view !== 'front')) accepted.set(`${row.slug}--${row.view}`, row.sha256);
-  expect(accepted.size).toBe(217);
-  for (const row of c21.filter(row => row.view !== 'fabric')) accepted.set(`${row.slug}--${row.view}`, row.sha256);
-  expect(accepted.size).toBe(217 + c21.filter(row => row.view !== 'fabric' && !row.replaced).length);
+  expect(accepted.size).toBe(158);
+  for (const row of regenerated) {
+    const slot = digital.find(d => d.wave === 'W3' && d.src === row.src);
+    if (slot) accepted.set(slot.key, row.sha256);
+  }
+  expect(accepted.size).toBe(digital.filter(row => row.wave === 'W3').length);
   expect(digital.filter(row => row.wave === 'W3').map(row => row.key).sort()).toEqual([...accepted.keys()].sort());
   for (const [key, sha] of accepted) expect(digital.find(row => row.key === key)?.sha256).toBe(sha);
 });

@@ -1106,7 +1106,7 @@
       {
         "src": "/img/crew-fleece-8900-39/digital-back.webp",
         "role": "back",
-        "sha256_16": "0907f68a34db27d2",
+        "sha256_16": "4a28b6f9c0f29460",
         "web_sha256": "",
         "colour": "sage/olive grey"
       },
@@ -2289,7 +2289,7 @@
       {
         "src": "/img/crew-fleece-8900-49/digital-back.webp",
         "role": "back",
-        "sha256_16": "1baa301fe5ff5659",
+        "sha256_16": "842b26816c4fcc61",
         "web_sha256": "",
         "colour": "black"
       },
@@ -2847,7 +2847,7 @@
       {
         "src": "/img/apparel-59048/digital-back.webp",
         "role": "back",
-        "sha256_16": "96b782ab2abad086",
+        "sha256_16": "1b1000b02177a14d",
         "web_sha256": "",
         "colour": "black"
       },
@@ -3296,7 +3296,7 @@
       {
         "src": "/img/apparel-70172/digital-back.webp",
         "role": "back",
-        "sha256_16": "9bf069df74ce340e",
+        "sha256_16": "e3fe37e52fa8fc58",
         "web_sha256": "",
         "colour": "brown"
       },
@@ -3626,7 +3626,7 @@
       {
         "src": "/img/apparel-70174-x-small-logo/digital-back.webp",
         "role": "back",
-        "sha256_16": "c90dd6ab46a59aff",
+        "sha256_16": "0320f1ae1f57a7d0",
         "web_sha256": "",
         "colour": "grey"
       },
@@ -3743,7 +3743,7 @@
       {
         "src": "/img/apparel-70175/digital-back.webp",
         "role": "back",
-        "sha256_16": "1154ab8ed21a81ff",
+        "sha256_16": "c35f245f2a4c03ae",
         "web_sha256": "",
         "colour": "white"
       },
@@ -3853,7 +3853,7 @@
       {
         "src": "/img/apparel-70176/digital-back.webp",
         "role": "back",
-        "sha256_16": "4db30a54e59ac1ab",
+        "sha256_16": "cd7cc70c2ce4ba62",
         "web_sha256": "",
         "colour": "white"
       },
@@ -6009,7 +6009,7 @@
       {
         "src": "/img/apparel-7214/digital-back.webp",
         "role": "back",
-        "sha256_16": "c4286c02ab22687c",
+        "sha256_16": "8cdd1ec03a8b47a0",
         "web_sha256": "",
         "colour": "white"
       },
@@ -7542,6 +7542,13 @@
         "role": "structure",
         "colour": "black",
         "sha256_16": "23ae0a57d2af608e",
+        "web_sha256": ""
+      },
+      {
+        "src": "/img/cotton430-hoodie-8610/fabric.webp",
+        "role": "fabric",
+        "colour": "black",
+        "sha256_16": "7c07d8200ef0a930",
         "web_sha256": ""
       }
     ],
