@@ -1,3 +1,4 @@
+import c21 from './accepted-c21.json';
 /** CI-only deploy-plan contract; synthetic review rows are created in memory, never image generation. */
 import { test, expect } from 'bun:test';
 const load = () => import('../image-plan');
@@ -221,7 +222,7 @@ test('public imagery metadata loads under the Node ESM runtime used by Playwrigh
 });
 
 // Regression: every accepted W3 slot, including nested final.png, must be connected.
-test.skipIf(selectedSourceRoot === undefined)('historical W3 tables plus regenerated approvals resolve to 217 SHA-bound slots', () => {
+test.skipIf(selectedSourceRoot === undefined)('historical W3 tables plus accepted replacements resolve to the derived current slot count', () => {
   const { readdirSync } = require('node:fs');
   const fleet = join(sourceRoot, 'fleet-20261104');
   const accepted = new Map<string, string>();
@@ -241,6 +242,8 @@ test.skipIf(selectedSourceRoot === undefined)('historical W3 tables plus regener
   expect(accepted.size).toBe(154);
   for (const row of regenerated.filter(row => row.view !== 'front')) accepted.set(`${row.slug}--${row.view}`, row.sha256);
   expect(accepted.size).toBe(217);
+  for (const row of c21.filter(row => row.view !== 'fabric')) accepted.set(`${row.slug}--${row.view}`, row.sha256);
+  expect(accepted.size).toBe(217 + c21.filter(row => row.view !== 'fabric' && !row.replaced).length);
   expect(digital.filter(row => row.wave === 'W3').map(row => row.key).sort()).toEqual([...accepted.keys()].sort());
   for (const [key, sha] of accepted) expect(digital.find(row => row.key === key)?.sha256).toBe(sha);
 });
@@ -253,7 +256,7 @@ test('back descriptions name the back angle in all eight languages without inven
 
 test('all back sources distinguish same-colour, owner plain and colour-swapped references', () => {
   const backs = digital.filter(row => row.role === 'digital-back');
-  expect(backs.filter(row => row.backReference === 'same-color').length).toBe(59);
+  expect(backs.filter(row => row.backReference === 'same-color').length).toBe(59 + c21.filter(r=>r.view==='back' && !r.replaced).length);
   expect(backs.filter(row => row.backReference === 'owner-plain').length).toBe(45);
   expect(backs.filter(row => row.backReference === 'other-color-ink').length).toBe(4);
   for (const row of backs) expect(['same-color', 'owner-plain', 'other-color-ink']).toContain(row.backReference);

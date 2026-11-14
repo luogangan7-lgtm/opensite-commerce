@@ -26,7 +26,7 @@ test('primary slots are ordered, other colours require selection, unknown roles 
 test('G plan requires exact asset and original source SHA from the acceptance ledger', () => {
  const rows=details as DetailSource[], ledger=ledgerFor(rows);
  const input={slots:{},review:[],provenance:{},published:products.map(p=>p.slug),details:rows,detailLedger:ledger};
- expect(imagePlan(input).details).toHaveLength(195);
+ expect(imagePlan(input).details).toHaveLength(details.length);
  expect(()=>imagePlan({...input,detailLedger:[]})).toThrow(/ledger/i);
  for(const patch of [{sha256:'b'.repeat(64)},{sourceSha256:'b'.repeat(64)},{acceptance:'forged.md'},{colour:'wrong'}]) expect(()=>imagePlan({...input,details:[{...rows[0],...patch}]})).toThrow(/ledger/i);
  expect(()=>imagePlan({...input,detailLedger:[ledger[0],ledger[0]],details:[rows[0]]})).toThrow(/ledger/i);
