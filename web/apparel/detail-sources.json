@@ -1948,5 +1948,345 @@
     "sha256": "2edb311285917a79fb35b7392cde35fe6e9f0269605e16cfbaf3ab29cfad05da",
     "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R8-01m/out/review.tsv",
     "sourceSha256": "fd2125ce8c6ce175bdf80891b180b5b04af458dd887ee4947581633541f875ff"
+  },
+  {
+    "slug": "crew-fleece-8900-40",
+    "role": "fabric",
+    "colour": "brown",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/crew-fleece-8900-40--fabric.png",
+    "src": "/img/crew-fleece-8900-40/fabric.webp",
+    "sha256": "40371fcfbbea7624ecac62a6470e357022e529f9841f94fa21d7faee6e385c32",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "636de26d0ee4f2244549cad7829eca20091913a94ac3dc045d0c0591db33d64c"
+  },
+  {
+    "slug": "crew-fleece-8900-47",
+    "role": "fabric",
+    "colour": "cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/crew-fleece-8900-47--fabric.png",
+    "src": "/img/crew-fleece-8900-47/fabric.webp",
+    "sha256": "d0b0a03985b848a48a57f68b048d800d89228cda852676fcf6d80ddadb019e10",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "27e3e2db1fdd59f0e6eafd8a7b6c84768b4516b5294218789496e883391c2837"
+  },
+  {
+    "slug": "apparel-59048",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/apparel-59048--fabric.png",
+    "src": "/img/apparel-59048/fabric.webp",
+    "sha256": "8dce045b1a098275d7a4c7477b4a3d025639e384afbe3443bff9dead52956571",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "3755cfd027677ac0666407ab9f9d9d3368dc85f978d89e76e99376a069736d56"
+  },
+  {
+    "slug": "apparel-70174-x-small-logo",
+    "role": "fabric",
+    "colour": "slate grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/apparel-70174-x-small-logo--fabric.png",
+    "src": "/img/apparel-70174-x-small-logo/fabric.webp",
+    "sha256": "4462953bb967273d465f5276d761b52dfa338e5fc1331ec754fd68dfbf21a190",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "eb6b676fdbd08f991814bd91d0d9237504eeb19786c462e137103dfc06229a4c"
+  },
+  {
+    "slug": "apparel-70175",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/apparel-70175--fabric.png",
+    "src": "/img/apparel-70175/fabric.webp",
+    "sha256": "74af7104b8341e0a13478084b705654838c0375735f74826d566243f99ec48e3",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "3d264a9f767ad5bac127788dfbc239e8357a0bbf399776015a7ff70ee8d2064c"
+  },
+  {
+    "slug": "apparel-70178-x-loropiana-crest",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/apparel-70178-x-loropiana-crest--fabric.png",
+    "src": "/img/apparel-70178-x-loropiana-crest/fabric.webp",
+    "sha256": "0f23fbda8f35cb19d3bcd24191108acb588064b73fb43323222639e4a01132ae",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "a2ab73e658a7cfe46ff4f12138e5819306977f92acd3cfa78aeb0821b29d9676"
+  },
+  {
+    "slug": "apparel-7203",
+    "role": "fabric",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/apparel-7203--fabric.png",
+    "src": "/img/apparel-7203/fabric.webp",
+    "sha256": "44ef7efc82e05d1d00a668e90982f9d2f38dc3148ab7b1143bce5a5827b95204",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "5c03ba8fdfed0d529e7ba4c239232fe701a55ba3fdcaf06d3638585fedf8308a"
+  },
+  {
+    "slug": "cotton430-hoodie-8601",
+    "role": "fabric",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/cotton430-hoodie-8601--fabric.png",
+    "src": "/img/cotton430-hoodie-8601/fabric.webp",
+    "sha256": "9f11d01c8c94ce436e391353eed8a4d0a46f591c1f0fe56662a9e30921103661",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "cd9f9b089cbe4f01fcad4dbfd40d8f5deb0666f9010107c13597758d1c029b20"
+  },
+  {
+    "slug": "cotton430-hoodie-8611",
+    "role": "fabric",
+    "colour": "grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/cotton430-hoodie-8611--fabric.png",
+    "src": "/img/cotton430-hoodie-8611/fabric.webp",
+    "sha256": "54feaa0285c6fba8417db3de8e477cde656fec0ee6a5ec26ea243aca915c4fe9",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "6db3cffbb0c98ec1ddf53626e1b4ed1cc54063b2d6ad1a601b2600d8bb9725be"
+  },
+  {
+    "slug": "hoodie-set-k01-0256-tz2804-7",
+    "role": "fabric",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k01-0256-tz2804-7--fabric.png",
+    "src": "/img/hoodie-set-k01-0256-tz2804-7/fabric.webp",
+    "sha256": "89d38c2f7f5c3dee085b05a3a30b9ba705a9c319f77b73500bdac6192fc7227d",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "222d9d2d1f3dd3d87f2ca506befed4f36fa8e92b5be344dd21c1ebfbb913f158"
+  },
+  {
+    "slug": "hoodie-set-k01-0256-x-croc",
+    "role": "fabric",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k01-0256-x-croc--fabric.png",
+    "src": "/img/hoodie-set-k01-0256-x-croc/fabric.webp",
+    "sha256": "8f9af7a6cf4ea766581e263c4710e057ab05a63fe10e6c9170e746abcf732dc5",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "9c41e1814c830c9cc8021a7c8d666a4e564b27523d36edb3dc5939dfe784e7e0"
+  },
+  {
+    "slug": "hoodie-set-k01-0256-tz2804-8",
+    "role": "fabric",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k01-0256-tz2804-8--fabric.png",
+    "src": "/img/hoodie-set-k01-0256-tz2804-8/fabric.webp",
+    "sha256": "56caba6f546349552e6b061f44939e7f3d96bb81824dd71c8fb8f21b558bb325",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "2ac3cc4798fa63edceecd89d5317f5d3b1c3d4230083ebb53fe6c17dc5fac911"
+  },
+  {
+    "slug": "hoodie-set-k01-0256-tz2800-10",
+    "role": "fabric",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k01-0256-tz2800-10--fabric.png",
+    "src": "/img/hoodie-set-k01-0256-tz2800-10/fabric.webp",
+    "sha256": "b9592c76a91f7b58997525fa1d6616686d519f691737658e357a09d15fa81c61",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "c1465ecd9871e7cbd51fe60e845cfdcdd447eb49b78d7e99511bfced8925b750"
+  },
+  {
+    "slug": "hoodie-set-k01-0256",
+    "role": "fabric",
+    "colour": "off-white/light grey (unclear vs 18)",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k01-0256--fabric.png",
+    "src": "/img/hoodie-set-k01-0256/fabric.webp",
+    "sha256": "4514e725f911bb51a63cccdeef11f82e99a023babff4002689091c32472bb039",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "42af363ac632a53e2fffb1fcca31b7d72bb385cbfd494f9e90b553c850016929"
+  },
+  {
+    "slug": "hoodie-set-k02",
+    "role": "fabric",
+    "colour": "off-white/very light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k02--fabric.png",
+    "src": "/img/hoodie-set-k02/fabric.webp",
+    "sha256": "ec85998659d40669ec0bfa8966fa8c2e7928f8e09d1244af0ce7b1662107ca2a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "9b82589a1130cb8fe3f4c79a46874b6297bdad3f0012f108cdbc2fc4a8b6a931"
+  },
+  {
+    "slug": "hoodie-set-k03",
+    "role": "fabric",
+    "colour": "white/cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k03--fabric.png",
+    "src": "/img/hoodie-set-k03/fabric.webp",
+    "sha256": "f571008424641336c06e6204c9090fc1013e5edc60537f8b4184901ad63fe103",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "34ad247f30d8a2e2cafb2ba85aef26e8cfd4c6d67514e78b923a32f109c6abed"
+  },
+  {
+    "slug": "hoodie-set-k04",
+    "role": "fabric",
+    "colour": "white/cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k04--fabric.png",
+    "src": "/img/hoodie-set-k04/fabric.webp",
+    "sha256": "e95f6886900ed72d7de6d10be1b27e3d8f1499eb63f821635084fe63b7eb0feb",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "c91dd0efd2d228a527f93d03aedb97d2a86d425680ddbf25e9a3663996f9a12d"
+  },
+  {
+    "slug": "hoodie-set-k05",
+    "role": "fabric",
+    "colour": "white/cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k05--fabric.png",
+    "src": "/img/hoodie-set-k05/fabric.webp",
+    "sha256": "8a77433c9147937df6b4baf1fc410f26aafe82cc5d868cd9b07d8c584c7d2679",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-A/out/review.tsv",
+    "sourceSha256": "3d79a375db369e004ebf34f2baab55cb03b9191f8d18719fe2923a1da25f8d2d"
+  },
+  {
+    "slug": "hoodie-set-k06",
+    "role": "fabric",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k06--fabric.png",
+    "src": "/img/hoodie-set-k06/fabric.webp",
+    "sha256": "87a683a3e35543150d116db7473e2ef8b5f11acf5bf30880ff54f4322e1e9fe5",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "9172a40843c4f5f5e65d26cfcc92b373322da3f24973430beecf7de103e7329b"
+  },
+  {
+    "slug": "hoodie-set-k07",
+    "role": "fabric",
+    "colour": "white/cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k07--fabric.png",
+    "src": "/img/hoodie-set-k07/fabric.webp",
+    "sha256": "0f18dade080ca767a09ef831813a3d5bc64b959f43eddaddc77b1c8cb602ff31",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "497b48cd4949eba2fb22db61377d9903d30dd9fed77852918841e3c836eb7e72"
+  },
+  {
+    "slug": "hoodie-set-k08",
+    "role": "fabric",
+    "colour": "white/cream",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k08--fabric.png",
+    "src": "/img/hoodie-set-k08/fabric.webp",
+    "sha256": "64a108784db1dd1977e16d723c05e9572189d1b49c497a51f6b9c32981a0022b",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "621095539e24d80657313e1b085ff5d137562e7f72d7d5b2a5aeaa5ea06a89c3"
+  },
+  {
+    "slug": "hoodie-set-k09",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k09--fabric.png",
+    "src": "/img/hoodie-set-k09/fabric.webp",
+    "sha256": "e50efa0e7b3e702a704a6c75890e805a2518df07ee4456a9858cac6f7f9840a5",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "bdc3493f2e71fd1b9084ce3161efcbda8e2365ca69cffb0c9680ef51db2c3b48"
+  },
+  {
+    "slug": "hoodie-set-k10-1102-dj121",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k10-1102-dj121--fabric.png",
+    "src": "/img/hoodie-set-k10-1102-dj121/fabric.webp",
+    "sha256": "cf58175286894219ad9ea49b378ecee019e8da87e7cd52b023d43ad148c311e3",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "79ff7878e07161a1a66cab1372342a230da81a53050341c60b7a15eefd0a7f01"
+  },
+  {
+    "slug": "hoodie-set-k10-1102",
+    "role": "fabric",
+    "colour": "dark grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k10-1102--fabric.png",
+    "src": "/img/hoodie-set-k10-1102/fabric.webp",
+    "sha256": "b8cb8acb0e4b57b7c284534bc6625f20d70abfe61a58381a65b5d54f391917bf",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "2d8cdd53274ffb449769418eabc0515e85f1a5f2058db09884f777f36fe415cc"
+  },
+  {
+    "slug": "hoodie-set-k12-3900-0253",
+    "role": "fabric",
+    "colour": "beige",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k12-3900-0253--fabric.png",
+    "src": "/img/hoodie-set-k12-3900-0253/fabric.webp",
+    "sha256": "b7f2159c1ce5ce821d9c33e7ac7daeb3d481b4d9fedf66124f99ec55b836da83",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "59044f4f9c14b1edfa3e53f0452974665daaaffaef0604686ea09d4df89a0998"
+  },
+  {
+    "slug": "hoodie-set-k12-3900-0252",
+    "role": "fabric",
+    "colour": "blue",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k12-3900-0252--fabric.png",
+    "src": "/img/hoodie-set-k12-3900-0252/fabric.webp",
+    "sha256": "52d0cbf55e0c8b54b15f2b639ec900cf2d567dbde96f04047c4a17d4bb31e7f0",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "948f7ee00991f66e54e339ec117277202f80dab835d1012b1178cffab1c6d479"
+  },
+  {
+    "slug": "hoodie-set-k12-3900",
+    "role": "fabric",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k12-3900--fabric.png",
+    "src": "/img/hoodie-set-k12-3900/fabric.webp",
+    "sha256": "fedc05d4636c68645bc552a3507327d84638a74615a562ba7da968c2c5e8c94a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "b5e45ae24041afb93056748fc7ac8e068a66def3e85b129db04a3e11297027c3"
+  },
+  {
+    "slug": "hoodie-set-k20-70083",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k20-70083--fabric.png",
+    "src": "/img/hoodie-set-k20-70083/fabric.webp",
+    "sha256": "bfd5018e0ab77493093675eb2a0ccae5ceef402fdc4f31b4c33276594eb9f39a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "8cbae3a8a30e9665f01b832775fd52978e22da3516fdda472d7e04dcb1a2d846"
+  },
+  {
+    "slug": "hoodie-set-k21-70046",
+    "role": "fabric",
+    "colour": "light grey-green/sage",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k21-70046--fabric.png",
+    "src": "/img/hoodie-set-k21-70046/fabric.webp",
+    "sha256": "b9762aea7192851381c86c7fe7530db7259c8f0949636b0f6a0b42d253fc29eb",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "15b1f984372ff513f7128ce7785805c7ccc7e6da9e0a22f6afe989dd2e34eaa2"
+  },
+  {
+    "slug": "hoodie-set-k22-6000-2",
+    "role": "fabric",
+    "colour": "light grey",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k22-6000-2--fabric.png",
+    "src": "/img/hoodie-set-k22-6000-2/fabric.webp",
+    "sha256": "18ca3cffbb5d87cc49b9f788ce0404eda786c85c3015387019a3c00c38e8fb99",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "e63acdd2f28db3db6610129a21750c768ee385564e1133d56056daadea1b4834"
+  },
+  {
+    "slug": "hoodie-set-k23-70080",
+    "role": "fabric",
+    "colour": "khaki/sand",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k23-70080--fabric.png",
+    "src": "/img/hoodie-set-k23-70080/fabric.webp",
+    "sha256": "33b9fef13193a76b5fece0f9fdcaa4b95336321aa84cbb9a65089bbf0a4b7f5a",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "35f2505e971825285de25ab0befb5ddd1e46cbae7325da29082db02efcff751c"
+  },
+  {
+    "slug": "hoodie-set-k24-tz2803-5",
+    "role": "fabric",
+    "colour": "灰",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k24-tz2803-5--fabric.png",
+    "src": "/img/hoodie-set-k24-tz2803-5/fabric.webp",
+    "sha256": "0cbfac75cdf98f730236a5b6bbdf17f86b2451b40514beb515d0b81ebf19976b",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "716d9c81b4228808a7378a1359258be0e357a0e602917824f022b799e228111e"
+  },
+  {
+    "slug": "hoodie-set-k25-tz2803-6",
+    "role": "fabric",
+    "colour": "灰",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/hoodie-set-k25-tz2803-6--fabric.png",
+    "src": "/img/hoodie-set-k25-tz2803-6/fabric.webp",
+    "sha256": "30abe95561ee5627edd109dba3bf7c89d7f537cb9324aeb50ee46e66fce7e39c",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-RV-GEN-B/out/review.tsv",
+    "sourceSha256": "10ca1c78020cb5437da54af279937123202a95d9cb4acc38bfca3029be7dd644"
+  },
+  {
+    "slug": "apparel-70190",
+    "role": "fabric",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/C21/assets/apparel-70190--fabric.png",
+    "src": "/img/apparel-70190/fabric.webp",
+    "sha256": "f0ab6eb257386758b35f62190d0293e989120303bb55aefae0de8b9f42dfe9ce",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-R9-01m/out/review.tsv",
+    "sourceSha256": "fd2125ce8c6ce175bdf80891b180b5b04af458dd887ee4947581633541f875ff"
   }
 ]

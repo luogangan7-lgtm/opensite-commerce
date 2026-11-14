@@ -1,13 +1,14 @@
-/** Shared G packager for deploy and local browser gates; exact reviewed bytes, native 1200-square only, no resizing can repair an undersized source. */
+/** Shared G packager for deploy and local browser gates; exact reviewed bytes, native square >=1200, no resizing can repair an undersized source. */
 import { readFileSync, realpathSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { assertDetailDigest, imageDimensions, type DetailSource, type DetailLedger } from './image-plan';
 import structureLedger from './structure-ledger.json';
+import c21Ledger from './c21-ledger.json';
 const sharp = createRequire(import.meta.resolve('astro/package.json'))('sharp');
 export const detailLedgerPath = 'fleet-20261104/launch-orchestration-20261112/project-control-02/g-connect-prep-01/mapping.json';
-export const readDetailLedger = (sourceRoot: string): DetailLedger[] => [...JSON.parse(readFileSync(join(sourceRoot, detailLedgerPath), 'utf8')), ...structureLedger];
+export const readDetailLedger = (sourceRoot: string): DetailLedger[] => [...JSON.parse(readFileSync(join(sourceRoot, detailLedgerPath), 'utf8')), ...structureLedger, ...c21Ledger];
 export async function packageDetails(images: DetailSource[], sourceRoot: string, destination: string, ledger = readDetailLedger(sourceRoot)) {
   const root = realpathSync(sourceRoot);
   // Validate the complete batch before writing; read/hash the same bytes that sharp receives.

@@ -1,3 +1,4 @@
+import c21 from './accepted-c21.json';
 /** CI-only deploy-plan contract; synthetic review rows are created in memory, never image generation. */
 import { test, expect } from 'bun:test';
 const load = () => import('../image-plan');
@@ -253,7 +254,7 @@ test('back descriptions name the back angle in all eight languages without inven
 
 test('all back sources distinguish same-colour, owner plain and colour-swapped references', () => {
   const backs = digital.filter(row => row.role === 'digital-back');
-  expect(backs.filter(row => row.backReference === 'same-color').length).toBe(59);
+  expect(backs.filter(row => row.backReference === 'same-color').length).toBe(59 + c21.filter(r=>r.view==='back' && !r.replaced).length);
   expect(backs.filter(row => row.backReference === 'owner-plain').length).toBe(45);
   expect(backs.filter(row => row.backReference === 'other-color-ink').length).toBe(4);
   for (const row of backs) expect(['same-color', 'owner-plain', 'other-color-ink']).toContain(row.backReference);

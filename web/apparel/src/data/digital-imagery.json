@@ -6030,5 +6030,109 @@
     "garment": "tee",
     "view": "front",
     "wave": "W2"
+  },
+  {
+    "src": "/img/apparel-59011/digital-back.webp",
+    "slug": "apparel-59011",
+    "color": "e",
+    "garment": "tee",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-59043/digital-back.webp",
+    "slug": "apparel-59043",
+    "color": "e",
+    "garment": "tee",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-70178-x-loropiana-crest/digital-turn.webp",
+    "slug": "apparel-70178-x-loropiana-crest",
+    "color": "k",
+    "garment": "tee",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k12-3900-0252/digital-back.webp",
+    "slug": "hoodie-set-k12-3900-0252",
+    "color": "n",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/pullover-hoodie-69008/digital-turn.webp",
+    "slug": "pullover-hoodie-69008",
+    "color": "w",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/pullover-hoodie-69014/digital-back.webp",
+    "slug": "pullover-hoodie-69014",
+    "color": "w",
+    "garment": "hoodie",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/pullover-hoodie-69016/digital-turn.webp",
+    "slug": "pullover-hoodie-69016",
+    "color": "w",
+    "garment": "hoodie",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k24-tz2803-5/digital-turn.webp",
+    "slug": "hoodie-set-k24-tz2803-5",
+    "color": "g",
+    "garment": "set",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k24-tz2803-5/digital-back.webp",
+    "slug": "hoodie-set-k24-tz2803-5",
+    "color": "g",
+    "garment": "set",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k25-tz2803-6/digital-turn.webp",
+    "slug": "hoodie-set-k25-tz2803-6",
+    "color": "g",
+    "garment": "set",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/hoodie-set-k25-tz2803-6/digital-back.webp",
+    "slug": "hoodie-set-k25-tz2803-6",
+    "color": "g",
+    "garment": "set",
+    "view": "back",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/crew-fleece-8900-34/digital-turn.webp",
+    "slug": "crew-fleece-8900-34",
+    "color": "c",
+    "garment": "sweatshirt",
+    "view": "turn",
+    "wave": "W3"
+  },
+  {
+    "src": "/img/apparel-70190/digital-back.webp",
+    "slug": "apparel-70190",
+    "color": "k",
+    "garment": "tee",
+    "view": "back",
+    "wave": "W3"
   }
 ]
