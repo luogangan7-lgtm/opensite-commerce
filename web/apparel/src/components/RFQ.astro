@@ -24,14 +24,15 @@ const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entrie
 <button type="submit" disabled>{t.send}</button><p class="form-status" tabindex="-1" role="status" aria-live="polite"></p>
 </form>
 <script>
-  import { parseRfqPrefill } from '../data/rfq-prefill';
-  document.querySelectorAll<HTMLFormElement>('.rfq').forEach(form => {
+  document.querySelectorAll<HTMLFormElement>('.rfq').forEach(async form => {
     const messages: Record<string, string> = JSON.parse(form.dataset.messages!);
     form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input:not([type="hidden"]), textarea').forEach(input => {
       input.addEventListener('invalid', () => input.setCustomValidity(messages[input.validity.typeMismatch ? 'error.email' : 'error.required']));
       input.addEventListener('input', () => input.setCustomValidity(''));
     });
     if (/\/contact\/?$/.test(window.location.pathname)) {
+      // The full catalog is needed only for contact prefill, after first paint.
+      const { parseRfqPrefill } = await import('../data/rfq-prefill');
       const query = new URLSearchParams(window.location.search);
       const prefill = parseRfqPrefill(query);
       const message = form.querySelector<HTMLTextAreaElement>('[name="message"]')!;
