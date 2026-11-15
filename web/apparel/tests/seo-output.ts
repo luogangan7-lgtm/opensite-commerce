@@ -62,3 +62,25 @@ validateSitemap(seoOrigin, publishedPaths, urls);
 if (/UNKNOWN|pages\.dev|preview/i.test(xml)) throw Error('Unsafe sitemap');
 if (read('robots.txt') !== `User-agent: *\nAllow: /\nSitemap: ${seoOrigin}/sitemap.xml\n`) throw Error('Crawler policy');
 console.log(`PASS: ${count} real HTML pages; reciprocal canonical/hreflang, OG, exact JSON-LD; ${urls.length} XML URLs; crawler access to noindex policy.`);
+
+// Release acceptance uses the actual bytes, including the compiled worker and all locale RFQs.
+if (isProduction) {
+  for (const file of files(root)) {
+    if (readFileSync(file).includes(Buffer.from('example.invalid'))) throw Error(`Production example.invalid: ${file}`);
+  }
+  const siteKey = process.env.PUBLIC_TURNSTILE_SITE_KEY?.trim();
+  if (!siteKey) throw Error('Production public Turnstile site key missing');
+  const policies = [...headers.matchAll(/^\s*Content-Security-Policy:\s*(.+)$/gmi)].map(m => m[1]);
+  // The generated /* policy covers every locale, including every page containing an RFQ.
+  if (!/^\/\*\r?\n(?:[ \t]+[^\n]*\r?\n)*[ \t]+Content-Security-Policy:/m.test(headers) || policies.length !== 1) throw Error('Production global CSP missing');
+  for (const directive of ['script-src', 'frame-src']) {
+    const sources = policies[0].split(';').map(s => s.trim()).find(s => s.startsWith(`${directive} `))?.split(/\s+/).slice(1);
+    if (!sources?.includes('https://challenges.cloudflare.com')) throw Error(`Production Turnstile CSP ${directive}`);
+  }
+  for (const locale of locales) {
+    const html = read(join(locale === 'en' ? '' : locale, 'contact/index.html'));
+    const widgets = [...html.matchAll(/<div\b[^>]*>/g)].map(m => attrs(m[0])).filter(a => a.class?.split(/\s+/).includes('cf-turnstile'));
+    if (widgets.length !== 1 || widgets[0]['data-sitekey'] !== siteKey || !html.includes('src="https://challenges.cloudflare.com/turnstile/v0/api.js"')) throw Error(`Production Turnstile widget: ${locale}`);
+  }
+  console.log('PASS: production dist has no example.invalid; eight contact widgets use the public key; global CSP allows Turnstile script and frame.');
+}
