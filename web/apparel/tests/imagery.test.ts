@@ -209,7 +209,7 @@ test('eight-language PDP includes primary accepted slots and selectable other-co
   const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll("'", '&#39;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   for (const locale of locales) for (const product of products) {
     const html = readFileSync(join('web/apparel/dist', locale === 'en' ? '' : locale, 'products', product.slug, 'index.html'), 'utf8');
-    expect(html).toContain(digitalLabel(locale));
+    expect(html).not.toContain('data-digital-label');
     const primary = product.images.find(image => image.role === 'front')?.colour;
     const seen = new Set<string>();
     for (const image of product.images) {

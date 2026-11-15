@@ -1,9 +1,6 @@
 /** Browser regression for §6.2/6.3: served PDP interaction, disclosure and uncropped details. */
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-const dictionaries: Record<string,{pdpDetailCaption:string}> = Object.fromEntries(['en','zh','es','fr','de','pt','ru','ar'].map(locale=>[locale,JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`,import.meta.url),'utf8'))]));
-const captions = Object.fromEntries(Object.entries(dictionaries).map(([locale,t])=>[locale,t.pdpDetailCaption]));
-for (const [locale, caption] of Object.entries(captions)) test(`gallery details ${locale}`, async ({ page }) => {
+for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) test(`gallery details ${locale}`, async ({ page }) => {
  await page.goto(`${locale === 'en' ? '' : '/' + locale}/products/crew-fleece-8900-31/`);
  const links = page.locator('.gallery-thumbs:not([hidden]) a');
  const roles = await links.evaluateAll(nodes => nodes.map(n => (n as HTMLElement).dataset.role));
@@ -17,15 +14,15 @@ for (const [locale, caption] of Object.entries(captions)) test(`gallery details 
  await expect(main).toHaveCSS('object-fit', 'contain');
  if (process.env.APPAREL_PACKAGED_IMAGES === '1' || process.env.APPAREL_PREVIEW_URL) await expect.poll(() => main.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth === 1200 && img.naturalHeight === 1200)).toBe(true);
  const box = await main.boundingBox(); expect(box!.width / box!.height).toBeCloseTo(4/5, 2);
- await expect(page.locator('[data-digital-label]')).toHaveText(caption);
- await expect(main).toHaveAttribute('alt', caption);
+ await expect(page.locator('[data-digital-label]')).toHaveCount(0);
+ await expect(main).toHaveAttribute('alt', /.+/);
  await page.locator('[data-gallery-zoom]').click();
  await expect(page.locator('dialog')).toBeVisible();
- await expect(page.locator('dialog')).toHaveAttribute('aria-label', caption);
+ await expect(page.locator('dialog')).toHaveAttribute('aria-label', await main.getAttribute('alt') || '');
  await expect(page.locator('dialog img')).toHaveCSS('object-fit', 'contain');
  await page.keyboard.press('Escape');
  await links.first().click();
- await expect(page.locator('[data-digital-label]')).not.toHaveText(caption);
+ await expect(page.locator('[data-digital-label]')).toHaveCount(0);
 });
 
 test('primary colour sequence excludes other fronts and unknown roles until swatch selection', async ({page}) => {

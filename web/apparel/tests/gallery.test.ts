@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
-import { orderedGallery, isDetail, detailCaption } from '../src/data/gallery';
+import { orderedGallery, isDetail } from '../src/data/gallery';
 import { imagePlan, type DetailSource } from '../image-plan';
 import { packageDetails } from '../detail-images';
 import details from '../detail-sources.json';
@@ -21,7 +21,6 @@ test('primary slots are ordered, other colours require selection, unknown roles 
  expect(orderedGallery(all,'black','cream').map(i=>i.src)).toEqual(['black-front']);
  expect(JSON.stringify(all)).toBe(before);
  for(const role of ['print','fabric','structure']) expect(isDetail({src:'x',role})).toBe(true);
- for(const caption of Object.values(detailCaption)) expect(caption).not.toMatch(/stitch|\bgsm\b|composition|针数|成分|克重/i);
 });
 test('G plan requires exact asset and original source SHA from the acceptance ledger', () => {
  const rows=details as DetailSource[], ledger=ledgerFor(rows);
