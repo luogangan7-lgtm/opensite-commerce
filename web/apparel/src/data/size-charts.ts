@@ -1,11 +1,18 @@
-/** Structured chart adapter for Product. Root catalog bindings are explicit; no category or filename inference.
- * Depends on the owner-supplied measurement JSON and published slug bindings; no runtime source-image access. */
+/** PDP chart adapter. Depends only on the canonical owner-reviewed chart and mapping files.
+ * No category/filename inference; crossed source rows never become offered sizes. */
 import source from '../../../../docs/apparel-b2b/size-charts.json';
-import bindings from './size-chart-bindings.json';
+import assignments from '../../../../docs/apparel-b2b/size-chart-mapping.json';
 export const sizeCharts = source.charts;
 export type SizeChartId = keyof typeof sizeCharts;
-export const sizeChartBindings: Record<string, SizeChartId> = bindings as Record<string, SizeChartId>;
+type Assignment = { status: string; charts?: SizeChartId[] };
+type Chart = { sizes: string[]; row_annotations?: Record<string, { crossed_in_source?: boolean }> };
+export const sizeChartBindings = assignments.products as Record<string, Assignment>;
 export function productSizeChart(slug: string) {
- const id = sizeChartBindings[slug];
+ const entry = sizeChartBindings[slug];
+ const id = entry?.status === 'structured' ? entry.charts?.[0] : undefined;
  return id && Object.hasOwn(sizeCharts, id) ? { id, ...sizeCharts[id] } : undefined;
+}
+export function visibleChartSizes(chart: Chart) {
+ return chart.sizes.map((size, index) => ({ size, index }))
+  .filter(({ size }) => !chart.row_annotations?.[size]?.crossed_in_source);
 }

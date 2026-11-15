@@ -9,6 +9,8 @@ test('all 115 served PDPs use their own primary whole and same-colour structure'
  for (const product of products) {
   await page.goto(path('en',product.slug));
   await expect(page.locator('img[src*="size-chart"],img[src*="colour-chart"]')).toHaveCount(0);
+  const assignment = (assignments.products as Record<string,{status:string}>)[product.slug];
+  await expect(page.locator('#size-chart')).toHaveCount(assignment.status === 'structured' ? 1 : 0);
   const whole=product.images.find(i=>i.role==='front')!;
   const detail=product.images.find(i=>i.role==='structure' && i.colour===whole.colour)!;
   await expect(page.locator('[data-pdp-whole]')).toHaveAttribute('src',whole.src);
@@ -85,19 +87,21 @@ test('PDP swatch Quote click prefills the delivered RFQ form',async({page})=>{
 
 // Compare rendered cells directly to the committed supplier measurements, independently of the adapter.
 import charts from '../../../docs/apparel-b2b/size-charts.json' with { type: 'json' };
-import bindings from '../src/data/size-chart-bindings.json' with { type: 'json' };
+import assignments from '../../../docs/apparel-b2b/size-chart-mapping.json' with { type: 'json' };
 for(const locale of ['en','ar','zh']) test(`structured size cells ${locale}`, async({page})=>{
- const seen=new Set<string>();
+ const seen=new Set<string|undefined>();
  for(const product of products){
-  const id=(bindings as Record<string,string>)[product.slug];
+  const entry=(assignments.products as Record<string,{status:string;charts?:string[]}>)[product.slug];
+  const id=entry.status==='structured'?entry.charts?.[0]:undefined;
   if(seen.has(id))continue;seen.add(id);
   await page.goto(path(locale,product.slug));
-  const chart=(charts.charts as Record<string,{sizes:string[];rows:Record<string,(string|number)[]>}>)[id];
+  const chart=id ? (charts.charts as Record<string,{sizes:string[];rows:Record<string,(string|number|null)[]>;row_annotations?:Record<string,{crossed_in_source?:boolean}>}>)[id] : undefined;
   if(!chart){await expect(page.locator('#size-chart')).toHaveCount(0);continue;}
   await expect(page.locator('[data-size-table]')).toHaveCount(1);
   const rows=page.locator('[data-size-table] tbody tr');
-  await expect(rows).toHaveCount(chart.sizes.length);
-  for(let i=0;i<chart.sizes.length;i++)expect(await rows.nth(i).locator('th,td').allTextContents()).toEqual([chart.sizes[i],...Object.values(chart.rows).map(values=>String(values[i]))]);
+  const visible=chart.sizes.map((size,index)=>({size,index})).filter(({size})=>!chart.row_annotations?.[size]?.crossed_in_source);
+  await expect(rows).toHaveCount(visible.length);
+  for(const [i,{size,index}] of visible.entries())expect(await rows.nth(i).locator('th,td').allTextContents()).toEqual([size,...Object.values(chart.rows).map(values=>values[index]===null?'—':String(values[index]))]);
   await expect(page.locator('[data-pdp-media] figcaption')).toHaveCount(0);
   const floating=page.locator('.quote-float');await expect(floating).toHaveCSS('position','static');
  }

@@ -2,7 +2,7 @@
 /** PDP consumes static product facts plus committed translations; commercial fields always use quote text. */
 import Shell from '../layouts/Shell.astro';
 import RFQ from '../components/RFQ.astro';
-import { productSizeChart } from '../data/size-charts';
+import { productSizeChart, visibleChartSizes } from '../data/size-charts';
 import { products, type Product } from '../data/catalog';
 import Grid from '../components/Grid.astro';
 import { pdpMediaPair, orderedGallery, primaryColour, galleryColours, isDetail, galleryClose } from '../data/gallery';
@@ -38,7 +38,7 @@ const relatedCards = (featuredRelated ? [featuredRelated, ...related.filter(p =>
     <figure class="pdp-detail-card"><img data-pdp-detail src={mediaPair.detail.src} alt={alt(mediaPair.detail, gallery.indexOf(mediaPair.detail))} width="1200" height="1200" loading="lazy" decoding="async" /></figure>
   </div></div><p>{t.specText}</p>
 </div></section>
-{chart && <section class="wrap" id="size-chart"><h2>{t.sizeChart}</h2><div class="size-table-scroll" role="region" aria-label={t.sizeChart} tabindex="0"><table data-size-table><caption>{t.sizeChart} · {chart.unit}</caption><thead><tr><th scope="col">{t.pdpSize}</th>{Object.keys(chart.rows).map(key => <th scope="col" data-measurement={key}>{t[measurements[key]]}</th>)}</tr></thead><tbody>{chart.sizes.map((size,index) => <tr><th scope="row"><bdi>{size}</bdi></th>{Object.entries(chart.rows).map(([key,values]) => <td data-measurement={key}><bdi>{values[index]}</bdi></td>)}</tr>)}</tbody></table></div></section>}
+{chart && <section class="wrap" id="size-chart"><h2>{t.sizeChart}</h2><div class="size-table-scroll" role="region" aria-label={t.sizeChart} tabindex="0"><table data-size-table><caption>{t.sizeChart} · {chart.unit}</caption><thead><tr><th scope="col">{t.pdpSize}</th>{Object.keys(chart.rows).map(key => <th scope="col" data-measurement={key}>{t[measurements[key]]}</th>)}</tr></thead><tbody>{visibleChartSizes(chart).map(({size,index}) => <tr><th scope="row"><bdi>{size}</bdi></th>{Object.entries(chart.rows).map(([key,values]) => <td data-measurement={key}><bdi>{values[index] ?? '—'}</bdi></td>)}</tr>)}</tbody></table></div></section>}
 <section class="wrap split" id="inquiry"><div><h2>{t.makeYours}</h2><p>{t.briefText}</p></div><RFQ product={product.style_codes.join(' / ')} /></section>
 <section class="wrap"><div class="section-heading"><h2>{t.pdpRelated}</h2><a href={getRelativeLocaleUrl(locale, `/collections/${product.category}/`)}>{t.viewCollection}</a></div><Grid products={relatedCards} /></section>
 </Shell>
