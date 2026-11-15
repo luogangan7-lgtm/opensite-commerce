@@ -7,6 +7,7 @@ import HomeMedia from '../components/HomeMedia.astro';
 import { dictionaries, pageLocale, type Key } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
+const arrow = locale === 'ar' ? '←' : '→';
 const b = (key: string) => t[`about.${key}` as Key];
 const href = (route: string) => getRelativeLocaleUrl(locale, route);
 const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotton430-hoodie'], ['sets', 'hoodie-set']];
@@ -16,7 +17,7 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
   <p class="about-eyebrow">{b('intro-eyebrow')}</p><h1>{b('intro-title')}</h1><p class="about-lead">{b('intro-lead')}</p>
   <div class="about-intro-row"><div class="about-intro-image" data-about-intro-image><HomeMedia scope="about" id="collections" alt="" /></div><div class="about-copy">
     <h2 class="about-subtitle">{b('who-title')}</h2><p>{b('who-body')}</p><p>{b('who-options')}</p>
-    <a class="about-text-link" href={href('/collections/')}>{b('browse-wholesale')} <span aria-hidden="true">→</span></a>
+    <a class="about-text-link" href={href('/collections/')}>{b('browse-wholesale')} <span aria-hidden="true">{arrow}</span></a>
   </div></div>
 </div></section>
 <section class="about-section"><div class="about-inner"><p class="about-eyebrow">{b('products-eyebrow')}</p><h2>{b('products-title')}</h2><p>{b('products-body')}</p>
@@ -29,10 +30,10 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
 <section class="about-section"><div class="about-inner"><p class="about-eyebrow">{b('visit-eyebrow')}</p><h2 class="about-visit-title">{b('visit-title')}</h2><div class="about-visit-row"><div class="about-visit-image"><HomeMedia scope="about" id="about-visit" alt="" /></div><div class="about-copy"><h3 class="about-subtitle">{b('stall-title')}</h3><address>{b('stall-address')}</address><p>{b('stall-visit')}</p><p>{b('stall-role')}</p></div></div></div></section>
 <section class="about-section about-sand"><div class="about-inner"><p class="about-eyebrow">{b('order-eyebrow')}</p><h2>{b('order-title')}</h2><div class="about-terms">{['quote','sample','ship'].map(k => <div class="about-copy"><h3>{b(`order-${k}-title`)}</h3><p>{b(`order-${k}-body`)}</p></div>)}</div></div></section>
 <section class="about-section about-company"><div class="about-inner"><p class="about-eyebrow">{b('company-eyebrow')}</p><h2 class="about-subtitle">{b('company-title')}</h2><p>{b('company-brand')}</p><p>{b('company-entity')}</p></div></section>
-<section class="about-section about-inverse"><div class="about-inner"><p class="about-eyebrow">{b('cta-eyebrow')}</p><h2>{b('cta-title')}</h2><p class="about-lead">{b('cta-body')}</p><a class="button about-quote" href={href('/contact/')}>{b('request-quote')} <span aria-hidden="true">→</span></a><p>{b('cta-contact')}</p></div></section>
+<section class="about-section about-inverse"><div class="about-inner"><p class="about-eyebrow">{b('cta-eyebrow')}</p><h2>{b('cta-title')}</h2><p class="about-lead">{b('cta-body')}</p><a class="button about-quote" href={href('/contact/')}>{b('request-quote')} <span aria-hidden="true">{arrow}</span></a><p>{b('cta-contact')}</p></div></section>
 </Shell>
 <style>
- .about-section{padding:var(--sy-space-section);background:var(--sy-color-canvas);color:var(--sy-color-ink);line-height:1.55;}
+ .about-section{padding:var(--sy-space-section);background:var(--sy-color-canvas);color:var(--sy-color-ink);line-height:1.55;border:0;}
  .about-inner{max-width:1248px;margin-inline:auto;display:flex;flex-direction:column;gap:var(--sy-space-gutter-lg);min-width:0;}
  .about-section h1,.about-section h2,.about-section h3,.about-section p,.about-section address{margin:0;max-width:none;}
  .about-section h1,.about-section h2{white-space:pre-line;text-wrap:balance;}
@@ -63,6 +64,7 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
  .about-brand-image{height:460px;}
  .about-brand-image :global(img),.about-visit-image :global(img){object-fit:cover;}
  .about-visit-image{height:auto;aspect-ratio:3/2;}
+ .about-visit-row .about-subtitle,.about-company p:last-child{font-family:var(--sy-font-body-zh);font-weight:var(--sy-weight-body);}
  .about-section address{font-style:normal;}
  .about-sand{background:var(--sy-color-surface-alt);}
  .about-terms{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sy-space-gutter-lg);}
@@ -74,6 +76,7 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
   .about-section h2{font-size:var(--sy-text-h2-mobile);}
   .about-section .about-subtitle{font-size:var(--sy-text-h3-mobile);}
   .about-section h3{font-size:var(--sy-text-h4-mobile);}
+  .about-number{font-size:var(--sy-text-h4-mobile);}
   .about-intro-row{grid-template-columns:300px minmax(0,1fr);gap:var(--sy-space-gutter-md);}
   .about-intro-image{height:350px;}
   .about-ways{grid-template-columns:repeat(2,minmax(0,1fr));}

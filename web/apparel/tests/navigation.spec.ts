@@ -63,8 +63,18 @@ for (const locale of ['en', 'zh', 'ar']) {
   for (const width of [1280, 1440]) test(`desktop navigation ${locale} ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 }); await page.goto(`${prefix}/`);
     await expect(page.locator('[data-menu-toggle]')).not.toBeVisible();
-    await expect(page.locator('.header-inner > nav a')).toHaveCount(5);
-    for (const link of await page.locator('.header-inner > nav a').all()) await expect(link).toBeVisible();
+    const nav = page.locator('.header-inner > nav');
+    await expect(nav.locator(':scope > a')).toHaveCount(4);
+    for (const link of await nav.locator(':scope > a').all()) await expect(link).toBeVisible();
+    const about = nav.locator('.about-navigation');
+    await expect(about.locator('summary')).toBeVisible();
+    await expect(about.locator('a')).toHaveCount(2);
+    await expect(about.locator(`a[href="${prefix}/about-us/"]`)).not.toBeVisible();
+    await about.locator('summary').click();
+    await expect(about.locator(`a[href="${prefix}/about-us/"]`)).toBeVisible();
+    await expect(about.locator(`a[href="${prefix}/about/"]`)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(about).not.toHaveAttribute('open', '');
     await expect(page.locator('.header-inner > .button')).toBeVisible();
     await expect(page.locator('.header-inner > .language-switcher')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
