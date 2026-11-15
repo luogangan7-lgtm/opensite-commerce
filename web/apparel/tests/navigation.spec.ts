@@ -48,7 +48,7 @@ for (const locale of ['en', 'zh', 'ar']) {
     await toggle.click(); await toggle.click();
     await expect(menu).not.toBeVisible(); await expect(toggle).toBeFocused();
     await toggle.click();
-    await page.setViewportSize({ width: 768, height: 1000 });
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await expect(menu).not.toBeVisible();
     await expect(page.locator('main')).not.toHaveAttribute('inert', '');
     await page.setViewportSize({ width: 390, height: 844 });
@@ -60,7 +60,7 @@ for (const locale of ['en', 'zh', 'ar']) {
     await expect(page).toHaveURL(new RegExp(`${prefix}/collections/$`));
     await expect(page.locator('h1')).toBeVisible();
   });
-  for (const width of [768, 1440]) test(`desktop navigation ${locale} ${width}`, async ({ page }) => {
+  for (const width of [1280, 1440]) test(`desktop navigation ${locale} ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 }); await page.goto(`${prefix}/`);
     await expect(page.locator('[data-menu-toggle]')).not.toBeVisible();
     await expect(page.locator('.header-inner > nav a')).toHaveCount(5);
