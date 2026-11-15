@@ -6,10 +6,9 @@ import { loadEnv } from 'vite';
 import { measurementId, contentSecurityPolicy } from './analytics/config.mjs';
 const gaId = measurementId(process.env.PUBLIC_GA4_ID ?? loadEnv(process.env.NODE_ENV || 'production', process.cwd(), 'PUBLIC_').PUBLIC_GA4_ID);
 import { defineConfig } from 'astro/config';
-// Build secrets are inspected only for presence; never written to static assets.
+// Static builds need only the public key; the Pages runtime enforces its secret binding.
 const turnstile = Boolean(process.env.PUBLIC_TURNSTILE_SITE_KEY?.trim());
-const secret = Boolean(process.env.TURNSTILE_SECRET_KEY?.trim());
-if ((isProduction && (!turnstile || !secret)) || turnstile !== secret) throw Error('Turnstile site and secret keys required together; production must be protected');
+if (isProduction && !turnstile) throw Error('Turnstile public site key required; production must be protected');
 export default defineConfig({
   output: 'static',
   site: buildOrigin,

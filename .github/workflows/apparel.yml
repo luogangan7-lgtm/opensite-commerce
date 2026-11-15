@@ -2,6 +2,11 @@ name: apparel
 on:
   workflow_dispatch:
     inputs:
+      release:
+        description: Build a sealed production artifact (no deployment)
+        required: false
+        default: false
+        type: boolean
       preview_url:
         description: 'Optional immutable Sourcyo pages.dev preview URL for live browser verification'
         required: false
@@ -36,7 +41,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      SEO_BUILD_MODE: preview
+      SEO_BUILD_MODE: ${{ inputs.release == true && 'production' || 'preview' }}
+      PUBLIC_GA4_ID: ${{ inputs.release == true && vars.APPAREL_GA4_ID || '' }}
+      PRODUCTION_ORIGIN: ${{ inputs.release == true && 'https://sourcyowear.com' || '' }}
+      PUBLIC_TURNSTILE_SITE_KEY: ${{ inputs.release == true && '0x4AAAAAAF7J6c4MnmLOpHkj' || '' }}
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
@@ -55,27 +63,34 @@ jobs:
         run: bun run --cwd web/apparel build
       - name: Source-independent image packaging contract
         run: bun web/apparel/packaging-gate.ts
-      - name: Consent build gate (no analytics ID)
+      - name: Consent build gate (configured analytics policy)
         run: bun web/apparel/tests/consent-output.ts
       - name: Package Pages Function in CI
         run: cd web/apparel && bunx wrangler@4.156.0 pages functions build functions --outdir dist/_worker.js --build-output-directory dist
-      - name: Seal exact build provenance
-        run: bun web/apparel/build-receipt.ts
       - name: Distribution gates
         run: |
           bun web/apparel/tests/foundation-output.ts
           bun web/apparel/tests/dist-gate.ts
-          bun web/apparel/tests/probes.ts
           bun web/apparel/tests/seo-output.ts
+      # seo-probes mutates preview-only noindex output; never run it on production bytes.
+      - name: Preview mutation probes
+        if: inputs.release != true
+        run: |
+          bun web/apparel/tests/probes.ts
           bun web/apparel/tests/seo-probes.ts
+      - name: Seal exact build provenance
+        run: bun web/apparel/build-receipt.ts
       - name: Apparel unit suite and imagery slots
+        if: inputs.release != true
         run: |
           status=0
           bun web/apparel/tests/slots-gate.ts || status=1
           bun test web/apparel/tests/*.test.ts || status=1
           exit "$status"
-      - run: bunx playwright install --with-deps chromium
+      - if: inputs.release != true
+        run: bunx playwright install --with-deps chromium
       - name: Playwright 390px
+        if: inputs.release != true
         env:
           APPAREL_PREVIEW_URL: ${{ inputs.preview_url || '' }}
         run: bunx playwright test --config web/apparel/playwright.config.ts
@@ -87,10 +102,11 @@ jobs:
           if-no-files-found: warn
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: apparel-dist
+          name: ${{ inputs.release == true && 'apparel-dist-production' || 'apparel-dist' }}
           path: web/apparel/dist/
           if-no-files-found: error
       - name: Consent Mode v2 enabled build and browser gate
+        if: inputs.release != true
         env:
           PUBLIC_GA4_ID: G-CONSENTTEST
           PUBLIC_TURNSTILE_SITE_KEY: synthetic-site-key

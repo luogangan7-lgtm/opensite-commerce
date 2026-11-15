@@ -3,6 +3,8 @@ import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { publishedPaths } from '../seo/published';
+import { contentSecurityPolicy } from '../analytics/config.mjs';
+import { locales } from '../seo/contract';
 for (const name of ['locale', 'fact', 'placeholder']) {
   const dir = mkdtempSync(join(tmpdir(), 'apparel-seo-'));
   try {
@@ -26,7 +28,7 @@ for (const name of ['locale', 'fact', 'placeholder']) {
 // Post-build red/green evidence against disposable copies of the real output.
 const testOrigin = 'https://seo-gate.example.org'; // synthetic fixture, never an owner domain
 function gate(dir: string, mode: string, origin: string | undefined, expected: string | null) {
-  const env = { ...process.env, APPAREL_DIST: dir, SEO_BUILD_MODE: mode, PRODUCTION_ORIGIN: origin };
+  const env = { ...process.env, APPAREL_DIST: dir, SEO_BUILD_MODE: mode, PRODUCTION_ORIGIN: origin, PUBLIC_TURNSTILE_SITE_KEY: 'synthetic-site-key' };
   const result = Bun.spawnSync(['bun', 'web/apparel/tests/seo-output.ts'], { env });
   if (expected ? result.exitCode === 0 || !result.stderr.toString().includes(expected) : result.exitCode !== 0) throw Error(`Probe mismatch ${mode}/${expected}: ${result.stderr}`);
   console.log(`${expected ? 'RED' : 'GREEN'} proven: ${mode} ${expected || 'valid output'}`);
@@ -56,7 +58,26 @@ try {
   }
   const headers = join(dir, '_headers');
   writeFileSync(headers, readFileSync(headers, 'utf8').replace(/.*X-Robots-Tag:.*\n?/, ''));
+  writeFileSync(headers, readFileSync(headers, 'utf8').replace(/^.*Content-Security-Policy:.*$/m, '  Content-Security-Policy: ' + contentSecurityPolicy('', [], true)));
+  for (const locale of locales) {
+    const file = join(dir, locale === 'en' ? '' : locale, 'contact/index.html');
+    writeFileSync(file, readFileSync(file, 'utf8').replace('</body>', '<div class="cf-turnstile" data-sitekey="synthetic-site-key"></div><script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script></body>'));
+  }
   gate(dir, 'production', testOrigin, null);
+  for (const [fileName, from, to, expected] of [
+    ['contact/index.html', 'synthetic-site-key', 'wrong-key', 'Production Turnstile widget'],
+    ['_headers', "script-src 'self' https://challenges.cloudflare.com", "script-src 'self'", 'Production Turnstile CSP script-src'],
+    ['_headers', "frame-src 'self' https://challenges.cloudflare.com", "frame-src 'self'", 'Production Turnstile CSP frame-src'],
+    ['_worker.js/index.js', '', '// example.invalid', 'Production example.invalid'],
+  ]) {
+    const file = join(dir, fileName), original = readFileSync(file, 'utf8');
+    const changed = from ? original.replace(from, to) : original + to;
+    if (changed === original) throw Error(`Mutation did not apply: ${expected}`);
+    writeFileSync(file, changed);
+    gate(dir, 'production', testOrigin, expected);
+    writeFileSync(file, original);
+    gate(dir, 'production', testOrigin, null);
+  }
   for (const [name, expected] of [['index.html', 'HTML robots policy'], ['_headers', 'X-Robots-Tag policy'], ['robots.txt', 'Crawler policy']] as const) {
     const file = join(dir, name), original = readFileSync(file, 'utf8');
     writeFileSync(file, name === 'index.html' ? original.replace('</head>', '<meta name="robots" content="noindex"></head>') : name === '_headers' ? original + '  X-Robots-Tag: noindex\n' : original.replace('Allow: /', 'Disallow: /'));
