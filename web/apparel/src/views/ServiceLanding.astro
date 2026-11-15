@@ -54,9 +54,14 @@ p { max-inline-size: none; margin: 0; }
 .three,.four,.matrix,.split,.opening,.techniques { display: grid; gap: var(--sy-space-lg); min-inline-size: 0; }
 .three { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .four,.techniques { grid-template-columns: repeat(4,minmax(0,1fr)); }
+/* Home separates its heading group and content grid by sy-space-2xl (48px).
+   The existing 24px stack gap plus this margin keeps eyebrow/body rhythm intact. */
+.three,.four,.techniques { margin-block-start: var(--sy-space-lg); }
 .matrix { grid-template-columns: 32fr 23fr; }
 .split { grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--sy-space-split); }
-.opening { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.opening { grid-template-columns: repeat(2,minmax(0,1fr)); padding-block-start: var(--sy-space-2xl); }
+/* Match HomeHero's top anchor: the SHA-bound masters include complete heads. */
+.svc-page :global([data-service-media^="catalog-"] img) { object-position: 50% 0%; }
 .opening :global(img) { block-size: 540px; object-fit: cover; }
 .capability-panel,.capabilities-strip { background: var(--sy-color-surface-alt); }
 .capability-panel,.brief-panel { padding: var(--sy-space-lg); align-self: start; }
@@ -83,6 +88,7 @@ p { max-inline-size: none; margin: 0; }
  .four,.techniques { grid-template-columns: repeat(2,minmax(0,1fr)); }
  .four h3 { font-size: var(--sy-text-h4-mobile); }
  .opening > :global(picture:last-child) { display: none; }
+ .opening { padding-block-start: var(--sy-space-lg); }
  .opening :global(img),.workflow :global(img),.split :global(img) { block-size: 320px; }
  .reverse .phase-copy { order: 0; }
 }

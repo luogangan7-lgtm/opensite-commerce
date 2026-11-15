@@ -8,6 +8,20 @@ for(const locale of locales) for(const kind of ['oem-odm','sampling','shipping']
  const prefix=locale==='en'?'':`/${locale}`;
  await page.goto(`${prefix}/${kind}/`);
  const view=page.locator(`[data-service-page="${kind}"]`);
+ // The owner rejected centered cover crops that cut faces at the nose.
+ // Check every catalog slot at each delivery width, including non-hero portraits.
+ for(const width of [1440,768,390]) {
+  await page.setViewportSize({width,height:844});
+  for(const portrait of await view.locator('[data-service-media^="catalog-"] img').all()) {
+   await expect(portrait).toHaveCSS('object-position','50% 0%');
+   await expect(portrait).toHaveCSS('object-fit','cover');
+  }
+  if(kind==='oem-odm') await expect(view.locator('.opening')).toHaveCSS('padding-top',width>900?'48px':'24px');
+  for(const grid of await view.locator('.three,.four,.techniques').all()) {
+   const gap=await grid.evaluate(n=>n.getBoundingClientRect().top-n.previousElementSibling!.getBoundingClientRect().bottom);
+   expect(gap).toBeCloseTo(48,0);
+  }
+ }
  await expect(view.locator('h1')).toHaveCount(1);
  const cta=view.locator('[data-service-rfq]');
  await expect(cta).toHaveAttribute('href',`${prefix}/contact/${kind==='sampling'?'?type=sample':''}#rfq-form`);
