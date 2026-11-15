@@ -2,16 +2,18 @@
 /** Collection filter UI owns URL state and empty results; Grid owns product presentation.
  * Depends on explicit catalog facts and Locale dictionaries; static rendering shows all products.
  */
+import { getRelativeLocaleUrl } from 'astro:i18n';
 import Grid from './Grid.astro';
 import type { Product } from '../data/catalog';
 import { dictionaries, pageLocale } from '../i18n';
 interface Props { products: Product[]; landing?: boolean }
 const { products,landing=false }=Astro.props;
-const t=dictionaries[pageLocale(Astro.url)];
+const locale=pageLocale(Astro.url),t=dictionaries[locale];
 const facets=[['lining','unlined','cp6.filter-unlined'],['lining','fleece','cp6.chip-fleece'],['weight','light','cp6.copy/280-gsm'],['weight','mid','cp6.copy/280-350-gsm'],['weight','heavy','cp6.copy/350-gsm']] as const;
 ---
 <div data-collection-results data-facts={JSON.stringify(products.map(p=>({fabric_weight_fit:p.fabric_weight_fit})))}>
-  <div class:list={["facets",{wrap:landing}]}>{facets.map(([name,value,key])=><button type="button" class="facet" data-facet={name} value={value} aria-pressed="false">{t[key]}</button>)}</div>
+  <div class:list={[{'collection-toolbar':landing}]}>{landing && <nav class="collection-breadcrumb" aria-label={t.collections}><a href={getRelativeLocaleUrl(locale,'/')}>{t.home}</a><span>/</span><span>{t.collections}</span></nav>}
+  <div class="facets">{facets.map(([name,value,key])=><button type="button" class="facet" data-facet={name} value={value} aria-pressed="false">{t[key]}</button>)}</div></div>
   <slot />
   <div class:list={[{wrap:landing}]}>
   <p data-result-count role="status" aria-live="polite">{products.length}</p>
@@ -46,6 +48,10 @@ for(const root of document.querySelectorAll<HTMLElement>('[data-collection-resul
 }
 </script>
 <style>
+.collection-toolbar{padding:var(--sy-space-sm) var(--sy-space-gutter-lg);display:grid;gap:var(--sy-space-sm)}
+.collection-breadcrumb{display:flex;align-items:center;gap:var(--sy-space-xs);min-height:44px;font-size:var(--sy-text-small)}
+.collection-toolbar .facet{height:44px;min-height:44px;padding-block:0;padding-inline:var(--sy-space-md);font-size:var(--sy-text-small)}
+@media(max-width:650px){.collection-toolbar{padding-inline:var(--sy-space-gutter-mobile)}}
 .facets{display:flex;flex-wrap:wrap;gap:var(--sy-space-grid-x)}
 .facet{border-radius:var(--sy-radius-pill);background:var(--sy-color-canvas);color:var(--sy-color-ink);border-color:var(--sy-color-border)}
 .facet[aria-pressed="true"]{background:var(--sy-color-accent);color:var(--sy-color-on-accent)}
