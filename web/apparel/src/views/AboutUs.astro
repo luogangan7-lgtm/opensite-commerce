@@ -26,7 +26,7 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
   <ol class="about-ways">{['01','02','03','04'].map(n => <li><span class="about-number">{b(`ways-num-${n}`)}</span><h3>{b(`ways-title-${n}`)}</h3><p>{b(`ways-body-${n}`)}</p></li>)}</ol>
 </div></section>
 <section class="about-section"><div class="about-inner about-brand-row"><div class="about-copy"><p class="about-eyebrow">{b('brand-eyebrow')}</p><h2>{b('brand-title')}</h2><p>{b('brand-body')}</p><p class="about-capabilities">{b('brand-capabilities')}</p></div><div class="about-brand-image"><HomeMedia scope="about" id="fabric" alt="" /></div></div></section>
-<section class="about-section"><div class="about-inner"><p class="about-eyebrow">{b('visit-eyebrow')}</p><h2>{b('visit-title')}</h2><div class="about-visit-row"><div class="about-visit-image"><HomeMedia scope="about" id="about-visit" alt="" /></div><div class="about-copy"><h3 class="about-subtitle">{b('stall-title')}</h3><address>{b('stall-address')}</address><p>{b('stall-visit')}</p><p>{b('stall-role')}</p></div></div></div></section>
+<section class="about-section"><div class="about-inner"><p class="about-eyebrow">{b('visit-eyebrow')}</p><h2 class="about-visit-title">{b('visit-title')}</h2><div class="about-visit-row"><div class="about-visit-image"><HomeMedia scope="about" id="about-visit" alt="" /></div><div class="about-copy"><h3 class="about-subtitle">{b('stall-title')}</h3><address>{b('stall-address')}</address><p>{b('stall-visit')}</p><p>{b('stall-role')}</p></div></div></div></section>
 <section class="about-section about-sand"><div class="about-inner"><p class="about-eyebrow">{b('order-eyebrow')}</p><h2>{b('order-title')}</h2><div class="about-terms">{['quote','sample','ship'].map(k => <div class="about-copy"><h3>{b(`order-${k}-title`)}</h3><p>{b(`order-${k}-body`)}</p></div>)}</div></div></section>
 <section class="about-section about-company"><div class="about-inner"><p class="about-eyebrow">{b('company-eyebrow')}</p><h2 class="about-subtitle">{b('company-title')}</h2><p>{b('company-brand')}</p><p>{b('company-entity')}</p></div></section>
 <section class="about-section about-inverse"><div class="about-inner"><p class="about-eyebrow">{b('cta-eyebrow')}</p><h2>{b('cta-title')}</h2><p class="about-lead">{b('cta-body')}</p><a class="button about-quote" href={href('/contact/')}>{b('request-quote')} <span aria-hidden="true">→</span></a><p>{b('cta-contact')}</p></div></section>
@@ -86,6 +86,7 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
  @media(max-width:650px){
   .about-intro h1{font-size:var(--sy-text-h3);}
   .about-section h2{font-size:var(--sy-text-h3-mobile);}
+  .about-section .about-visit-title{font-size:var(--sy-text-h4);}
   .about-intro-row,.about-brand-row,.about-visit-row{grid-template-columns:minmax(0,1fr);gap:var(--sy-space-gutter-lg);}
   .about-ways{grid-template-columns:minmax(0,1fr);}
   .about-catalog{grid-template-columns:repeat(2,minmax(0,1fr));}
