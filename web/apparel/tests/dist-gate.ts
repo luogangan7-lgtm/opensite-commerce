@@ -1,3 +1,4 @@
+import { digitalLabel } from '../src/data/imagery';
 /** Output allow-list and text gates; CI only; any unlisted product route or image reference fails closed. */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -112,4 +113,14 @@ const removedImageCaptions = ["AI-generated illustration; actual details are sub
 for (const file of new Bun.Glob('**/*.html').scanSync(root)) {
  const html = await Bun.file(join(root, file)).text();
  for (const caption of removedImageCaptions) if (html.includes(caption)) throw Error(`HF1 removed caption in ${file}`);
+}
+
+// Per-image labels are prohibited as visible text; the one site footer disclosure remains.
+for (const file of new Bun.Glob('**/*.html').scanSync(root)) {
+ const html = await Bun.file(join(root, file)).text();
+ const visible = html.replace(/<footer\b[\s\S]*?<\/footer>/gi, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, ' ');
+ for (const locale of locales) {
+  const t = dictionaries[locale];
+  for (const label of [t['home.hero.15'], digitalLabel(locale), t.illustrativeNotice]) if (visible.includes(label)) throw Error(`HF1 removed image label in ${file}: ${label}`);
+ }
 }
