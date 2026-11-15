@@ -63,3 +63,17 @@ for(const locale of Object.keys(dictionaries)) test(`RFQ selected colour contrac
   }
  }
 });
+
+test('PDP swatch Quote click prefills the delivered RFQ form',async({page})=>{
+ await page.goto(path('en'));
+ const swatch=page.locator('[data-gallery-swatch]').nth(1);
+ await swatch.click();
+ const colour=await swatch.getAttribute('data-gallery-swatch');
+ await page.locator('[data-rfq-intent="quote"]').click();
+ await expect(page).toHaveURL(/contact\/\?product=hoodie-set-k02&type=quote&colour=/);
+ const form=page.locator('form.rfq');
+ await expect(form.locator('[name=product_slug]')).toHaveValue('hoodie-set-k02');
+ await expect(form.locator('[data-prefill-context]')).toContainText(colour!);
+ await expect(form.locator('textarea')).toHaveValue(new RegExp(colour!));
+ await expect(form.locator('[name=quantity_note]')).toHaveValue('');
+});
