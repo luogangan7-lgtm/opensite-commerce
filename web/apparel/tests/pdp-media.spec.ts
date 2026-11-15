@@ -24,6 +24,7 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280]) test(`F
  const pair=page.locator('[data-pdp-media]'); await pair.scrollIntoViewIfNeeded();
  const whole=pair.locator('[data-pdp-whole]'),detail=pair.locator('[data-pdp-detail]');
  for(const image of [whole,detail]) {
+  await image.evaluate(i=>i.scrollIntoView({behavior:'instant',block:'center'}));
   await expect(image).toHaveCSS('object-fit','contain');
   await expect.poll(()=>image.evaluate((i:HTMLImageElement)=>i.complete && i.naturalWidth>0)).toBe(true);
  }
