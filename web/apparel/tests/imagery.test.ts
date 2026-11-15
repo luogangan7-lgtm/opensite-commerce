@@ -114,6 +114,9 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
     writeFileSync(pdpFile,pdpOriginal.replace(/(<img\b[^>]*?)data-pdp-detail/, '$1data-missing-detail'));
     expect(gate().exitCode).not.toBe(0);
     writeFileSync(pdpFile,pdpOriginal);
+    writeFileSync(pdpFile,pdpOriginal.replace(/(<img\b[^>]*data-pdp-whole[^>]*?)loading="eager"/, '$1loading="lazy"'));
+    expect(gate().exitCode).not.toBe(0);
+    writeFileSync(pdpFile,pdpOriginal);
     expect(readFileSync(join(dir, 'about/index.html'), 'utf8')).not.toContain('data-slot="about/hero"');
     const file = join(dir, 'about/index.html'), original = readFileSync(file, 'utf8');
     writeFileSync(file, original.replace(/<picture\b[^>]*data-slot="about\/founder"[^>]*>[\s\S]*?<\/picture>/, ''));
