@@ -50,3 +50,13 @@ for (const locale of languages) test(`native Pages missing routes ${locale}`, as
     expect(body).toContain(`href="${prefix}/"`);
   }
 });
+
+for (const locale of ['en', 'zh', 'ar']) for (const width of [1440, 768, 390]) test(`legal recovery layout ${locale} ${width}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  for (const route of ['privacy', 'terms', '404']) {
+    await page.goto(`${locale === 'en' ? '' : '/' + locale}/${route === '404' && locale === 'en' ? '404.html' : route + '/'}`);
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `evidence/cp-legal-${route}-${locale}-${width}.png`, fullPage: true });
+  }
+});

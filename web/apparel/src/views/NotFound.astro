@@ -7,13 +7,14 @@ import copy from '../content/legal-ui.json';
 import { products } from '../data/catalog';
 import { digitalAlt } from '../data/imagery';
 const locale = pageLocale(Astro.url), t = copy[locale];
-const destinations = ['collections/', `products/${products[0].slug}/`, 'oem-odm/', 'contact/'];
+const thumbnails = ['apparel-59043', 'cotton430-hoodie-58065', 'crew-fleece-8900-38', 'apparel-59043'].map(slug => products.find(p => p.slug === slug)!);
+const destinations = ['collections/', `products/${thumbnails[1].slug}/`, 'oem-odm/', 'contact/'];
 const labels = [t.collections, t.details, t.oem, t.quote];
 ---
 <Shell title={t.title}>
   <section class="recovery" data-not-found>
     <p class="error-code" aria-hidden="true">404</p><h1>{t.title}</h1><p>{t.intro}</p>
-    <div class="recovery-grid">{destinations.map((path, i) => <a class="recovery-card" data-recovery-card href={getRelativeLocaleUrl(locale, path)}><div><img src={products[i].images[0].src} alt={digitalAlt(products[i].images[0].src, locale) || productText[locale][products[i].slug].name} width="64" height="72" /><span>{labels[i]} <bdi aria-hidden="true">→</bdi></span></div><p>{t.descriptions[i]}</p></a>)}</div>
+    <div class="recovery-grid">{destinations.map((path, i) => <a class="recovery-card" data-recovery-card href={getRelativeLocaleUrl(locale, path)}><div><img src={thumbnails[i].images[0].src} alt={digitalAlt(thumbnails[i].images[0].src, locale) || productText[locale][thumbnails[i].slug].name} width="64" height="72" /><span>{labels[i]} <bdi aria-hidden="true">→</bdi></span></div><p>{t.descriptions[i]}</p></a>)}</div>
     <a class="button" href={getRelativeLocaleUrl(locale, '/')}>{t.home}</a>
   </section>
 </Shell>
