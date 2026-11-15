@@ -1,4 +1,5 @@
 /** CI output contract, independent of page implementation; deploy checks use the external slot inventory. */
+import digital from '../digital-sources.json';
 import frozen from '../design/collection-frozen.json';
 import { createHash } from 'node:crypto';
 import { assertSlotReferences } from '../image-plan';
@@ -23,6 +24,7 @@ const ids = Object.entries(inventory).flatMap(([page, slots]) => slots.map(slot 
 const passing: string[] = manifest ? manifest.slotReviews.filter((row: { pass: boolean }) => row.pass === true).map((row: { id: string }) => row.id) : ids;
 if (manifest && (JSON.stringify(manifest.slotReviews.map((row: { id: string }) => row.id).sort()) !== JSON.stringify([...ids].sort()) || JSON.stringify(manifest.slots.map((row: { id: string }) => row.id).sort()) !== JSON.stringify([...passing].sort()))) throw Error('Review inventory and published slots disagree');
 const errors: string[] = [];
+for (const asset of frozen.catalog) if (!digital.some(row => row.src === asset.src && row.sha256 === asset.sha256 && row.source === asset.source)) errors.push(`Collection catalog master not accepted: ${asset.src}`);
 // Published collection derivatives are verified against the frozen export receipts.
 for (const asset of [...frozen.assets, ...frozen.catalog]) for (const file of asset.derivatives) {
   const path = join(root, file.src);
