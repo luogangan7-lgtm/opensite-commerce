@@ -166,12 +166,12 @@ test('115 licensed catalog identities; all declared digital models join by exact
   expect(digital.find(p => p.key === 'cotton430-hoodie-58065__model-03')?.sha256).toBe(r5.find(row => row.slug === 'cotton430-hoodie-58065')!.sha256);
   expect(digital.find(p => p.key === 'crew-fleece-8900-46__model-03')?.sha256).toBe('cd78398f7f4865b95113648ea6c6b8af2e8d91d54bb3d80c8e8a0dfb546fc8a0');
 });
-test('every digital model has eight colour, garment, angle and disclosure descriptions', () => {
+test('every digital model has eight colour, garment, angle descriptions without disclosure labels', () => {
   for (const image of digitalImages) {
     const alts = locales.map(locale => digitalAlt(image.src, locale));
     expect(alts.every(alt => typeof alt === 'string' && alt.split(';').length === 3 && !alt.includes('undefined'))).toBe(true);
     expect(new Set(alts).size).toBe(8);
-    for (const locale of locales) expect(digitalAlt(image.src, locale)).toContain(digitalLabel(locale));
+    for (const locale of locales) expect(digitalAlt(image.src, locale)).not.toContain(digitalLabel(locale));
     if (image.wave === 'W3') expect(['turn','back']).toContain(image.view);
   }
 });

@@ -118,7 +118,7 @@ for (const file of new Bun.Glob('**/*.html').scanSync(root)) {
 // Per-image labels are prohibited as visible text; the one site footer disclosure remains.
 for (const file of new Bun.Glob('**/*.html').scanSync(root)) {
  const html = await Bun.file(join(root, file)).text();
- const visible = html.replace(/<footer\b[\s\S]*?<\/footer>/gi, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, ' ');
+ const visible = html.replace(/<footer\b[\s\S]*?<\/footer>/gi, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, ' ').replace(/&#(?:39|x27);|&apos;/gi, "'").replace(/&amp;/g, '&');
  for (const locale of locales) {
   const t = dictionaries[locale];
   for (const label of [t['home.hero.15'], digitalLabel(locale), t.illustrativeNotice]) if (visible.includes(label)) throw Error(`HF1 removed image label in ${file}: ${label}`);

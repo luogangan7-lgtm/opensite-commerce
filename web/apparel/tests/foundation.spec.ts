@@ -89,12 +89,12 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   }
 });
 
- test('Chinese digital alt and disclosure follow gallery selection', async ({ page }) => {
+ test('Chinese descriptive alt follows gallery selection without captions', async ({ page }) => {
   // Catalog order is not a promise that the first style has a reviewed side view.
   const modelProduct = products.find(product => product.images.some(image => image.src.endsWith('/digital-turn.webp')));
   expect(modelProduct, 'requires a catalog style with an approved W3 turn view').toBeDefined();
   await page.goto(`/zh/products/${modelProduct!.slug}/`);
-  await expect(page.locator('[data-gallery-main]')).toHaveAttribute('alt', /数字模特示意/);
+  await expect(page.locator('[data-gallery-main]')).toHaveAttribute('alt', /正面/);
   const turn = page.locator('.gallery-thumbs a[href$="digital-turn.webp"]');
   await turn.click();
   await expect(page.locator('[data-gallery-main]')).toHaveAttribute('alt', /侧转/);
@@ -102,7 +102,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   await page.locator('.gallery-thumbs:not([hidden]) a[data-role="front"]').click();
   await expect(page.locator('[data-digital-label]')).toHaveCount(0);
   await page.goto('/zh/collections/');
-  await expect(page.locator('.tile img').first()).toHaveAttribute('alt', /数字模特示意/);
+  await expect(page.locator('.tile img').first()).toHaveAttribute('alt', /正面/);
 });
 
 // §14 per-SKU acceptance; fixed contract identities, existing locale dictionaries and suite.
