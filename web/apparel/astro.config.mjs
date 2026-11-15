@@ -1,6 +1,6 @@
 /** Static apparel renderer; Astro CLI only; no tenant/backend runtime. */
 import { createHash } from 'node:crypto';
-import { writeFileSync, readFileSync, readdirSync } from 'node:fs';
+import { copyFileSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { isProduction, buildOrigin } from './seo/mode.ts';
 import { loadEnv } from 'vite';
 import { measurementId, contentSecurityPolicy } from './analytics/config.mjs';
@@ -13,6 +13,8 @@ export default defineConfig({
   output: 'static',
   site: buildOrigin,
   integrations: [{ name: 'seo-header-policy', hooks: { 'astro:build:done': ({ dir }) => {
+    // Pages selects the nearest 404.html; _routes keeps static misses outside the RFQ Worker.
+    for (const locale of ['zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) copyFileSync(new URL(`${locale}/404/index.html`, dir), new URL(`${locale}/404.html`, dir));
     writeFileSync(new URL('rfq-policy.json', dir), JSON.stringify({ required: isProduction || turnstile }));
     const file = new URL('_headers', dir);
     let headers = readFileSync(file, 'utf8');

@@ -1,5 +1,6 @@
 /** L1 acceptance against served build: complete localized copy, reciprocal SEO and legal boundaries. */
 import { test, expect } from '@playwright/test';
+import legalCopy from '../src/content/launch-pages.json' with { type: 'json' };
 const languages = ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'];
 const routes = ['oem-odm', 'sampling', 'shipping', 'privacy', 'terms'];
 for (const locale of languages) for (const route of routes) {
@@ -26,6 +27,8 @@ for (const locale of languages) for (const route of routes) {
     if (route === 'privacy' || route === 'terms') {
       expect(text).toContain('sales@sourcyowear.com');
       expect(text).toContain('91430105MA7J4C1WX7');
+      await expect(page.locator('.legal-updated')).toContainText('OWNER-INPUT');
+      expect(await page.locator('.service-copy > div > p').allTextContents()).toEqual(legalCopy[locale as keyof typeof legalCopy][route as 'privacy' | 'terms'][2].map(section => section[1]));
       await expect(page.locator('#rfq-form')).toHaveCount(0);
     }
     if (route === 'privacy') {
@@ -34,3 +37,41 @@ for (const locale of languages) for (const route of routes) {
     }
   });
 }
+
+// Exercise the actual Pages asset router, including deep misses; Python's static server cannot prove this.
+for (const locale of languages) test(`native Pages missing routes ${locale}`, async ({ request }) => {
+  const origin = process.env.APPAREL_PREVIEW_URL || `http://127.0.0.1:${Number(process.env.APPAREL_TEST_PORT || 4322) + 1}`;
+  const prefix = locale === 'en' ? '' : '/' + locale;
+  for (const path of ['/missing-legal-test', '/products/missing-legal-test/deeper/']) {
+    const response = await request.get(origin + prefix + path);
+    expect(response.status()).toBe(404);
+    const body = await response.text();
+    expect(body).toContain(`lang="${locale}" dir="${locale === 'ar' ? 'rtl' : 'ltr'}"`);
+    expect([...body.matchAll(/data-recovery-card/g)]).toHaveLength(4);
+    expect(body).toContain(`href="${prefix}/"`);
+  }
+});
+
+for (const locale of ['en', 'zh', 'ar']) for (const width of [1440, 768, 390]) test(`legal recovery layout ${locale} ${width}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  for (const route of ['privacy', 'terms', '404']) {
+    await page.goto(`${locale === 'en' ? '' : '/' + locale}/${route === '404' && locale === 'en' ? '404.html' : route + '/'}`);
+    await page.evaluate(() => document.fonts.ready);
+    const banner = page.locator('[data-cookie-banner]');
+    if (await banner.isVisible()) await page.locator('[data-cookie-choice=essential]').click();
+    await expect(banner).toBeHidden();
+    await expect(page.locator('h1')).toHaveCSS('font-weight', '400');
+    await expect(page.locator('.quote-float')).toHaveCount(0);
+    if (route === '404') {
+      await expect(page.locator('.error-code')).toHaveCSS('font-size', '88px');
+      await expect(page.locator('.recovery-card').first()).toHaveCSS('background-color', 'rgb(239, 231, 214)');
+    } else {
+      await expect(page.locator('h1')).toHaveCSS('font-size', width === 390 ? '36px' : '56px');
+      const column = await page.locator('.service-copy').boundingBox();
+      expect(locale === 'ar' ? Math.round(column!.x + column!.width) : Math.round(column!.x)).toBe(locale === 'ar' ? width - (width === 390 ? 24 : 48) : width === 390 ? 24 : 48);
+      expect(await page.locator('.service-copy > div > p').first().evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe(Math.min(760, width - (width === 390 ? 48 : 96)));
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `evidence/cp-legal-${route}-${locale}-${width}.png`, fullPage: true });
+  }
+});

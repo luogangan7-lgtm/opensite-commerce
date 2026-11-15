@@ -1,0 +1,130 @@
+{
+  "en": {
+    "title": "This page could not be found",
+    "intro": "The link may be old or the address mistyped.",
+    "home": "Back home",
+    "updated": "Last updated: OWNER-INPUT (date)",
+    "collections": "Browse collections",
+    "oem": "OEM / ODM",
+    "quote": "Request a quote",
+    "details": "Product details",
+    "descriptions": [
+      "T-shirts, hoodies and more",
+      "Explore the catalogue",
+      "Development and sampling",
+      "Terms confirmed in your quote"
+    ]
+  },
+  "zh": {
+    "title": "找不到该页面",
+    "intro": "链接可能已失效，或网址输入有误。",
+    "home": "返回首页",
+    "updated": "最后更新：OWNER-INPUT（日期）",
+    "collections": "浏览全部款式",
+    "oem": "OEM / ODM（代工与设计代工）",
+    "quote": "获取报价",
+    "details": "产品详情",
+    "descriptions": [
+      "T恤、卫衣及更多款式",
+      "查看产品目录",
+      "开发与打样",
+      "报价中确认的条款"
+    ]
+  },
+  "es": {
+    "title": "No se encontró esta página",
+    "intro": "El enlace puede ser antiguo o la dirección tener un error.",
+    "home": "Volver al inicio",
+    "updated": "Última actualización: OWNER-INPUT (fecha)",
+    "collections": "Ver colecciones",
+    "oem": "OEM / ODM",
+    "quote": "Solicitar cotización",
+    "details": "Detalles del producto",
+    "descriptions": [
+      "Camisetas, sudaderas y más",
+      "Explora el catálogo",
+      "Desarrollo y muestras",
+      "Condiciones confirmadas en tu cotización"
+    ]
+  },
+  "fr": {
+    "title": "Cette page est introuvable",
+    "intro": "Le lien est peut-être ancien ou l'adresse mal saisie.",
+    "home": "Retour à l'accueil",
+    "updated": "Dernière mise à jour : OWNER-INPUT (date)",
+    "collections": "Voir les collections",
+    "oem": "OEM / ODM",
+    "quote": "Demander un devis",
+    "details": "Détails du produit",
+    "descriptions": [
+      "T-shirts, sweats et plus",
+      "Explorez le catalogue",
+      "Développement et échantillons",
+      "Conditions confirmées dans votre devis"
+    ]
+  },
+  "de": {
+    "title": "Diese Seite wurde nicht gefunden",
+    "intro": "Der Link ist möglicherweise veraltet oder die Adresse falsch geschrieben.",
+    "home": "Zurück zur Startseite",
+    "updated": "Zuletzt aktualisiert: OWNER-INPUT (Datum)",
+    "collections": "Kollektionen ansehen",
+    "oem": "OEM / ODM",
+    "quote": "Angebot anfragen",
+    "details": "Produktdetails",
+    "descriptions": [
+      "T-Shirts, Hoodies und mehr",
+      "Katalog entdecken",
+      "Entwicklung und Muster",
+      "In Ihrem Angebot bestätigte Konditionen"
+    ]
+  },
+  "pt": {
+    "title": "Esta página não foi encontrada",
+    "intro": "A ligação pode ser antiga ou o endereço estar errado.",
+    "home": "Voltar ao início",
+    "updated": "Última atualização: OWNER-INPUT (data)",
+    "collections": "Ver coleções",
+    "oem": "OEM / ODM",
+    "quote": "Solicitar cotação",
+    "details": "Detalhes do produto",
+    "descriptions": [
+      "Camisetas, moletons e mais",
+      "Explore o catálogo",
+      "Desenvolvimento e amostras",
+      "Condições confirmadas na sua cotação"
+    ]
+  },
+  "ru": {
+    "title": "Страница не найдена",
+    "intro": "Ссылка могла устареть, или в адресе опечатка.",
+    "home": "На главную",
+    "updated": "Последнее обновление: OWNER-INPUT (дата)",
+    "collections": "Смотреть коллекции",
+    "oem": "OEM / ODM",
+    "quote": "Запросить цену",
+    "details": "Описание товара",
+    "descriptions": [
+      "Футболки, худи и другое",
+      "Посмотреть каталог",
+      "Разработка и образцы",
+      "Условия, подтверждённые в вашем коммерческом предложении"
+    ]
+  },
+  "ar": {
+    "title": "تعذر العثور على هذه الصفحة",
+    "intro": "ربما الرابط قديم أو العنوان به خطأ.",
+    "home": "العودة إلى الرئيسية",
+    "updated": "آخر تحديث: OWNER-INPUT (التاريخ)",
+    "collections": "تصفح المجموعات",
+    "oem": "تصنيع OEM / ODM",
+    "quote": "اطلب عرض سعر",
+    "details": "تفاصيل المنتج",
+    "descriptions": [
+      "تيشيرتات وهوديز والمزيد",
+      "استكشف الكتالوج",
+      "التطوير والعينات",
+      "تُؤكد الشروط في عرض السعر"
+    ]
+  }
+}
