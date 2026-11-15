@@ -22,7 +22,7 @@ const photographs = ['catalog-hoodie', 'catalog-green', 'catalog-crew'];
 <Shell title={title}>
 <div class="svc-page" data-service-page={kind}>
 {oem && <div class="svc-wrap opening"><ServiceMedia id="catalog-hoodie" alt="" eager /><ServiceMedia id="catalog-green" alt="" eager /></div>}
-<section class="intro"><div class="svc-wrap"><p class="eyebrow">{c(oem ? 814 : sample ? 851 : 869)}</p><h1>{title}</h1><p class="lead">{c(oem ? 816 : sample ? 853 : 871)}</p>{oem && <a class="button" href={href}>{t.request} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a>}</div></section>
+<section class="intro"><div class="svc-wrap"><p class="eyebrow">{c(oem ? 814 : sample ? 851 : 869)}</p><h1>{title}</h1><p class="lead">{c(oem ? 816 : sample ? 853 : 871)}</p>{oem && <a class="button" href={href}>{t.shellRequest} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a>}</div></section>
 {oem ? <>
 <section><div class="svc-wrap"><p class="eyebrow">{c(817)}</p><h2>{c(818)}</h2><div class="three">{[819,822,825].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{c(n+2)}</p></article>)}</div></div></section>
 <section><div class="svc-wrap matrix"><div class="capability-panel"><p class="eyebrow">{cap(950)}</p><h2>{cap(951)}</h2>{groups.map(n => <article data-capability-group={n}><h3>{cap(n)}</h3><p class="lines">{cap(n+1)}</p></article>)}</div><div class="brief-panel inverse"><p class="eyebrow">{cap(960)}</p><h2>{cap(961)}</h2>{[962,964,966,968].map(n => <article><h3>{cap(n)}</h3><p>{cap(n+1)}</p></article>)}</div></div></section>
@@ -34,11 +34,11 @@ const photographs = ['catalog-hoodie', 'catalog-green', 'catalog-crew'];
 {phases.map(([kicker,number,heading,body], i) => <section class:list={{inverse:i===1,phase:true}}><div class="svc-wrap"><p class="eyebrow phase-kicker">{c(kicker)}</p><div class:list={{split:true,reverse:i===1}}><div class="phase-copy"><p class="step-number">{c(number)}</p><h2>{c(heading)}</h2><p class="lead">{c(body)}</p></div><ServiceMedia id={photographs[i]} alt="" /></div></div></section>)}
 {sample ? <section><div class="svc-wrap"><p class="eyebrow">{c(865)}</p><h2>{c(866)}</h2><p class="lead">{c(867)}</p></div></section> : <section><div class="svc-wrap"><p class="eyebrow">{c(881)}</p><h2>{c(882)}</h2><div class="three">{[883,886,889].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{n===889 ? <a href="mailto:sales@sourcyowear.com"><bdi>{c(n+2)}</bdi></a> : c(n+2)}</p></article>)}</div></div></section>}
 </>}
-<section class="inverse"><div class="svc-wrap"><p class="eyebrow">{c(848)}</p><h2>{c(oem ? 849 : sample ? 868 : 892)}</h2><p class="lead">{c(850)}</p><a class="button" data-service-rfq href={href}>{t.request} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a></div></section>
+<section class="inverse"><div class="svc-wrap"><p class="eyebrow">{c(848)}</p><h2>{c(oem ? 849 : sample ? 868 : 892)}</h2><p class="lead">{c(850)}</p><a class="button" data-service-rfq href={href}>{t.shellRequest} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a></div></section>
 </div>
 </Shell>
 <style>
-.svc-page { max-inline-size: var(--sy-layout-desktop); margin-inline: auto; }
+.svc-page { max-inline-size: var(--sy-layout-desktop); margin-inline: auto; line-height: 1.55; }
 .svc-wrap { margin-inline: var(--sy-space-gutter-lg); }
 section { border: 0; }
 h1,h2 { font-size: var(--sy-text-h2); line-height: 1.2; margin: 0; }
@@ -52,7 +52,7 @@ p { max-inline-size: none; margin: 0; }
 .three,.four,.matrix,.split,.opening,.techniques { display: grid; gap: var(--sy-space-lg); min-inline-size: 0; }
 .three { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .four,.techniques { grid-template-columns: repeat(4,minmax(0,1fr)); }
-.matrix { grid-template-columns: 4fr 3fr; }
+.matrix { grid-template-columns: 32fr 23fr; }
 .split { grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--sy-space-split); }
 .opening { grid-template-columns: repeat(2,minmax(0,1fr)); }
 .opening :global(img) { block-size: 540px; object-fit: cover; }
@@ -64,6 +64,7 @@ p { max-inline-size: none; margin: 0; }
 .workflow :global(img) { block-size: 280px; object-fit: cover; }
 .split :global(img) { block-size: 400px; object-fit: cover; }
 .assurance :global(img) { block-size: 480px; }
+.assurance { gap: var(--sy-space-lg); }
 .assurance > div { display: flex; flex-direction: column; gap: var(--sy-space-lg); }
 .techniques :global(img) { aspect-ratio: 1; object-fit: cover; }
 .phase-kicker { text-align: center; }
