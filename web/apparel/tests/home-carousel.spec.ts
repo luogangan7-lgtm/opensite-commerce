@@ -59,6 +59,7 @@ for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) test(`HOME-BM mo
  await page.emulateMedia({reducedMotion:'reduce'});
  const prefix=locale==='en'?'':`/${locale}`;
  await page.goto(`${prefix}/`);
+ await page.locator('[data-cookie-choice=essential]').click();
  const models=page.locator('[data-home-model]');
  await expect(models).toHaveCount(3);
  expect(await models.evaluateAll(rows=>rows.map(row=>row.getAttribute('data-home-model')))).toEqual(['wholesale','private','custom']);
@@ -67,12 +68,13 @@ for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) test(`HOME-BM mo
  expect(sections).toEqual(['home-hero','home-tiles','home-categories','home-products','home-band','home-process','home-fabric','home-terms','home-closing']);
  const carousel=page.locator(hero);
  await expect(carousel.locator('[data-hero-cta]')).toHaveAttribute('href',prefix+'/collections/');
+ const ctaBox=await carousel.locator('[data-hero-cta]').boundingBox(), dotsBox=await carousel.locator('.hero-dots').boundingBox();
+ expect(ctaBox!.y+ctaBox!.height).toBeLessThanOrEqual(dotsBox!.y);
  await carousel.locator('[data-slide-to="1"]').click();
  await expect(carousel.locator('[data-hero-cta]')).toHaveAttribute('href',prefix+'/collections/?intent=private-label');
  await carousel.locator('[data-slide-to="2"]').click();
  await expect(carousel.locator('[data-hero-cta]')).toHaveAttribute('href',prefix+'/oem-odm/');
  const privateNote=(await models.nth(1).locator('h3').innerText()).replace(/^02 · /,'');
- await page.locator('[data-cookie-choice=essential]').click();
  await models.nth(1).locator('a').click();
  await expect(page).toHaveURL(new RegExp(`${prefix}/collections/\\?intent=private-label$`));
  const product=page.locator('.product-grid > a').first();
