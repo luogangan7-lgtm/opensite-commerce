@@ -10,7 +10,7 @@ const cardTitle = (locale: string, sku: string) => identities.find(identity => i
 const slug = products[0].slug;
 test('contact prefill and language switching retain path/query/fragment', async ({ page }) => {
   await page.goto(`/contact/?product=${slug}&type=sample&subject=fabric-photos#rfq-form`);
-  await expect(page.locator('textarea')).toHaveValue(`${enProducts[slug].name} (${products[0].style_codes.join(' / ')})\n${en.requestSample}\nfabric-photos`);
+  await expect(page.locator('textarea')).toHaveValue(`${enProducts[slug].name} (${slug}; ${products[0].style_codes.join(' / ')})\n${en.requestSample}\nfabric-photos`);
   const mobile = await page.locator('[data-menu-toggle]').isVisible();
   if (mobile) await page.locator('[data-menu-toggle]').click();
   const switcher = page.locator(mobile ? '.mobile-languages' : '.language-switcher');
@@ -23,13 +23,13 @@ test('contact prefill and language switching retain path/query/fragment', async 
   await expect(page.locator('[name="product_slug"]')).toHaveValue(slug);
   expect(new URL(page.url()).hash).toBe('#rfq-form');
   await expect(page.locator('[name="locale"]')).toHaveValue('zh');
-  await expect(page.locator('textarea')).toHaveValue(`${zhProducts[slug].name} (${products[0].style_codes.join(' / ')})\n${zh.requestSample}\nfabric-photos`);
+  await expect(page.locator('textarea')).toHaveValue(`${zhProducts[slug].name} (${slug}; ${products[0].style_codes.join(' / ')})\n${zh.requestSample}\nfabric-photos`);
 });
 test('invalid query and obsolete fragment query are ignored; sent status renders', async ({ page }) => {
   await page.goto('/contact/?product=unknown&type=bad&subject=%3Cscript%3E#rfq-form?subject=fabric-photos');
   await expect(page.locator('textarea')).toHaveValue('');
   await page.goto('/zh/contact/?sent=1');
-  await expect(page.locator('.form-status')).toHaveText(/已收到/);
+  await expect(page.locator('[data-rfq-success]')).toContainText(/已收到/);
 });
 async function fill(page: import('@playwright/test').Page) {
   await page.locator('[name="first_name"]').fill('CI'); await page.locator('[name="last_name"]').fill('Buyer'); await page.locator('[name="quantity_note"]').fill('100 pieces');
@@ -69,7 +69,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
       await fill(page);
       await page.locator('button[type="submit"]').click();
       await expect(page).toHaveURL(`${prefix}/contact/?sent=1`);
-      await expect(page.locator('.form-status')).not.toBeEmpty();
+      await expect(page.locator('[data-rfq-success]')).toBeVisible();
     });
   }
 }

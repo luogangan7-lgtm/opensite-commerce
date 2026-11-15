@@ -43,7 +43,7 @@ const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entrie
       const { productText, pageLocale } = await import('../i18n');
       const text = prefill.product ? productText[pageLocale(new URL(window.location.href))][prefill.product.slug] : undefined;
       const lines = [
-        prefill.product ? `${text?.name} (${prefill.product.style_codes.join(' / ')})` : '',
+        prefill.product ? `${text?.name} (${prefill.product.slug}; ${prefill.product.style_codes.join(' / ')})` : '',
         prefill.colour || '',
         prefill.type === 'sample' ? form.dataset.sampleLabel! : '', prefill.subject || '',
       ].filter(Boolean);

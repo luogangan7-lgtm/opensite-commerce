@@ -41,7 +41,7 @@ for (const mode of ['success', 'validation', 'timeout', 'duplicate'] as const) {
     if (mode === 'success') await expect(page).toHaveURL(/\/contact\/\?sent=1$/);
     else if (mode === 'duplicate') {
       await expect.poll(() => page.evaluate(() => (window as any).__sentNav)).toContain('sent=1');
-      await expect(page.locator('.form-status')).toHaveText(/received/);
+      await expect(page.locator('[data-rfq-success]')).toContainText(/received/);
       expect(await page.evaluate(() => document.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled)).toBe(true);
       await page.evaluate(() => document.querySelector('form.rfq')!.dispatchEvent(new Event('submit', { cancelable: true })));
       expect(calls).toBe(1);
