@@ -1,2 +1,0 @@
-{"id":"493:10239","name":"FLOW PDP T"}
-IMAGE wave6/PN/screenshots/get_screenshot-493-10239-1794739766187-0.png
