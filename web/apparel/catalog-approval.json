@@ -1,0 +1,921 @@
+{
+  "source": "docs/apparel-b2b/catalog.json",
+  "sha256": "1c7d516c1ba870e185b095e9c322d169e92203b4a93c09439f7a1c6a3b97fcc3",
+  "authorization": "Owner 2026-11-04: rights ok or owner-licensed; coordinator 2026-11-09 authorizes expanding all 115 identities",
+  "products": [
+    {
+      "slug": "crew-fleece-8900-31",
+      "style_codes": [
+        "8900-31"
+      ],
+      "category": "crew-fleece",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "crew-fleece-8900-32",
+      "style_codes": [
+        "8900-32"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-33",
+      "style_codes": [
+        "8900-33"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-34",
+      "style_codes": [
+        "8900-34"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-35",
+      "style_codes": [
+        "8900-35"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-36",
+      "style_codes": [
+        "8900-36"
+      ],
+      "category": "crew-fleece",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "crew-fleece-8900-37",
+      "style_codes": [
+        "8900-37"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-38",
+      "style_codes": [
+        "8900-38"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-39",
+      "style_codes": [
+        "8900-39"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-40",
+      "style_codes": [
+        "8900-40"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-41",
+      "style_codes": [
+        "8900-41"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-42",
+      "style_codes": [
+        "8900-42"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-43",
+      "style_codes": [
+        "8900-43"
+      ],
+      "category": "crew-fleece",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "crew-fleece-8900-44",
+      "style_codes": [
+        "8900-44"
+      ],
+      "category": "crew-fleece",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "crew-fleece-8900-45",
+      "style_codes": [
+        "8900-45"
+      ],
+      "category": "crew-fleece",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "crew-fleece-8900-46",
+      "style_codes": [
+        "8900-46"
+      ],
+      "category": "crew-fleece",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "crew-fleece-8900-47",
+      "style_codes": [
+        "8900-47"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-48",
+      "style_codes": [
+        "8900-48"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "crew-fleece-8900-49",
+      "style_codes": [
+        "8900-49"
+      ],
+      "category": "crew-fleece",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "crew-fleece-8900-50",
+      "style_codes": [
+        "8900-50"
+      ],
+      "category": "crew-fleece",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "crew-fleece-8900-53",
+      "style_codes": [
+        "8900-53"
+      ],
+      "category": "crew-fleece",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-59011",
+      "style_codes": [
+        "59011"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-59043",
+      "style_codes": [
+        "59043"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-59048",
+      "style_codes": [
+        "59048"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70108",
+      "style_codes": [
+        "70108"
+      ],
+      "category": "apparel",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "apparel-70159",
+      "style_codes": [
+        "70159"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70171",
+      "style_codes": [
+        "70171"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70172",
+      "style_codes": [
+        "70172"
+      ],
+      "category": "apparel",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "apparel-70173",
+      "style_codes": [
+        "70173"
+      ],
+      "category": "apparel",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "apparel-70174",
+      "style_codes": [
+        "70174"
+      ],
+      "category": "apparel",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "apparel-70174-x-small-logo",
+      "style_codes": [],
+      "category": "apparel",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "apparel-70175",
+      "style_codes": [
+        "70175"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70176",
+      "style_codes": [
+        "70176"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70178",
+      "style_codes": [
+        "70178"
+      ],
+      "category": "apparel",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "apparel-70178-x-loropiana-crest",
+      "style_codes": [],
+      "category": "apparel",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "apparel-70179",
+      "style_codes": [
+        "70179"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70185",
+      "style_codes": [
+        "70185"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70186",
+      "style_codes": [
+        "70186"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70188",
+      "style_codes": [
+        "70188"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70189",
+      "style_codes": [
+        "70189"
+      ],
+      "category": "apparel",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "apparel-70190",
+      "style_codes": [
+        "70190"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70191",
+      "style_codes": [
+        "70191"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70192",
+      "style_codes": [
+        "70192"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-70193",
+      "style_codes": [
+        "70193"
+      ],
+      "category": "apparel",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "apparel-70194",
+      "style_codes": [
+        "70194"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-7201",
+      "style_codes": [
+        "7201"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-7202",
+      "style_codes": [
+        "7202"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-7203",
+      "style_codes": [
+        "7203"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-7208",
+      "style_codes": [
+        "7208"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-7210",
+      "style_codes": [
+        "7210"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-7213",
+      "style_codes": [
+        "7213"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-7214",
+      "style_codes": [
+        "7214"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-7217",
+      "style_codes": [
+        "7217"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-7700-38",
+      "style_codes": [
+        "7700-38"
+      ],
+      "category": "apparel",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "apparel-7700-9",
+      "style_codes": [
+        "7700-9"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "apparel-78187",
+      "style_codes": [
+        "78187"
+      ],
+      "category": "apparel",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-58063",
+      "style_codes": [
+        "58063"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "cotton430-hoodie-58064",
+      "style_codes": [
+        "58064"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-58065",
+      "style_codes": [
+        "58065"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-58066",
+      "style_codes": [
+        "58066"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-70046",
+      "style_codes": [
+        "70046"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "cotton430-hoodie-7339",
+      "style_codes": [
+        "7339"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-8601",
+      "style_codes": [
+        "8601"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-8610",
+      "style_codes": [
+        "8610"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-8611",
+      "style_codes": [
+        "8611"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-l8602",
+      "style_codes": [
+        "L8602"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-l8603",
+      "style_codes": [
+        "L8603"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-l8604",
+      "style_codes": [
+        "L8604"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-l8606",
+      "style_codes": [
+        "L8606"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-l8612",
+      "style_codes": [
+        "L8612"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-l8615",
+      "style_codes": [
+        "L8615"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "cotton430-hoodie-l8705",
+      "style_codes": [
+        "L8705"
+      ],
+      "category": "cotton430-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k01-0256-tz2804-7",
+      "style_codes": [
+        "TZ2804-7"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k01-0256-x-croc",
+      "style_codes": [],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k01-0256-tz2804-8",
+      "style_codes": [
+        "TZ2804-8"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k01-0256-tz2800-10",
+      "style_codes": [
+        "TZ2800-10"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k01-0256",
+      "style_codes": [
+        "0256"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k02",
+      "style_codes": [
+        "025"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k03",
+      "style_codes": [
+        "TZ2802-5"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k04",
+      "style_codes": [
+        "TZ2802-1"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k05",
+      "style_codes": [
+        "TZ2802-6"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k06",
+      "style_codes": [
+        "TZ2802-4"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k07",
+      "style_codes": [
+        "TZ2802-3"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k08",
+      "style_codes": [
+        "TZ2802-2"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k09",
+      "style_codes": [
+        "TZ2802"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k10-1102-dj121",
+      "style_codes": [
+        "DJ121"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k10-1102",
+      "style_codes": [
+        "1102"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k11-1103",
+      "style_codes": [
+        "1103"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k12-3900-0253",
+      "style_codes": [
+        "0253"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k12-3900-0252",
+      "style_codes": [
+        "0252"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k12-3900",
+      "style_codes": [
+        "3900"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k13-3901",
+      "style_codes": [
+        "3901"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k14-3902",
+      "style_codes": [
+        "3902"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k15-3903",
+      "style_codes": [
+        "3903"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k16-3904",
+      "style_codes": [
+        "3904"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k17-3905",
+      "style_codes": [
+        "3905"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k18-3906",
+      "style_codes": [
+        "3906"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k19-3907",
+      "style_codes": [
+        "3907"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k20-70083",
+      "style_codes": [
+        "70083"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k21-70046",
+      "style_codes": [
+        "70046"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k22-6000-2",
+      "style_codes": [
+        "6000-2"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "hoodie-set-k23-70080",
+      "style_codes": [
+        "70080"
+      ],
+      "category": "hoodie-set",
+      "rights": "ok"
+    },
+    {
+      "slug": "aston-hoodie-69008",
+      "style_codes": [
+        "69008"
+      ],
+      "category": "aston-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "aston-hoodie-69009",
+      "style_codes": [
+        "69009"
+      ],
+      "category": "aston-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "aston-hoodie-69010",
+      "style_codes": [
+        "69010"
+      ],
+      "category": "aston-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "aston-hoodie-69011",
+      "style_codes": [
+        "69011"
+      ],
+      "category": "aston-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "aston-hoodie-69012",
+      "style_codes": [
+        "69012"
+      ],
+      "category": "aston-hoodie",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "aston-hoodie-69013",
+      "style_codes": [
+        "69013"
+      ],
+      "category": "aston-hoodie",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "aston-hoodie-69014",
+      "style_codes": [
+        "69014"
+      ],
+      "category": "aston-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "aston-hoodie-69015",
+      "style_codes": [
+        "69015"
+      ],
+      "category": "aston-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "aston-hoodie-69016",
+      "style_codes": [
+        "69016"
+      ],
+      "category": "aston-hoodie",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "aston-hoodie-69017",
+      "style_codes": [
+        "69017"
+      ],
+      "category": "aston-hoodie",
+      "rights": "ok"
+    },
+    {
+      "slug": "aston-hoodie-69018",
+      "style_codes": [
+        "69018"
+      ],
+      "category": "aston-hoodie",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k24-tz2803-5",
+      "style_codes": [
+        "TZ2803-5"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    },
+    {
+      "slug": "hoodie-set-k25-tz2803-6",
+      "style_codes": [
+        "TZ2803-6"
+      ],
+      "category": "hoodie-set",
+      "rights": "owner-licensed"
+    }
+  ]
+}

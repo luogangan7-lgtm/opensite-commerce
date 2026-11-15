@@ -1,0 +1,17 @@
+---
+/** Category discovery uses existing product media and Locale labels; counts derive from catalog. */
+import { products, categories } from '../data/catalog';
+import { dictionaries, pageLocale, productText, type Key } from '../i18n';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+const locale=pageLocale(Astro.url),t=dictionaries[locale];
+---
+<nav class="category-previews" aria-label={t.collections}>{Object.keys(categories).map(category=>{
+ const members=products.filter(p=>p.category===category),product=members.find(p=>['apparel-70175','crew-fleece-8900-38','cotton430-hoodie-58065','hoodie-set-k02'].includes(p.slug))||members[0];
+ return <a href={getRelativeLocaleUrl(locale,`/collections/${category}/`)}><img src={product.images[0].src} alt={productText[locale][product.slug].name} width="600" height="750" loading="lazy"/><span>{t[category as Key]}</span><span class="muted">{members.length}</span></a>;
+})}</nav>
+<style>
+.category-previews{grid-template-columns:repeat(4,minmax(0,1fr))}
+.category-previews img{aspect-ratio:4/5;object-fit:contain}
+.category-previews span{display:block}
+@media(max-width:1024px){.category-previews{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>

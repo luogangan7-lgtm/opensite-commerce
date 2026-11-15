@@ -1,0 +1,41 @@
+---
+/** Shared localized consent UI; overlay presentation; existing consent state and events stay unchanged. */
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { dictionaries, pageLocale } from '../i18n';
+const locale = pageLocale(Astro.url), t = dictionaries[locale];
+---
+<aside class="cookie-banner" data-cookie-banner hidden aria-labelledby="cookie-title">
+  <div><h2 id="cookie-title">{t.cookieTitle}</h2><p>{t.cookieBannerText}</p></div>
+  <div class="cookie-actions"><button type="button" data-cookie-choice="all">{t.cookieAccept}</button><button type="button" data-cookie-choice="essential">{t.cookieEssential}</button><a href={getRelativeLocaleUrl(locale, '/privacy/') + '#cookies'}>{t.cookieSettings}</a></div>
+</aside>
+<style>
+.cookie-banner { position: fixed; z-index: 10; inset-inline: var(--sy-space-grid-x); inset-block-end: var(--sy-space-grid-x); max-width: var(--sy-layout-max); margin-inline: auto; padding: var(--sy-space-lg); background: var(--sy-color-surface); border: var(--sy-space-hair) solid var(--sy-color-border); border-radius: var(--sy-radius-card); text-align: start; color: var(--sy-color-ink); }
+.cookie-banner:not([hidden]) { display: flex; align-items: center; justify-content: space-between; gap: var(--sy-space-md); }
+.cookie-banner h2 { font: var(--sy-weight-title) var(--sy-text-lead)/1.5 var(--sy-font-body); margin: 0; }
+.cookie-banner p { margin-block: var(--sy-space-xs) 0; font-size: var(--sy-text-small); color: var(--sy-color-muted); }
+.cookie-actions { display: flex; gap: var(--sy-space-sm); flex-shrink: 0; }
+.cookie-actions button, .cookie-actions a { min-height: calc(var(--sy-space-xl) + var(--sy-space-sm)); padding: var(--sy-space-sm) var(--sy-space-lg); font-size: var(--sy-text-body); display: inline-flex; align-items: center; justify-content: center; }
+.cookie-actions a { color: var(--sy-color-ink); }
+@media (max-width: 1100px) { .cookie-banner:not([hidden]) { flex-direction: column; align-items: stretch; } .cookie-actions { flex-wrap: wrap; } .cookie-actions button { flex: 1; } }
+@media (max-width: 650px) { .cookie-actions { flex-direction: column; } }
+</style>
+<script>
+  const key = 'sourcyo-cookie-consent-v1';
+  const banner = document.querySelector<HTMLElement>('[data-cookie-banner]')!;
+  let choice: string | null = null;
+  try { choice = localStorage.getItem(key); } catch { /* Still allow an in-page choice. */ }
+  banner.hidden = choice === 'all' || choice === 'essential';
+  const open = () => { banner.hidden = false; banner.scrollIntoView({ block: 'center' }); banner.querySelector<HTMLButtonElement>('button')!.focus(); };
+  banner.querySelectorAll<HTMLButtonElement>('[data-cookie-choice]').forEach(button => button.addEventListener('click', () => {
+    const value = button.dataset.cookieChoice!;
+    try { localStorage.setItem(key, value); } catch { /* Consent applies only to this page. */ }
+    window.dispatchEvent(new CustomEvent('apparel:consent', { detail: value }));
+    banner.hidden = true;
+    document.querySelector<HTMLElement>('[data-cookie-reopen], main h1')?.focus({ preventScroll: true });
+  }));
+  document.querySelectorAll('[data-cookie-reopen]').forEach(button => button.addEventListener('click', open));
+  const hash = () => { if (/\/privacy\/?$/.test(location.pathname) && location.hash === '#cookies') open(); };
+  window.addEventListener('hashchange', hash);
+  window.addEventListener('storage', event => { if (event.key === key || event.key === null) banner.hidden = event.newValue === 'all' || event.newValue === 'essential'; });
+  hash();
+</script>

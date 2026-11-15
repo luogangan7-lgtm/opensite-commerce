@@ -1,0 +1,1515 @@
+[
+  {
+    "catalog_index": 0,
+    "slug": "crew-fleece-8900-31",
+    "style_codes": [
+      "8900-31"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/0",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 1,
+    "slug": "crew-fleece-8900-32",
+    "style_codes": [
+      "8900-32"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/1",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 2,
+    "slug": "crew-fleece-8900-33",
+    "style_codes": [
+      "8900-33"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/2",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 3,
+    "slug": "crew-fleece-8900-34",
+    "style_codes": [
+      "8900-34"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/3",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 4,
+    "slug": "crew-fleece-8900-35",
+    "style_codes": [
+      "8900-35"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/4",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 5,
+    "slug": "crew-fleece-8900-36",
+    "style_codes": [
+      "8900-36"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/5",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 6,
+    "slug": "crew-fleece-8900-37",
+    "style_codes": [
+      "8900-37"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/6",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 7,
+    "slug": "crew-fleece-8900-38",
+    "style_codes": [
+      "8900-38"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/7",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 8,
+    "slug": "crew-fleece-8900-39",
+    "style_codes": [
+      "8900-39"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/8",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 9,
+    "slug": "crew-fleece-8900-40",
+    "style_codes": [
+      "8900-40"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/9",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 10,
+    "slug": "crew-fleece-8900-41",
+    "style_codes": [
+      "8900-41"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/10",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 11,
+    "slug": "crew-fleece-8900-42",
+    "style_codes": [
+      "8900-42"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/11",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 12,
+    "slug": "crew-fleece-8900-43",
+    "style_codes": [
+      "8900-43"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/12",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 13,
+    "slug": "crew-fleece-8900-44",
+    "style_codes": [
+      "8900-44"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/13",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 14,
+    "slug": "crew-fleece-8900-45",
+    "style_codes": [
+      "8900-45"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/14",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 15,
+    "slug": "crew-fleece-8900-46",
+    "style_codes": [
+      "8900-46"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/15",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 16,
+    "slug": "crew-fleece-8900-47",
+    "style_codes": [
+      "8900-47"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/16",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 17,
+    "slug": "crew-fleece-8900-48",
+    "style_codes": [
+      "8900-48"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/17",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 18,
+    "slug": "crew-fleece-8900-49",
+    "style_codes": [
+      "8900-49"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/18",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 19,
+    "slug": "crew-fleece-8900-50",
+    "style_codes": [
+      "8900-50"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/19",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 20,
+    "slug": "crew-fleece-8900-53",
+    "style_codes": [
+      "8900-53"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/20",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 21,
+    "slug": "apparel-59011",
+    "style_codes": [
+      "59011"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/21",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 22,
+    "slug": "apparel-59043",
+    "style_codes": [
+      "59043"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/22",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 23,
+    "slug": "apparel-59048",
+    "style_codes": [
+      "59048"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/23",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 24,
+    "slug": "apparel-70108",
+    "style_codes": [
+      "70108"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/24",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 25,
+    "slug": "apparel-70159",
+    "style_codes": [
+      "70159"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/25",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 26,
+    "slug": "apparel-70171",
+    "style_codes": [
+      "70171"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/26",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 27,
+    "slug": "apparel-70172",
+    "style_codes": [
+      "70172"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/27",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 28,
+    "slug": "apparel-70173",
+    "style_codes": [
+      "70173"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/28",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 29,
+    "slug": "apparel-70174",
+    "style_codes": [
+      "70174"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/29",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 30,
+    "slug": "apparel-70174-x-small-logo",
+    "style_codes": [],
+    "source": "docs/apparel-b2b/catalog.json#/products/30",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 31,
+    "slug": "apparel-70175",
+    "style_codes": [
+      "70175"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/31",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 32,
+    "slug": "apparel-70176",
+    "style_codes": [
+      "70176"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/32",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 33,
+    "slug": "apparel-70178",
+    "style_codes": [
+      "70178"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/33",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 34,
+    "slug": "apparel-70178-x-loropiana-crest",
+    "style_codes": [],
+    "source": "docs/apparel-b2b/catalog.json#/products/34",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 35,
+    "slug": "apparel-70179",
+    "style_codes": [
+      "70179"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/35",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 36,
+    "slug": "apparel-70185",
+    "style_codes": [
+      "70185"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/36",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 37,
+    "slug": "apparel-70186",
+    "style_codes": [
+      "70186"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/37",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 38,
+    "slug": "apparel-70188",
+    "style_codes": [
+      "70188"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/38",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 39,
+    "slug": "apparel-70189",
+    "style_codes": [
+      "70189"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/39",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 40,
+    "slug": "apparel-70190",
+    "style_codes": [
+      "70190"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/40",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 41,
+    "slug": "apparel-70191",
+    "style_codes": [
+      "70191"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/41",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 42,
+    "slug": "apparel-70192",
+    "style_codes": [
+      "70192"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/42",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 43,
+    "slug": "apparel-70193",
+    "style_codes": [
+      "70193"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/43",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 44,
+    "slug": "apparel-70194",
+    "style_codes": [
+      "70194"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/44",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 45,
+    "slug": "apparel-7201",
+    "style_codes": [
+      "7201"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/45",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 46,
+    "slug": "apparel-7202",
+    "style_codes": [
+      "7202"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/46",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 47,
+    "slug": "apparel-7203",
+    "style_codes": [
+      "7203"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/47",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 48,
+    "slug": "apparel-7208",
+    "style_codes": [
+      "7208"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/48",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 49,
+    "slug": "apparel-7210",
+    "style_codes": [
+      "7210"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/49",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 50,
+    "slug": "apparel-7213",
+    "style_codes": [
+      "7213"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/50",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 51,
+    "slug": "apparel-7214",
+    "style_codes": [
+      "7214"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/51",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 52,
+    "slug": "apparel-7217",
+    "style_codes": [
+      "7217"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/52",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 53,
+    "slug": "apparel-7700-38",
+    "style_codes": [
+      "7700-38"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/53",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 54,
+    "slug": "apparel-7700-9",
+    "style_codes": [
+      "7700-9"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/54",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 55,
+    "slug": "apparel-78187",
+    "style_codes": [
+      "78187"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/55",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "tee-240-gd52021",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 56,
+    "slug": "cotton430-hoodie-58063",
+    "style_codes": [
+      "58063"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/56",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 57,
+    "slug": "cotton430-hoodie-58064",
+    "style_codes": [
+      "58064"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/57",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 58,
+    "slug": "cotton430-hoodie-58065",
+    "style_codes": [
+      "58065"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/58",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断",
+    "weight_status": "CONFLICT",
+    "weight_claims": [
+      {
+        "value": "430g",
+        "source": "docs/apparel-b2b/catalog.json#/products/58/fabric_weight_fit；供应商目录名 精梳棉430g加绒连帽"
+      },
+      {
+        "value": "390g",
+        "source": "size-charts.json#/charts/hoodie-702/gsm；702# 原始尺码图片"
+      }
+    ],
+    "weight_resolved": "UNKNOWN"
+  },
+  {
+    "catalog_index": 59,
+    "slug": "cotton430-hoodie-58066",
+    "style_codes": [
+      "58066"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/59",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 60,
+    "slug": "cotton430-hoodie-70046",
+    "style_codes": [
+      "70046"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/60",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 61,
+    "slug": "cotton430-hoodie-7339",
+    "style_codes": [
+      "7339"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/61",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 62,
+    "slug": "cotton430-hoodie-8601",
+    "style_codes": [
+      "8601"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/62",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 63,
+    "slug": "cotton430-hoodie-8610",
+    "style_codes": [
+      "8610"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/63",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 64,
+    "slug": "cotton430-hoodie-8611",
+    "style_codes": [
+      "8611"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/64",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 65,
+    "slug": "cotton430-hoodie-l8602",
+    "style_codes": [
+      "L8602"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/65",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 66,
+    "slug": "cotton430-hoodie-l8603",
+    "style_codes": [
+      "L8603"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/66",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 67,
+    "slug": "cotton430-hoodie-l8604",
+    "style_codes": [
+      "L8604"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/67",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 68,
+    "slug": "cotton430-hoodie-l8606",
+    "style_codes": [
+      "L8606"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/68",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 69,
+    "slug": "cotton430-hoodie-l8612",
+    "style_codes": [
+      "L8612"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/69",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 70,
+    "slug": "cotton430-hoodie-l8615",
+    "style_codes": [
+      "L8615"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/70",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 71,
+    "slug": "cotton430-hoodie-l8705",
+    "style_codes": [
+      "L8705"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/71",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "hoodie-702",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 72,
+    "slug": "hoodie-set-k01-0256-tz2804-7",
+    "style_codes": [
+      "TZ2804-7"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/72",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 73,
+    "slug": "hoodie-set-k01-0256-x-croc",
+    "style_codes": [],
+    "source": "docs/apparel-b2b/catalog.json#/products/73",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 74,
+    "slug": "hoodie-set-k01-0256-tz2804-8",
+    "style_codes": [
+      "TZ2804-8"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/74",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 75,
+    "slug": "hoodie-set-k01-0256-tz2800-10",
+    "style_codes": [
+      "TZ2800-10"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/75",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 76,
+    "slug": "hoodie-set-k01-0256",
+    "style_codes": [
+      "0256"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/76",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "zip-025",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 77,
+    "slug": "hoodie-set-k02",
+    "style_codes": [
+      "025"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/77",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "SINGLE_TOP",
+    "size_chart_id": "zip-025",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断",
+    "unit_evidence": [
+      "任务卡原文 K02 单件",
+      "catalog.json#/products/77/name_en",
+      "供应商尺码表 025# 原图，只有上衣尺码"
+    ],
+    "unit_limit": "销售包装清单未提供"
+  },
+  {
+    "catalog_index": 78,
+    "slug": "hoodie-set-k03",
+    "style_codes": [
+      "TZ2802-5"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/78",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 79,
+    "slug": "hoodie-set-k04",
+    "style_codes": [
+      "TZ2802-1"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/79",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 80,
+    "slug": "hoodie-set-k05",
+    "style_codes": [
+      "TZ2802-6"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/80",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 81,
+    "slug": "hoodie-set-k06",
+    "style_codes": [
+      "TZ2802-4"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/81",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 82,
+    "slug": "hoodie-set-k07",
+    "style_codes": [
+      "TZ2802-3"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/82",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 83,
+    "slug": "hoodie-set-k08",
+    "style_codes": [
+      "TZ2802-2"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/83",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 84,
+    "slug": "hoodie-set-k09",
+    "style_codes": [
+      "TZ2802"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/84",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "SET_TOP_AND_PANTS",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断",
+    "unit_evidence": [
+      "任务卡原文 K09 套装",
+      "catalog.json#/products/84/name_en",
+      "catalog.json#/products/84/size_chart_note：记录业主确认套装尺码"
+    ],
+    "unit_limit": "供应商文件夹所见素材含 AI 生成标识，不作为事实依据；原始订单/包装清单未提供"
+  },
+  {
+    "catalog_index": 85,
+    "slug": "hoodie-set-k10-1102-dj121",
+    "style_codes": [
+      "DJ121"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/85",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 86,
+    "slug": "hoodie-set-k10-1102",
+    "style_codes": [
+      "1102"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/86",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 87,
+    "slug": "hoodie-set-k11-1103",
+    "style_codes": [
+      "1103"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/87",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "zip-025",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 88,
+    "slug": "hoodie-set-k12-3900-0253",
+    "style_codes": [
+      "0253"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/88",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "zip-025",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 89,
+    "slug": "hoodie-set-k12-3900-0252",
+    "style_codes": [
+      "0252"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/89",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "zip-025",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 90,
+    "slug": "hoodie-set-k12-3900",
+    "style_codes": [
+      "3900"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/90",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "standcollar-039",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 91,
+    "slug": "hoodie-set-k13-3901",
+    "style_codes": [
+      "3901"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/91",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "standcollar-039",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 92,
+    "slug": "hoodie-set-k14-3902",
+    "style_codes": [
+      "3902"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/92",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "standcollar-039",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 93,
+    "slug": "hoodie-set-k15-3903",
+    "style_codes": [
+      "3903"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/93",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "standcollar-039",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 94,
+    "slug": "hoodie-set-k16-3904",
+    "style_codes": [
+      "3904"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/94",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "standcollar-039",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 95,
+    "slug": "hoodie-set-k17-3905",
+    "style_codes": [
+      "3905"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/95",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "standcollar-039",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 96,
+    "slug": "hoodie-set-k18-3906",
+    "style_codes": [
+      "3906"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/96",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "standcollar-039",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 97,
+    "slug": "hoodie-set-k19-3907",
+    "style_codes": [
+      "3907"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/97",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "standcollar-039",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 98,
+    "slug": "hoodie-set-k20-70083",
+    "style_codes": [
+      "70083"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/98",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "zip-025",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 99,
+    "slug": "hoodie-set-k21-70046",
+    "style_codes": [
+      "70046"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/99",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "zip-025",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 100,
+    "slug": "hoodie-set-k22-6000-2",
+    "style_codes": [
+      "6000-2"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/100",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "zip-025",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 101,
+    "slug": "hoodie-set-k23-70080",
+    "style_codes": [
+      "70080"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/101",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "zip-025",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 102,
+    "slug": "aston-hoodie-69008",
+    "style_codes": [
+      "69008"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/102",
+    "fabric_id": "aston-bonded-320",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 103,
+    "slug": "aston-hoodie-69009",
+    "style_codes": [
+      "69009"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/103",
+    "fabric_id": "aston-bonded-320",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 104,
+    "slug": "aston-hoodie-69010",
+    "style_codes": [
+      "69010"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/104",
+    "fabric_id": "aston-bonded-320",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 105,
+    "slug": "aston-hoodie-69011",
+    "style_codes": [
+      "69011"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/105",
+    "fabric_id": "aston-bonded-320",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 106,
+    "slug": "aston-hoodie-69012",
+    "style_codes": [
+      "69012"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/106",
+    "fabric_id": "aston-bonded-320",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 107,
+    "slug": "aston-hoodie-69013",
+    "style_codes": [
+      "69013"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/107",
+    "fabric_id": "aston-bonded-320",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 108,
+    "slug": "aston-hoodie-69014",
+    "style_codes": [
+      "69014"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/108",
+    "fabric_id": "aston-bonded-320",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 109,
+    "slug": "aston-hoodie-69015",
+    "style_codes": [
+      "69015"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/109",
+    "fabric_id": "aston-bonded-320",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 110,
+    "slug": "aston-hoodie-69016",
+    "style_codes": [
+      "69016"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/110",
+    "fabric_id": "aston-bonded-320",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 111,
+    "slug": "aston-hoodie-69017",
+    "style_codes": [
+      "69017"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/111",
+    "fabric_id": "aston-bonded-320",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 112,
+    "slug": "aston-hoodie-69018",
+    "style_codes": [
+      "69018"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/112",
+    "fabric_id": "aston-bonded-320",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "aston-sweatshirt",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 113,
+    "slug": "hoodie-set-k24-tz2803-5",
+    "style_codes": [
+      "TZ2803-5"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/113",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  },
+  {
+    "catalog_index": 114,
+    "slug": "hoodie-set-k25-tz2803-6",
+    "style_codes": [
+      "TZ2803-6"
+    ],
+    "source": "docs/apparel-b2b/catalog.json#/products/114",
+    "fabric_id": "UNKNOWN",
+    "fabric_fact": "UNKNOWN",
+    "unit_composition": "UNKNOWN",
+    "size_chart_id": "set-400g-silverfox",
+    "note": "记录索引，未经供应商逐款核验；不从图片推断"
+  }
+]

@@ -1,0 +1,12 @@
+---
+/** Disclosure for untranslated content; consumers mark only the English text lang=en. */
+import { pageLocale } from '../i18n';
+const notices = {
+  en: '', zh: '此内容暂以英文显示，尚未翻译。', es: 'Este contenido se muestra en inglés; aún no está traducido.',
+  fr: 'Ce contenu est affiché en anglais ; il n’est pas encore traduit.', de: 'Dieser Inhalt wird auf Englisch angezeigt und ist noch nicht übersetzt.',
+  pt: 'Este conteúdo é apresentado em inglês; ainda não foi traduzido.', ru: 'Этот материал показан на английском языке; перевод пока отсутствует.',
+  ar: 'يُعرض هذا المحتوى باللغة الإنجليزية؛ ولم تتم ترجمته بعد.',
+};
+const locale = pageLocale(Astro.url);
+---
+{locale !== 'en' && <p class="muted" data-english-fallback>{notices[locale]}</p>}

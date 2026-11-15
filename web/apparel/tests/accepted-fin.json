@@ -1,0 +1,74 @@
+[
+  {
+    "exactId": "regen-queue-01/apparel-70194/primary-structure-g2",
+    "sha256": "7680b5df5c81233d4d018b2619779eaf408c9803d4b4ad63d11ece317c8031eb",
+    "slug": "apparel-70194",
+    "src": "/img/apparel-70194/structure.webp",
+    "role": "structure",
+    "colour": "black",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/FIN-PLACE/assets/apparel-70194--structure.png",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN1/out/review.tsv",
+    "width": 1254,
+    "height": 1254
+  },
+  {
+    "exactId": "regen-queue-01/apparel-70179/model-03-front-r6",
+    "sha256": "74329f4472b481e5c4a795081ef4c2d5a9a2be8b72266a2fbafa055075e5a2f4",
+    "slug": "apparel-70179",
+    "src": "/img/apparel-70179/digital-model-03.webp",
+    "role": "front",
+    "colour": "beige/sand",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fapparel-70179%2Fmodel-03-front-r6/image.raw",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN1/out/review.tsv",
+    "width": 1122,
+    "height": 1402
+  },
+  {
+    "exactId": "regen-queue-01/aston-hoodie-69012/primary-structure-g2",
+    "sha256": "b0f2e776e5695c82524732eb20a5f238b40f5f0727955fc9f13608f667b541b8",
+    "slug": "pullover-hoodie-69012",
+    "src": "/img/pullover-hoodie-69012/structure.webp",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/FIN-PLACE/assets/pullover-hoodie-69012--structure.png",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN1/out/review.tsv",
+    "width": 1254,
+    "height": 1254
+  },
+  {
+    "exactId": "regen-queue-01/aston-hoodie-69015/primary-structure-g2",
+    "sha256": "c07e9102032b9a8511f2807f37592ceaaacc9ef6732c9d3bd69bf3f827db385c",
+    "slug": "pullover-hoodie-69015",
+    "src": "/img/pullover-hoodie-69015/structure.webp",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/FIN-PLACE/assets/pullover-hoodie-69015--structure.png",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN1/out/review.tsv",
+    "width": 1254,
+    "height": 1254
+  },
+  {
+    "exactId": "regen-queue-01/aston-hoodie-69014/primary-structure-g2",
+    "sha256": "b5363d28366a039f9a9a38354e99ad8b432af72f1a0186f68ef0b98b1518d339",
+    "slug": "pullover-hoodie-69014",
+    "src": "/img/pullover-hoodie-69014/structure.webp",
+    "role": "structure",
+    "colour": "white",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/FIN-PLACE/assets/pullover-hoodie-69014--structure.png",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN1/out/review.tsv",
+    "width": 1254,
+    "height": 1254
+  },
+  {
+    "exactId": "regen-queue-01/aston-hoodie-69010/primary-structure-g2",
+    "sha256": "852c339b1616ad3c7c74c22d6a5aeba365d9cdbf5e93acd300049e18b68a607f",
+    "slug": "pullover-hoodie-69010",
+    "src": "/img/pullover-hoodie-69010/structure.webp",
+    "role": "structure",
+    "colour": "stone/light greige",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave2/FIN-PLACE/assets/pullover-hoodie-69010--structure.png",
+    "acceptance": "fleet-20261104/launch-orchestration-20261112/project-control-02/review-FIN2/out/review.tsv",
+    "width": 1254,
+    "height": 1254
+  }
+]

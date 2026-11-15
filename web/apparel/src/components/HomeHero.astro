@@ -1,0 +1,104 @@
+---
+/** Frozen Home/HeroCarousel composition. Owns only local UI state; Home calls it.
+ * Locale dictionaries and HomeMedia supply content; no storage or network actions. */
+import HomeMedia from './HomeMedia.astro';
+import {dictionaries,pageLocale,type Key} from '../i18n';
+const t=dictionaries[pageLocale(Astro.url)];
+const slides=['hero-visit','hero-overhead','hero-lifestyle'];
+const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
+---
+<section class="hero home-hero" data-home-carousel data-active="0" data-pause={text(16)} data-play={text(17)} role="region" aria-label={text(1)}>
+ <div class="hero-visual">
+  {slides.map((id,i)=><div class:list={['hero-photo',{'is-active':i===0}]} data-slide data-title={text(i+2)} aria-hidden="true"><HomeMedia id={id} alt="" hero={i===0} class="hero-picture" /></div>)}
+  <div class="hero-shade"></div>
+  <div class="hero-content"><p class="eyebrow">{text(1)}</p><h1 data-hero-title>{text(2)}</h1><p class="hero-sub"><span class="wide-sub">{text(5)}</span><span class="small-sub">{text(6)}</span></p><a class="button secondary" href="#home-inquiry">{t.request}<span aria-hidden="true">→</span></a></div>
+  <div class="hero-dots" role="group" aria-label={text(1)}>{slides.map((_,i)=><button type="button" data-slide-to={i} aria-label={text(i+2).replaceAll('\n',' ')} aria-pressed={i===0}><span aria-hidden="true">{i===0?'●':'○'}</span></button>)}</div>
+  <p class="hero-counter" dir="ltr" aria-live="polite" aria-atomic="true"><span data-slide-counter>1</span> / 3</p>
+  <p class="hero-disclosure">{text(15)}</p>
+  <button class="hero-playback" type="button" data-playback>{text(16)}</button>
+ </div>
+ <dl class="hero-facts">{[7,9,11,13].map(n=><div><dt>{text(n)}</dt><dd dir={n===13?'ltr':undefined}>{text(n+1)}</dd></div>)}</dl>
+</section>
+<script>
+ const hero=document.querySelector<HTMLElement>('[data-home-carousel]');
+ if(hero){
+  const slides=[...hero.querySelectorAll<HTMLElement>('[data-slide]')], dots=[...hero.querySelectorAll<HTMLButtonElement>('[data-slide-to]')];
+  const playback=hero.querySelector<HTMLButtonElement>('[data-playback]')!, title=hero.querySelector<HTMLElement>('[data-hero-title]')!, counter=hero.querySelector<HTMLElement>('[data-slide-counter]')!;
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)');
+  let active=0, paused=reduce.matches, hover=false, focused=false, timer:ReturnType<typeof setTimeout>|undefined;
+  const interval=Number(getComputedStyle(hero).getPropertyValue('--home-autoplay-ms'));
+  function schedule(){
+   clearTimeout(timer);
+   playback.textContent=paused||reduce.matches?hero!.dataset.play!:hero!.dataset.pause!;
+   if(!paused&&!hover&&!focused&&!reduce.matches)timer=setTimeout(()=>select(active+1),interval);
+  }
+  function select(index:number){
+   active=(index+slides.length)%slides.length; hero!.dataset.active=String(active);
+   slides.forEach((slide,i)=>slide.classList.toggle('is-active',i===active));
+   dots.forEach((dot,i)=>{dot.setAttribute('aria-pressed',String(i===active));dot.firstElementChild!.textContent=i===active?'●':'○';});
+   title.textContent=slides[active].dataset.title!;counter.textContent=String(active+1);schedule();
+  }
+  dots.forEach((dot,i)=>{dot.addEventListener('click',()=>select(i));dot.addEventListener('mouseenter',()=>select(i));dot.addEventListener('focus',()=>select(i));});
+  hero.addEventListener('mouseenter',()=>{hover=true;schedule();});
+  hero.addEventListener('mouseleave',()=>{hover=false;schedule();});
+  hero.addEventListener('focusin',()=>{focused=true;schedule();});
+  hero.addEventListener('focusout',()=>queueMicrotask(()=>{focused=hero.contains(document.activeElement);schedule();}));
+  hero.addEventListener('keydown',event=>{
+   if(!['ArrowLeft','ArrowRight'].includes(event.key))return;
+   event.preventDefault();const direction=event.key==='ArrowRight'?1:-1;
+   select(active+direction*(document.documentElement.dir==='rtl'?-1:1));
+  });
+  playback.addEventListener('click',()=>{paused=!paused;schedule();});
+  reduce.addEventListener('change',()=>{if(reduce.matches)paused=true;schedule();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(timer);else schedule();});
+  schedule();
+ }
+</script>
+<style>
+ /* Values bind the frozen 687:135326 / 135395 / 135464 geometry and FD2 reactions;
+    shared color, spacing and type remain project tokens. */
+ .home-hero { --home-photo-height:768px; --home-facts-height:112px; --home-copy-top:200px; --home-gutter:var(--sy-space-section); --home-control:44px; --home-autoplay-ms:6000; --home-crossfade:400ms; position:relative;display:block;min-height:0;padding:0;border:0;color:var(--sy-color-on-ink);background:var(--sy-color-ink); }
+ .hero-visual{height:var(--home-photo-height);position:relative;isolation:isolate;}
+ .hero-photo,.hero-shade{position:absolute;inset:0;z-index:-2;overflow:hidden;}
+ .hero-photo{opacity:0;transition:opacity var(--home-crossfade) ease-in-out;}
+ .hero-photo.is-active{opacity:1;}
+ .hero-shade{z-index:-1;opacity:.66;background:var(--sy-color-overlay);}
+ .hero-photo :global(picture){position:absolute;inset:0;}
+ .hero-photo :global(img){width:100%;height:100%;object-fit:cover;object-position:50% 0;}
+ :global([dir=rtl]) .hero-photo{transform:scaleX(-1);}
+ .hero-content{position:absolute;inset-inline-start:var(--home-gutter);top:var(--home-copy-top);padding:0;max-width:calc(100% - var(--home-gutter) * 2);}
+ .eyebrow{font-size:var(--sy-text-eyebrow);font-weight:var(--sy-weight-label);margin:0 0 var(--sy-space-lg);}
+ h1{white-space:pre-line;max-width:880px;font-size:var(--sy-text-h1);line-height:1.1;margin:0 0 var(--sy-space-lg);}
+ .hero-sub{font-size:var(--sy-text-lead);margin:0 0 var(--sy-space-lg);}
+ .small-sub{display:none;}
+ .secondary,.hero-playback{background:transparent;color:inherit;border:var(--sy-space-hair) solid currentColor;border-radius:var(--sy-radius-control);gap:var(--sy-space-md);font-size:var(--sy-text-small);font-weight:var(--sy-weight-label);}
+ .secondary:hover,.hero-playback:hover{background:var(--sy-color-ink);}
+ .hero-dots{position:absolute;inset-inline-end:var(--sy-space-md);top:calc(50% - var(--home-control) * 1.5);display:grid;}
+ .hero-dots button{min-height:var(--home-control);width:var(--home-control);padding:0;background:transparent;color:inherit;border:0;border-radius:var(--sy-radius-pill);}
+ .hero-dots span{font-size:var(--sy-text-h4);}
+ .hero-counter,.hero-playback{position:absolute;inset-inline-end:var(--sy-space-gutter-lg);}
+ .hero-counter{bottom:var(--sy-space-section);margin:0;font-size:var(--sy-text-eyebrow);}
+ .hero-playback{bottom:var(--sy-space-lg);min-height:var(--home-control);min-width:var(--sy-space-section);padding:var(--sy-space-xs) var(--sy-space-md);}
+ .hero-disclosure{position:absolute;inset-inline-start:var(--home-gutter);bottom:var(--sy-space-sm);margin:0;font-size:var(--sy-text-eyebrow);}
+ .hero-facts{height:var(--home-facts-height);margin:0;padding:var(--sy-space-lg) var(--home-gutter);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);}
+ .hero-facts dt{font-size:var(--sy-text-eyebrow);font-weight:var(--sy-weight-label);margin-bottom:var(--sy-space-xs);}
+ .hero-facts dd{margin:0;font-size:var(--sy-text-small);}
+ @media(max-width:1023px){
+  .home-hero{--home-photo-height:688px;--home-copy-top:184px;--home-gutter:var(--sy-space-gutter-md);}
+  h1{font-size:var(--sy-text-h2);}
+  .hero-photo:nth-child(3) :global(img){object-position:77.3636% 0;}
+ }
+ @media(max-width:650px){
+  .home-hero{--home-photo-height:560px;--home-facts-height:168px;--home-copy-top:176px;--home-gutter:var(--sy-space-gutter-mobile);}
+  h1{font-size:var(--sy-text-h1-mobile);}
+  .hero-sub{font-size:var(--sy-text-body);}
+  .wide-sub{display:none;}.small-sub{display:inline;}
+  .hero-dots{inset-inline-end:auto;inset-inline-start:50%;top:auto;bottom:var(--sy-space-lg);transform:translateX(-50%);display:flex;direction:ltr;}
+  :global([dir=rtl]) .hero-dots{transform:translateX(50%);}
+  .hero-playback{inset-inline-end:var(--home-gutter);min-width:80px;}
+  .hero-counter{inset-inline-end:var(--sy-space-section);bottom:var(--sy-space-section);}
+  .hero-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding-block:var(--sy-space-lg);gap:var(--sy-space-lg);}
+  .hero-photo:nth-child(3) :global(img){position:absolute;max-width:none;width:146.285714%;height:146.285714%;inset-inline-start:-38.74%;top:0;object-position:83.6935% 0;}
+ }
+ @media(prefers-reduced-motion:reduce){.hero-photo{transition-duration:0s;}}
+</style>

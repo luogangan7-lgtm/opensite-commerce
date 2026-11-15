@@ -1,0 +1,10 @@
+---
+/** Shared slot picture; deploy packager binds source dimensions and provenance before publication. */
+import { dictionaries, pageLocale, type Key } from '../i18n';
+import { imageBase, imageSrcset } from '../data/imagery';
+interface Props { id: string; hero?: boolean; sizes?: string; class?: string }
+const { id, hero = false, sizes = '(max-width: 650px) 100vw, 50vw', class: className } = Astro.props;
+const alt = dictionaries[pageLocale(Astro.url)][`alt.${id.replace('/', '.')}` as Key];
+if (!alt) throw Error(`Missing localized slot alt: ${id}`);
+---
+<picture data-slot={id} class={className}><source type="image/avif" srcset={imageSrcset(id, 'avif')} sizes={sizes} /><source type="image/webp" srcset={imageSrcset(id, 'webp')} sizes={sizes} /><img src={`${imageBase(id)}-1024.webp`} alt={alt} width="1" height="1" loading={hero ? 'eager' : 'lazy'} decoding="async" fetchpriority={hero ? 'high' : undefined} /></picture>

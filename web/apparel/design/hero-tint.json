@@ -1,0 +1,42 @@
+{
+  "source": {
+    "fileKey": "iV07xrwn5UfjWpIQ3LWPoE",
+    "connectionId": "5d45f7b5-ad1b-4215-86ec-a983ec9a4324",
+    "readAt": "2026-11-15T03:34:19.924Z",
+    "root": {
+      "id": "687:135947",
+      "name": "Home/HeroCarousel"
+    },
+    "readMethod": "Fleet Bridge use_figma / getNodeByIdAsync; read only",
+    "fileKeyReportedByBridge": null
+  },
+  "tint": {
+    "id": "687:144445",
+    "name": "Overall tint / sy-color-ink / 66%",
+    "type": "RECTANGLE",
+    "variant": "Slide=1, Device=Desktop, Locale=EN, Playback=Playing",
+    "opacity": 0.6600000262260437,
+    "visible": true,
+    "fills": [
+      {
+        "type": "SOLID",
+        "visible": true,
+        "opacity": 1,
+        "blendMode": "NORMAL",
+        "color": {
+          "r": 0.07058823853731155,
+          "g": 0.16078431904315948,
+          "b": 0.12156862765550613
+        },
+        "boundVariables": {
+          "color": {
+            "type": "VARIABLE_ALIAS",
+            "id": "VariableID:1:19"
+          }
+        }
+      }
+    ],
+    "blendMode": "PASS_THROUGH"
+  },
+  "matchingTintNodes": 81
+}
