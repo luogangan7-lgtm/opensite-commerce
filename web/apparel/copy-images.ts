@@ -9,6 +9,7 @@ import products from './src/data/products.json';
 import frozen from './design/collection-frozen.json';
 import digital from './digital-sources.json';
 import homeMedia from './home-media.json';
+import serviceMedia from './service-media.json';
 import contactMedia from './contact-media.json';
 import details from './detail-sources.json';
 import { packageDetails, readDetailLedger, copyFallbackImage } from './detail-images';
@@ -79,7 +80,7 @@ for (const receipt of await packageDetails(plan.details, sourceRoot, destination
   dimensions.set(receipt.src, {w:receipt.w, h:receipt.h});
   record(receipt.src, receipt.sourceSha256);
 }
-for (const image of [...plan.digital, ...homeMedia, ...frozen.assets, ...contactMedia]) {
+for (const image of [...plan.digital, ...homeMedia, ...serviceMedia, ...frozen.assets, ...contactMedia]) {
   await packageDigital(image, sourceRoot, destination);
   for (const delivery of digitalDelivery(image)) {
     const outputMetadata = await sharp(join(destination, delivery.src)).metadata();
@@ -126,6 +127,6 @@ for (const file of html) for (const match of readFileSync(file, 'utf8').matchAll
 }
 console.log(`PASS: ${html.length} HTML files; 0 missing <img> files`);
 const receipt = (image: Approved) => ({ id: image.id, slug: image.slug, role: image.id ? 'illustrative' : image.role, src: image.src, sha256: image.sha256, w: image.w, h: image.h, rights: image.rights });
-const manifest = { schema: 1, sha: build.sha, buildRunId: build.runId, buildReceiptSha256: process.env.APPAREL_BUILD_RECEIPT_SHA256, packagerSha, details: plan.details.map(({slug, role, colour, src, sha256}) => ({slug, role, colour, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src)})), slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), digital: plan.digital.map(image => ({slug:image.slug,role:image.role,src:image.src,sha256:image.sha256,rights:'ai-generated-illustrative',...dimensions.get(image.src),derivatives:digitalDelivery(image).map(({src,sourceSha256}) => ({src,sourceSha256,...dimensions.get(src)}))})), contactMedia: contactMedia.map(image => ({id:image.id,src:image.src,sha256:image.sha256})), homeMedia: homeMedia.map(image => ({id:image.id,src:image.src,sha256:image.sha256,derivatives:digitalDelivery(image).map(({src,sourceSha256}) => ({src,sourceSha256,...dimensions.get(src)}))})), files };
+const manifest = { schema: 1, sha: build.sha, buildRunId: build.runId, buildReceiptSha256: process.env.APPAREL_BUILD_RECEIPT_SHA256, packagerSha, details: plan.details.map(({slug, role, colour, src, sha256}) => ({slug, role, colour, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src)})), slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), digital: plan.digital.map(image => ({slug:image.slug,role:image.role,src:image.src,sha256:image.sha256,rights:'ai-generated-illustrative',...dimensions.get(image.src),derivatives:digitalDelivery(image).map(({src,sourceSha256}) => ({src,sourceSha256,...dimensions.get(src)}))})), contactMedia: contactMedia.map(image => ({id:image.id,src:image.src,sha256:image.sha256})), serviceMedia: serviceMedia.map(image => ({id:image.id,src:image.src,sha256:image.sha256,derivatives:digitalDelivery(image).map(({src,sourceSha256}) => ({src,sourceSha256,...dimensions.get(src)}))})), homeMedia: homeMedia.map(image => ({id:image.id,src:image.src,sha256:image.sha256,derivatives:digitalDelivery(image).map(({src,sourceSha256}) => ({src,sourceSha256,...dimensions.get(src)}))})), files };
 writeFileSync(join(destination, 'deploy-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 console.log(JSON.stringify({ sha: manifest.sha, slots: plan.slots.length, packshots: plan.packshots.map(p => p.slug), files: files.length, hero1024: files.filter(p => p.url.includes('illustrative_home_hero-1024')) }));

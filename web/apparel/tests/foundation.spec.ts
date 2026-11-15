@@ -66,6 +66,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
     test(`non-contact success ${locale} ${route}`, async ({ page }) => {
       await page.route('**/api/rfq', route => route.fulfill({ status: 201, contentType: 'application/json', body: '{}' }));
       await page.goto(`${prefix}/${route}/`);
+      if (route === 'shipping') await page.locator('[data-service-rfq]').click();
       await fill(page);
       await page.locator('button[type="submit"]').click();
       await expect(page).toHaveURL(`${prefix}/contact/?sent=1`);

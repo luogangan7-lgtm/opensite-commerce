@@ -1,0 +1,211 @@
+[
+  {
+    "id": "tech-01",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-01-screen-print-svc2-a1/image.raw",
+    "sha256": "0e1aaa6be2cc787e556a63341184def52bd0014db454a3bf2d513a272ed5095b",
+    "src": "/img/service/tech-01.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/973",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-01-screen-print-svc2-a1"
+  },
+  {
+    "id": "tech-02",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-02-digital-print-svc2-a2/image.raw",
+    "sha256": "afde731ff88b99ac603da8b06ce1ff4c256cd6ac367f58619d3ef002b483cf11",
+    "src": "/img/service/tech-02.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/975",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-02-digital-print-svc2-a2"
+  },
+  {
+    "id": "tech-03",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-03-heat-transfer-svc2-a2/image.raw",
+    "sha256": "05fb9f581ab63c6b95b0daf0a767909cd115e6f9d0ace06c7e15abad57b746ac",
+    "src": "/img/service/tech-03.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/977",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-03-heat-transfer-svc2-a2"
+  },
+  {
+    "id": "tech-04",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-04-reflective-print-svc2-a1/image.raw",
+    "sha256": "6768a4a573ed9c482c82f143f4c3583484833c471a7780cbb642c1e72cbfcd87",
+    "src": "/img/service/tech-04.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/979",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-04-reflective-print-svc2-a1"
+  },
+  {
+    "id": "tech-05",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-05-foil-print-svc2-a1/image.raw",
+    "sha256": "2de0ff1847893e7748aa5488523de2352c3dc18eb0aa2367a6ad5dbbe9d32380",
+    "src": "/img/service/tech-05.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/981",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-05-foil-print-svc2-a1"
+  },
+  {
+    "id": "tech-06",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-06-puff-print-svc2-a1/image.raw",
+    "sha256": "7c44f62e56d348b340dbb4e7844666d274712f35e6a5abe473f2254a9d0930d3",
+    "src": "/img/service/tech-06.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/983",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-06-puff-print-svc2-a1"
+  },
+  {
+    "id": "tech-07",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-07-crack-print-svc2-a1/image.raw",
+    "sha256": "7c1441492681879e0a4a946273b4e040ed8b69a05cb60ebac1540f53c52481a5",
+    "src": "/img/service/tech-07.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/985",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-07-crack-print-svc2-a1"
+  },
+  {
+    "id": "tech-08",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-08-glitter-print-svc2-a1/image.raw",
+    "sha256": "df38179838e14a144443ce5251f5bacb5888b5fe6137bfbb0054903d8a34a360",
+    "src": "/img/service/tech-08.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/987",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-08-glitter-print-svc2-a1"
+  },
+  {
+    "id": "tech-09",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-09-discharge-print-svc2-a1/image.raw",
+    "sha256": "b4f2c177e12538cdfa6130e19a20f1d911274196c784b9adc0c758b2b1b79345",
+    "src": "/img/service/tech-09.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/989",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-09-discharge-print-svc2-a1"
+  },
+  {
+    "id": "tech-10",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-10-flat-embroidery-svc2-a2/image.raw",
+    "sha256": "707b544107b9d1d27e4dbf99a1dc0ff12b2ba3b02836f5646ebdfbf61075424e",
+    "src": "/img/service/tech-10.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/991",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-10-flat-embroidery-svc2-a2"
+  },
+  {
+    "id": "tech-11",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-11-puff-embroidery-svc2-a1/image.raw",
+    "sha256": "d39c084ed1cad1591cd8dda205353d3a84c711760fe387991b45762ccef257e9",
+    "src": "/img/service/tech-11.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/993",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-11-puff-embroidery-svc2-a1"
+  },
+  {
+    "id": "tech-12",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-12-chenille-svc2-a2/image.raw",
+    "sha256": "09bb97dbd9c094d0db8f2e7c1cb385c6df2b12728c1dbf91037d6038f4ca6a10",
+    "src": "/img/service/tech-12.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/995",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-12-chenille-svc2-a2"
+  },
+  {
+    "id": "tech-13",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-13-applique-svc2-a2/image.raw",
+    "sha256": "f25332aff316ad246a3217e8383188698ede9a4d8d6391bbfefd7efdfc79dd8e",
+    "src": "/img/service/tech-13.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/997",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-13-applique-svc2-a2"
+  },
+  {
+    "id": "tech-14",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-14-labels-svc2-a1/image.raw",
+    "sha256": "e127b396f3cab05e87fc38a52fd6d44e5c0c2efc15e6679ecc2dd57149bfbb52",
+    "src": "/img/service/tech-14.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/999",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-14-labels-svc2-a1"
+  },
+  {
+    "id": "tech-15",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-15-packaging-svc2-a1/image.raw",
+    "sha256": "17663c0e360d922a5fa83ebc45c161c85dc456b4e678299f8adac9a09117fe8c",
+    "src": "/img/service/tech-15.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/1001",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-15-packaging-svc2-a1"
+  },
+  {
+    "id": "tech-16",
+    "kind": "technique",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/R-SVC2/techniques/quarantine/tech-16-dye-wash-svc2-a1/image.raw",
+    "sha256": "4065e55d451b4ff18eb68b2abc1fb9a0ba25865d46714abee88b714152e7be54",
+    "src": "/img/service/tech-16.webp",
+    "width": 1254,
+    "height": 1254,
+    "altKey": "cp-svc/capabilities/1003",
+    "authority": "R-SVC2/TECH-FINAL.json; tech-16-dye-wash-svc2-a1"
+  },
+  {
+    "id": "catalog-crew",
+    "kind": "catalog",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/CP-SVC/assets/catalog-crew.png",
+    "sha256": "9b3c96b42da64971791e144b6c58c3dd53973d5f542ab6580360880a8f2deb26",
+    "src": "/img/service/catalog-crew.webp",
+    "width": 1122,
+    "height": 1402,
+    "altKey": "",
+    "authority": "Approved R-SVC2 original catalog fills; Figma1186:6642"
+  },
+  {
+    "id": "catalog-green",
+    "kind": "catalog",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/CP-SVC/assets/catalog-green.png",
+    "sha256": "55ea67a5e93b11a57c3a28a7054991e9da5ea4821dc51ff2d7999b077c274090",
+    "src": "/img/service/catalog-green.webp",
+    "width": 1122,
+    "height": 1402,
+    "altKey": "",
+    "authority": "Approved R-SVC2 original catalog fills; Figma1186:6642"
+  },
+  {
+    "id": "catalog-hoodie",
+    "kind": "catalog",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/CP-SVC/assets/catalog-hoodie.png",
+    "sha256": "1f7a31f66ce9975714a5ac1c1f2679095f48ec9938cecd25c741b9ec9e6f6756",
+    "src": "/img/service/catalog-hoodie.webp",
+    "width": 1122,
+    "height": 1402,
+    "altKey": "",
+    "authority": "Approved R-SVC2 original catalog fills; Figma1186:6642"
+  }
+]
