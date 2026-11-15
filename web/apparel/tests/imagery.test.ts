@@ -111,7 +111,7 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
     writeFixture();
     expect(gate().exitCode).toBe(0);
     const pdpFile=join(dir,'products/hoodie-set-k02/index.html'), pdpOriginal=readFileSync(pdpFile,'utf8');
-    writeFileSync(pdpFile,pdpOriginal.replace('data-pdp-detail','data-missing-detail'));
+    writeFileSync(pdpFile,pdpOriginal.replace(/(<img\b[^>]*?)data-pdp-detail/, '$1data-missing-detail'));
     expect(gate().exitCode).not.toBe(0);
     writeFileSync(pdpFile,pdpOriginal);
     expect(readFileSync(join(dir, 'contact/index.html'), 'utf8')).not.toContain('data-slot="contact/banner"');
