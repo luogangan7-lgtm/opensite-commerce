@@ -4,7 +4,7 @@ import accepted from './accepted-structure.json';
 import details from '../detail-sources.json';
 import ledger from '../structure-ledger.json';
 import products from '../src/data/products.json';
-import { orderedGallery, primaryColour, detailCaption } from '../src/data/gallery';
+import { orderedGallery, primaryColour } from '../src/data/gallery';
 import { imagePlan, imageDimensions, type DetailSource } from '../image-plan';
 import { packageDetails } from '../detail-images';
 import { readFileSync } from 'node:fs';
