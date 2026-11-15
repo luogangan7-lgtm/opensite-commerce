@@ -11,6 +11,8 @@ for(const locale of locales) for(const kind of ['oem-odm','sampling','shipping']
  await expect(view.locator('h1')).toHaveCount(1);
  const cta=view.locator('[data-service-rfq]');
  await expect(cta).toHaveAttribute('href',`${prefix}/contact/${kind==='sampling'?'?type=sample':''}#rfq-form`);
+ const quoteWidth=await cta.evaluate(n=>({button:n.getBoundingClientRect().width,container:n.parentElement!.getBoundingClientRect().width}));
+ expect(quoteWidth.button).toBeLessThan(quoteWidth.container);
  if(kind!=='shipping') await expect(view.locator('[data-capability-group]')).toHaveCount(4);
  if(kind==='oem-odm') {
   await expect(view.locator('[data-techniques] picture')).toHaveCount(16);
