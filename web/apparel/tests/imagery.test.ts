@@ -60,7 +60,7 @@ test('the real slot gate rejects a missing passing slot in a disposable built fi
   try {
     cpSync('web/apparel/dist', dir, { recursive: true });
     const file = join(dir, 'about/index.html');
-    writeFileSync(file, readFileSync(file, 'utf8').replace(/<picture\b[^>]*data-slot="about\/founder"[^>]*>[\s\S]*?<\/picture>/, ''));
+    writeFileSync(file, readFileSync(file, 'utf8').replace(/<picture\b[^>]*data-slot="about\/hero"[^>]*>[\s\S]*?<\/picture>/, ''));
     const red = Bun.spawnSync(['bun', 'web/apparel/tests/slots-gate.ts'], { env: { ...process.env, APPAREL_DIST: dir } });
     expect(red.exitCode).not.toBe(0);
     expect(red.stderr.toString()).toContain('missing slot or localized alt about/hero');
