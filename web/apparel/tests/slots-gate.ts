@@ -53,7 +53,9 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   const detail = product.images.find(image => image.role === 'structure' && image.colour === whole.colour)!;
   for (const [role, image] of [['whole', whole], ['detail', detail]] as const) {
    const tag = [...html.matchAll(/<img\b[^>]*>/g)].find(match => match[0].includes(`data-pdp-${role}`))?.[0] || '';
-   if (!tag.includes(`src="${image.src}"`) || !tag.includes('loading="lazy"') || !tag.includes('decoding="async"')) errors.push(`${locale}/${product.slug}: missing own ${role} FIT media`);
+   // CP-PDP places the whole garment in the LCP gallery; details remain deferred.
+   const priority = role === 'whole' ? tag.includes('loading="eager"') && tag.includes('fetchpriority="high"') : tag.includes('loading="lazy"');
+   if (!tag.includes(`src="${image.src}"`) || !priority || !tag.includes('decoding="async"')) errors.push(`${locale}/${product.slug}: missing own ${role} FIT media`);
   }
   if (!html.includes('data-pdp-media') || html.includes('data-slot="pdp/craft_')) errors.push(`${locale}/${product.slug}: FD1 media missing or retired craft slot present`);
  }

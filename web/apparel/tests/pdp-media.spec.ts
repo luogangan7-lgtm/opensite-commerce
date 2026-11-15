@@ -8,6 +8,7 @@ test('all 115 served PDPs use their own primary whole and same-colour structure'
  test.setTimeout(120000);
  for (const product of products) {
   await page.goto(path('en',product.slug));
+  await expect(page.locator('img[src*="size-chart"],img[src*="colour-chart"]')).toHaveCount(0);
   const whole=product.images.find(i=>i.role==='front')!;
   const detail=product.images.find(i=>i.role==='structure' && i.colour===whole.colour)!;
   await expect(page.locator('[data-pdp-whole]')).toHaveAttribute('src',whole.src);
@@ -27,7 +28,7 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280]) test(`F
  await page.setViewportSize({width,height:1000});
  await page.goto(path(locale));
  const pair=page.locator('[data-pdp-media]'); await pair.scrollIntoViewIfNeeded();
- const whole=pair.locator('[data-pdp-whole]'),detail=pair.locator('[data-pdp-detail]');
+ const whole=page.locator('[data-pdp-whole]'),detail=pair.locator('[data-pdp-detail]');
  for(const image of [whole,detail]) {
   await image.evaluate(i=>i.scrollIntoView({behavior:'instant',block:'center'}));
   await expect(image).toHaveCSS('object-fit','contain');
@@ -35,9 +36,8 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280]) test(`F
   if (process.env.APPAREL_PDP_IMAGES==='1') await expect.poll(()=>image.evaluate((i:HTMLImageElement)=>i.complete && i.naturalWidth>0)).toBe(true);
  }
  const a=(await whole.boundingBox())!,b=(await detail.boundingBox())!;
- expect(a.width/a.height).toBeCloseTo(4/5,2); expect(b.width/b.height).toBeCloseTo(1,2);
- if(width===390) expect(b.y).toBeGreaterThanOrEqual(a.y+a.height);
- else { expect(b.y).toBeCloseTo(a.y,0); expect(locale==='ar'?b.x<a.x:b.x>a.x).toBe(true); }
+ expect(a.width/a.height).toBeCloseTo(4/3,2); expect(b.width/b.height).toBeCloseTo(1,2);
+ expect(b.y).toBeGreaterThanOrEqual(a.y+a.height);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.locator('[data-gallery-main]').click();
  await expect(page.locator('[data-gallery-viewer]')).toBeVisible();
@@ -81,4 +81,24 @@ test('PDP swatch Quote click prefills the delivered RFQ form',async({page})=>{
  await expect(form.locator('[data-prefill-context]')).toContainText(colour!);
  await expect(form.locator('textarea')).toHaveValue(new RegExp(colour!));
  await expect(form.locator('[name=quantity_note]')).toHaveValue('');
+});
+
+// Compare rendered cells directly to the committed supplier measurements, independently of the adapter.
+import charts from '../../../docs/apparel-b2b/size-charts.json' with { type: 'json' };
+import bindings from '../src/data/size-chart-bindings.json' with { type: 'json' };
+for(const locale of ['en','ar','zh']) test(`structured size cells ${locale}`, async({page})=>{
+ const seen=new Set<string>();
+ for(const product of products){
+  const id=(bindings as Record<string,string>)[product.slug];
+  if(seen.has(id))continue;seen.add(id);
+  await page.goto(path(locale,product.slug));
+  const chart=(charts.charts as Record<string,{sizes:string[];rows:Record<string,(string|number)[]>}>)[id];
+  if(!chart){await expect(page.locator('#size-chart')).toHaveCount(0);continue;}
+  await expect(page.locator('[data-size-table]')).toHaveCount(1);
+  const rows=page.locator('[data-size-table] tbody tr');
+  await expect(rows).toHaveCount(chart.sizes.length);
+  for(let i=0;i<chart.sizes.length;i++)expect(await rows.nth(i).locator('th,td').allTextContents()).toEqual([chart.sizes[i],...Object.values(chart.rows).map(values=>String(values[i]))]);
+  await expect(page.locator('[data-pdp-media] figcaption')).toHaveCount(0);
+  const floating=page.locator('.quote-float');await expect(floating).toHaveCSS('position','static');
+ }
 });
