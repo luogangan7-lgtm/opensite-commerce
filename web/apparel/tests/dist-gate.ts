@@ -10,6 +10,7 @@ import contactMedia from '../contact-media.json';
 import { digitalDelivery } from '../image-plan';
 import products from '../src/data/products.json';
 import { dictionaries, locales, type Locale } from '../src/i18n';
+import { pdpMoq } from '../src/data/owner-facts';
 import { imageBase, widths } from '../src/data/imagery';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 const policy = JSON.parse(readFileSync(join(root, 'rfq-policy.json'), 'utf8'));
@@ -54,9 +55,34 @@ for (const file of files(root)) {
     const alternates = [...text.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g)];
     if (alternates.length !== 9 || new Set(alternates.map(row => row[1])).size !== 9 || ![...locales.map(l => l === 'zh' ? 'zh-Hans' : l), 'x-default'].every(lang => alternates.some(row => row[1] === lang))) throw Error('Incomplete hreflang');
     for (const row of text.matchAll(/<tr data-commercial[^>]*>[\s\S]*?<td[^>]*>(.*?)<\/td>/g)) if (row[1] !== dictionaries[locale].quote) throw Error('Localized commercial value');
-    const plain = text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+    // Owner-authorized MOQ is admitted once in each existing PDP context, nowhere else.
+    // Replace only validated values with quote text before the unchanged commercial checks.
+    let commercialText = text;
+    if (parts[0] === 'products') {
+      const expected = pdpMoq[locale].replaceAll('&', '&amp;');
+      const summary = /<p\b[^>]*class="moq-line"[^>]*>([^<]*)<\/p>/g;
+      const summaries = [...commercialText.matchAll(summary)];
+      if (summaries.length !== 1 || summaries[0][1] !== expected) throw Error('Owner MOQ summary changed');
+      commercialText = commercialText.replace(summary, `<p>${dictionaries[locale].quote}</p>`);
+      for (const scope of ['quick', 'full']) {
+        const table = new RegExp(`<table\\b[^>]*data-${scope}-spec\\b[^>]*>[\\s\\S]*?<\\/table>`, 'g');
+        const tables = [...commercialText.matchAll(table)];
+        if (tables.length !== 1) throw Error('Owner MOQ spec context missing');
+        let count = 0;
+        const checked = tables[0][0].replace(/<tr\b[^>]*>\s*<th\b[^>]*>([^<]*)<\/th>\s*<td\b[^>]*>([^<]*)<\/td>\s*<\/tr>/g, (row, label, value) => {
+          if (label !== dictionaries[locale].moq) return row;
+          if (value !== expected) throw Error('Owner MOQ spec changed');
+          count++;
+          return row.replace(value, dictionaries[locale].quote);
+        });
+        if (count !== 1) throw Error('Owner MOQ spec count changed');
+        commercialText = commercialText.replace(tables[0][0], checked);
+      }
+    }
+    const plain = commercialText.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
     if (/(?:price|moq|lead time|sample cost)\s*:?\s*(?:[$€£¥]|\d)|(?:[$€£¥]|\b(?:USD|EUR|GBP|CNY))\s*\d/i.test(plain)) throw Error('Numeric commercial term');
-    for (const row of text.matchAll(/<tr>\s*<th[^>]*>(Price|MOQ|Lead time|Sample cost)<\/th>\s*<td[^>]*>(.*?)<\/td>\s*<\/tr>/gi)) if (row[2] !== dictionaries[locale].quote) throw Error('Commercial table changed');
+    if (/(?:Pedido mínimo|Minimum de commande|Mindestbestellmenge|Минимальный заказ|الحد الأدنى للطلب|起订量)\s*:?\s*\d|\d+\s*件起订/iu.test(plain)) throw Error('Numeric localized MOQ outside owner context');
+    for (const row of commercialText.matchAll(/<tr>\s*<th[^>]*>(Price|MOQ|Lead time|Sample cost)<\/th>\s*<td[^>]*>(.*?)<\/td>\s*<\/tr>/gi)) if (row[2] !== dictionaries[locale].quote) throw Error('Commercial table changed');
   }
 }
 for (const locale of locales) for (const slug of allowed) if (!files(root).includes(join(root, locale === 'en' ? '' : locale, 'products', slug, 'index.html'))) throw Error('Missing published locale page');

@@ -1,15 +1,18 @@
 {
   "web/apparel/src/styles.css": "47550b759eeeae56a929e38378205aafc745e05862d1fb0c5b5f7ad3d81a859b",
   "web/apparel/src/layouts/Shell.astro": "d8d5573779b9bf2aa9c0720102644d6769d91bfd58c7f57383b75a0053d61b33",
-  "web/apparel/src/i18n/zh.json": "8b18777675495fd2e29eb16d45e1cd1a7d3b2747110614f849a3065480cf630d",
-  "web/apparel/src/i18n/de.json": "5c1d91ff8d82055632f5998b98a50f64b5f0653b057e218dec7e34232467775d",
-  "web/apparel/src/i18n/ru.json": "045b6f36ee4505139028809911cc17a186420b784af6113772b4d7d3bbbf27e6",
-  "web/apparel/src/i18n/pt.json": "3c6ccaef6fb152903388e5df98d8a81b5a0cae2b0d89aa2f9e6634816428b2a2",
-  "web/apparel/src/i18n/en.json": "f461cb25979db7f1aa64d0a44c95432ef47ac67f49f81cc0e21de31ae08dda3c",
-  "web/apparel/src/i18n/fr.json": "a16abbfb5e19399b24a5ab1794cd272863dc433dfe5e3d74113391e8b543015c",
-  "web/apparel/src/i18n/es.json": "adbdd75640913fe93e87bf63856e8538647f76e4ded7ca3d6488f182f000346d",
-  "web/apparel/src/i18n/ar.json": "7f58a608126ce8f81f2fb83db0f96490db834cdbd74543ee4e6b19431ae3276d",
+  "web/apparel/src/i18n/zh.json": "6d5dd2521841d4387d5f358508b28cb2d996b283fe0b9f00cf53cfcb140af5f0",
+  "web/apparel/src/i18n/de.json": "4eedca80d2e8040493795436e6ef2adb09908a98c72b6bab82dfe140cef0b96e",
+  "web/apparel/src/i18n/ru.json": "eae4bcd3601c174a6efb32825ecb198466858af9970710869422fefb0f1be77b",
+  "web/apparel/src/i18n/pt.json": "4987f346ef5b15dc685e9187b3499be03e94037566b4eb4a8faa57490f2de5d2",
+  "web/apparel/src/i18n/en.json": "f72a0296504ad13e7d1cd6e7f3a252467fbafeaf34511a58acf97261123039c5",
+  "web/apparel/src/i18n/fr.json": "c931fd0a19a16ebe4fe4de7a47f5e29d21cefd529c999856cf8c9ce49a964bd4",
+  "web/apparel/src/i18n/es.json": "e96387e7097357070b8b799ea3750d5586caf7d15f7716c34c6bc1a0a3b783c3",
+  "web/apparel/src/i18n/ar.json": "39007f2fb2df44f83968077256f7614ecb45c371aadfaf2bb9f77d1dd3561ec9",
   "web/apparel/src/views/Home.astro": "b24e22fcad0858ab4a349369bd6990cfb514fc7ec12478b12502ebc1e8701e43",
   "web/apparel/src/views/Collections.astro": "a67ac1aa21752d7aec927840492c4ea94b3b886b4d34c19ce5206e35c8d533f9",
-  "web/apparel/src/views/Product.astro": "7d37781ca5cc340f185385ecd9a8e5240492d07685d84e3760f5849e5e1997b7"
+  "web/apparel/src/views/Product.astro": "48e0839f5125c44d66faaf957c041f8c5c3a1cf6ee68da8a3e6c7d8016b39ca4",
+  "web/apparel/src/data/owner-facts.ts": "bd4fb60056f822e6a42e26f402bb412c37adbbeb06943315b975fb600e0fca5a",
+  "web/apparel/tests/dist-gate.ts": "4518579f926d8a6ed6f353de3577ccb24081e8ee1b96f27d48a4c7720b8bbc84",
+  "web/apparel/tests/probes.ts": "1dd128808021ac810ecc3a4e8cfb46074214ef97839d02ec79d465e7dbd7523e"
 }
