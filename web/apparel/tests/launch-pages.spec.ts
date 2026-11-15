@@ -67,7 +67,13 @@ for (const locale of ['en', 'zh', 'ar']) for (const width of [1440, 768, 390]) t
     } else {
       await expect(page.locator('h1')).toHaveCSS('font-size', width === 390 ? '36px' : '56px');
       const column = await page.locator('.service-copy').boundingBox();
-      expect(locale === 'ar' ? Math.round(column!.x + column!.width) : Math.round(column!.x)).toBe(locale === 'ar' ? width - (width === 390 ? 24 : 48) : width === 390 ? 24 : 48);
+      expect(Math.round(column!.x + column!.width / 2)).toBe(width / 2);
+      const container = (await page.locator('.legal-page').boundingBox())!;
+      const header = (await page.locator('.header-inner').boundingBox())!;
+      expect(Math.round(container.x)).toBe(Math.round(header.x));
+      expect(Math.round(container.x + container.width)).toBe(Math.round(header.x + header.width));
+      const heading = (await page.locator('h1').boundingBox())!;
+      expect(Math.round(locale === 'ar' ? heading.x + heading.width : heading.x)).toBe(Math.round(locale === 'ar' ? column!.x + column!.width : column!.x));
       expect(await page.locator('.service-copy > div > p').first().evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe(Math.min(760, width - (width === 390 ? 48 : 96)));
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

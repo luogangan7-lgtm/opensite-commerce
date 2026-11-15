@@ -14,5 +14,7 @@
   "web/apparel/src/views/Product.astro": "48e0839f5125c44d66faaf957c041f8c5c3a1cf6ee68da8a3e6c7d8016b39ca4",
   "web/apparel/src/data/owner-facts.ts": "bd4fb60056f822e6a42e26f402bb412c37adbbeb06943315b975fb600e0fca5a",
   "web/apparel/tests/dist-gate.ts": "4518579f926d8a6ed6f353de3577ccb24081e8ee1b96f27d48a4c7720b8bbc84",
-  "web/apparel/tests/probes.ts": "1dd128808021ac810ecc3a4e8cfb46074214ef97839d02ec79d465e7dbd7523e"
+  "web/apparel/tests/probes.ts": "1dd128808021ac810ecc3a4e8cfb46074214ef97839d02ec79d465e7dbd7523e",
+  "web/apparel/src/views/ServicePage.astro": "5d6562c7686b71ec4cc05fae141bb5e8fe463d7511e5bc2784ae33d35980978c",
+  "web/apparel/tests/launch-pages.spec.ts": "8c596668eefd177a6e8f1a43ec84ad5dcac0408319c33f16487a44b9c318f49f"
 }
