@@ -46,12 +46,12 @@
   },
   {
     "id": "fabric",
-    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave5/CP3/masters/fabric.raw",
-    "sha256": "894889a679666fb85ecee3a651f8c392d1cd6748f622eee1c2ab5cc2947d3aba",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave6/FAB/fabric-collar-a.png",
+    "sha256": "fcd1a560e9783c1660adff9d21d879e9aaf0f9569ec40b05db5dbba107a11b7c",
     "src": "/img/home/fabric.webp",
-    "authority": "Frozen Figma Home 30:560 imageHash d72041f2b91b95269925d0454e87ce01176c03f9",
-    "width": 314,
-    "height": 210
+    "authority": "Figma Home scene_home_fabric imageHash bd87eac7130384b0fdb2848d1afd2fbbe68e4a7b; owner pick 2026-11-15",
+    "width": 1536,
+    "height": 1024
   },
   {
     "id": "terms-one",
