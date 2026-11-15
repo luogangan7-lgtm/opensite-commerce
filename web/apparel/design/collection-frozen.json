@@ -6,27 +6,112 @@
     {
       "node": "230:407",
       "path": "web/apparel/public/collection-frozen/hero.png",
-      "sha256": "ab0db0b0ded23eb493ba47a8fd16bd3dc9b970aac27bc72d63f7ef94441adcfb"
+      "sha256": "ab0db0b0ded23eb493ba47a8fd16bd3dc9b970aac27bc72d63f7ef94441adcfb",
+      "id": "hero",
+      "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave5/CP6/exports/hero/get_screenshot-230-407-1794718693081-0.png",
+      "src": "/img/collection/hero.webp",
+      "derivatives": [
+        {
+          "src": "/img/collection/hero.webp",
+          "width": 1024,
+          "sourceSha256": "ab0db0b0ded23eb493ba47a8fd16bd3dc9b970aac27bc72d63f7ef94441adcfb",
+          "sha256": "14daae016bc4490812ba6624050f74ebe0fc4586b6d220ba57f9404d59a0450b"
+        },
+        {
+          "src": "/img/collection/hero-640.webp",
+          "width": 640,
+          "sourceSha256": "ab0db0b0ded23eb493ba47a8fd16bd3dc9b970aac27bc72d63f7ef94441adcfb",
+          "sha256": "af471d93de953ac4643724dcb15adb755b79070c0c4b0a0c816337a7b33817cf"
+        }
+      ]
     },
     {
       "node": "31:519",
       "path": "web/apparel/public/collection-frozen/lining.png",
-      "sha256": "f044824abd2e935286a2d5433d8bced257931c73c27b3946415aeae286e2270e"
+      "sha256": "f044824abd2e935286a2d5433d8bced257931c73c27b3946415aeae286e2270e",
+      "id": "lining",
+      "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave5/CP6/exports/lining/get_screenshot-31-519-1794718693682-0.png",
+      "src": "/img/collection/lining.webp",
+      "derivatives": [
+        {
+          "src": "/img/collection/lining.webp",
+          "width": 1024,
+          "sourceSha256": "f044824abd2e935286a2d5433d8bced257931c73c27b3946415aeae286e2270e",
+          "sha256": "1645bc2e0574b3516869a81a595c75bf6d3a7cc595d381e2e0c66b07d4c982e4"
+        },
+        {
+          "src": "/img/collection/lining-640.webp",
+          "width": 640,
+          "sourceSha256": "f044824abd2e935286a2d5433d8bced257931c73c27b3946415aeae286e2270e",
+          "sha256": "1645bc2e0574b3516869a81a595c75bf6d3a7cc595d381e2e0c66b07d4c982e4"
+        }
+      ]
     },
     {
       "node": "31:511",
       "path": "web/apparel/public/collection-frozen/swatch.png",
-      "sha256": "f686d32834cb2fcd4b0c3ef55761858657b3175e18e297774a68d44347f6937a"
+      "sha256": "f686d32834cb2fcd4b0c3ef55761858657b3175e18e297774a68d44347f6937a",
+      "id": "swatch",
+      "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave5/CP6/exports/swatch/get_screenshot-31-511-1794718694142-0.png",
+      "src": "/img/collection/swatch.webp",
+      "derivatives": [
+        {
+          "src": "/img/collection/swatch.webp",
+          "width": 1024,
+          "sourceSha256": "f686d32834cb2fcd4b0c3ef55761858657b3175e18e297774a68d44347f6937a",
+          "sha256": "01f8283e16223597fe0fa859beb8aa79c42578b362aed6f5701860876595be03"
+        },
+        {
+          "src": "/img/collection/swatch-640.webp",
+          "width": 640,
+          "sourceSha256": "f686d32834cb2fcd4b0c3ef55761858657b3175e18e297774a68d44347f6937a",
+          "sha256": "186583b84fa81b50db73bc4823630e913b850cc5c691e15ccf3aef3679f98a24"
+        }
+      ]
     },
     {
       "node": "I232:622;224:381",
       "path": "web/apparel/public/collection-frozen/terms-a.png",
-      "sha256": "1d8d36c90bf5a96933adf4e9f6d7f4390920bd2f0010114c0bc8d8773ca23e97"
+      "sha256": "1d8d36c90bf5a96933adf4e9f6d7f4390920bd2f0010114c0bc8d8773ca23e97",
+      "id": "terms-a",
+      "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave5/CP6/exports/terms-a/get_screenshot-I232-622-224-381-1794718694562-0.png",
+      "src": "/img/collection/terms-a.webp",
+      "derivatives": [
+        {
+          "src": "/img/collection/terms-a.webp",
+          "width": 1024,
+          "sourceSha256": "1d8d36c90bf5a96933adf4e9f6d7f4390920bd2f0010114c0bc8d8773ca23e97",
+          "sha256": "d220b64aa8795404086b4b12f9b1801d2ed72628449aaf55e70129414cf57d49"
+        },
+        {
+          "src": "/img/collection/terms-a-640.webp",
+          "width": 640,
+          "sourceSha256": "1d8d36c90bf5a96933adf4e9f6d7f4390920bd2f0010114c0bc8d8773ca23e97",
+          "sha256": "d220b64aa8795404086b4b12f9b1801d2ed72628449aaf55e70129414cf57d49"
+        }
+      ]
     },
     {
       "node": "I232:622;224:382",
       "path": "web/apparel/public/collection-frozen/terms-b.png",
-      "sha256": "fa438e15359fa3c9af8179f3ae5919f2bfddb86adbe3daeb2fe54ff9ad03cdfe"
+      "sha256": "fa438e15359fa3c9af8179f3ae5919f2bfddb86adbe3daeb2fe54ff9ad03cdfe",
+      "id": "terms-b",
+      "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave5/CP6/exports/terms-b/get_screenshot-I232-622-224-382-1794718694709-0.png",
+      "src": "/img/collection/terms-b.webp",
+      "derivatives": [
+        {
+          "src": "/img/collection/terms-b.webp",
+          "width": 1024,
+          "sourceSha256": "fa438e15359fa3c9af8179f3ae5919f2bfddb86adbe3daeb2fe54ff9ad03cdfe",
+          "sha256": "883c0f1f27fe940f41d11679d854d7d0599ab1cf6c0802c2d4e816f10456fbaf"
+        },
+        {
+          "src": "/img/collection/terms-b-640.webp",
+          "width": 640,
+          "sourceSha256": "fa438e15359fa3c9af8179f3ae5919f2bfddb86adbe3daeb2fe54ff9ad03cdfe",
+          "sha256": "883c0f1f27fe940f41d11679d854d7d0599ab1cf6c0802c2d4e816f10456fbaf"
+        }
+      ]
     }
   ]
 }
