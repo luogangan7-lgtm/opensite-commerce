@@ -4,4 +4,4 @@
 import { products, categories } from '../src/data/catalog';
 import { factPaths } from './contract';
 export { buildOrigin as seoOrigin } from './mode';
-export const publishedPaths = ['/', '/collections/', '/contact/', '/oem-odm/', '/sampling/', '/shipping/', '/privacy/', '/terms/', ...Object.keys(categories).map(c => `/collections/${c}/`), ...products.map(p => `/products/${p.slug}/`).filter(p => factPaths.includes(p))];
+export const publishedPaths = ['/', '/about-us/', '/collections/', '/contact/', '/oem-odm/', '/sampling/', '/shipping/', '/privacy/', '/terms/', ...Object.keys(categories).map(c => `/collections/${c}/`), ...products.map(p => `/products/${p.slug}/`).filter(p => factPaths.includes(p))];
