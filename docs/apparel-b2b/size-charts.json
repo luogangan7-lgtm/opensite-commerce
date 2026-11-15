@@ -1,0 +1,552 @@
+{
+  "date": "2026-11-15",
+  "rule": "业主原话：不同文件夹里面我都放了尺码图片的，那么这个文件夹里的产品，就是按照这个尺码来制作的，尺码在服装里面是不能混乱的。",
+  "charts": {
+    "aston-sweatshirt": {
+      "title_zh": "阿斯顿卫衣",
+      "unit": "cm",
+      "sizes": [
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL",
+        "4XL"
+      ],
+      "rows": {
+        "length": [
+          66,
+          67.5,
+          69,
+          70.5,
+          72,
+          73.5
+        ],
+        "chest": [
+          52,
+          54,
+          56,
+          58,
+          60,
+          62
+        ],
+        "shoulder": [
+          51.5,
+          53,
+          54.5,
+          56,
+          57.5,
+          59
+        ],
+        "sleeve": [
+          55,
+          55.8,
+          56.6,
+          57.4,
+          58.2,
+          60
+        ],
+        "sleeve_width": [
+          21.4,
+          22,
+          22.6,
+          23.2,
+          23.8,
+          24.4
+        ],
+        "rib_height": [
+          6,
+          6,
+          6,
+          6,
+          6,
+          6
+        ]
+      },
+      "sources": [
+        "/Volumes/XBSHgtyp/服装项目/圆领加维加绒卫衣/尺码表/微信图片_20261022131327_384_626.jpg",
+        "/Volumes/XBSHgtyp/服装项目/阿斯顿连帽卫衣/69018/微信图片_20261022131327_384_626.jpg"
+      ],
+      "note": "两份文件 sha256 相同；原图仅 356x221，网站需重排为表格；两遍重读原图4XL袖长均为60（旧草稿为59）",
+      "source_image": "/img/crew-fleece-size-charts/size-chart-01.webp",
+      "source_sha256": "224fc87d0a12ce7f683119d81142f09fa422e17f48fc10020ce4c8c0e3afba68",
+      "status": "transcribed",
+      "transcription": {
+        "method": "two independent visual reads by same worker; pass 1 by measurement, pass 2 by size from reopened originals",
+        "date": "2026-11-15",
+        "pass_sha256": {
+          "pass-1": "8361de9fadbdb1d384488d5d7cb33138e9a3bc7d51eb2c9fad5855dd9451fcf1",
+          "pass-2": "b1db039943c17a94decfa1927aaba286a66190d6205b168a19472d47432bbc4c"
+        },
+        "disagreements": []
+      },
+      "header_keys": {
+        "衣长": "length",
+        "胸围": "chest",
+        "肩宽": "shoulder",
+        "袖长": "sleeve",
+        "袖宽": "sleeve_width",
+        "螺纹高度": "rib_height"
+      }
+    },
+    "tee-240-gd52021": {
+      "title_zh": "240g双纱液氨尺码表 GD-52021#改",
+      "unit": "cm",
+      "sizes": [
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ],
+      "rows": {
+        "chest": [
+          53,
+          55,
+          57,
+          59,
+          61
+        ],
+        "length": [
+          69.5,
+          71,
+          72.5,
+          74,
+          75
+        ],
+        "sleeve": [
+          21,
+          21.5,
+          22,
+          22.5,
+          23
+        ],
+        "shoulder": [
+          52,
+          54,
+          56,
+          58,
+          60
+        ],
+        "sleeve_opening": [
+          35,
+          36,
+          37,
+          38,
+          39
+        ],
+        "hem": [
+          53,
+          55,
+          57,
+          59,
+          61
+        ]
+      },
+      "tolerance": "±1-2cm",
+      "fabric_zh": "240g 双纱 液氨（不是丝光）",
+      "sources": [
+        "/Volumes/XBSHgtyp/服装项目/服装项目产品/尺码表/微信图片_20261021210806_219_626.jpg"
+      ],
+      "source_image": "/img/apparel-size-charts/size-chart-01.webp",
+      "source_sha256": "69c007f79d0e46ff3d0b949f8499274f624ac8a5032065c83d05116e3181bba2",
+      "status": "transcribed",
+      "transcription": {
+        "method": "two independent visual reads by same worker; pass 1 by measurement, pass 2 by size from reopened originals",
+        "date": "2026-11-15",
+        "pass_sha256": {
+          "pass-1": "8361de9fadbdb1d384488d5d7cb33138e9a3bc7d51eb2c9fad5855dd9451fcf1",
+          "pass-2": "b1db039943c17a94decfa1927aaba286a66190d6205b168a19472d47432bbc4c"
+        },
+        "disagreements": []
+      },
+      "header_keys": {
+        "胸围": "chest",
+        "衣长": "length",
+        "袖长": "sleeve",
+        "肩阔": "shoulder",
+        "袖口": "sleeve_opening",
+        "脚围": "hem"
+      }
+    },
+    "hoodie-702": {
+      "title_zh": "702# 华棉加绒帽衫",
+      "unit": "cm / 斤",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL",
+        "4XL",
+        "5XL"
+      ],
+      "size_note": "S 码在原图被划掉；4XL/5XL 标为加大码",
+      "rows": {
+        "length": [
+          65,
+          67,
+          69,
+          71,
+          73,
+          75,
+          77,
+          79
+        ],
+        "chest": [
+          48,
+          51,
+          54,
+          57,
+          60,
+          63,
+          66,
+          69
+        ],
+        "shoulder": [
+          50,
+          53,
+          56,
+          59,
+          62,
+          65,
+          68,
+          71
+        ],
+        "sleeve": [
+          null,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59
+        ],
+        "weight_jin": [
+          "100斤以下",
+          "100-115斤",
+          "115-130斤",
+          "130-155斤",
+          "155-175斤",
+          "175-200斤",
+          "200-215斤",
+          "215-230斤"
+        ]
+      },
+      "fit_zh": "宽松",
+      "composition": {
+        "face": "56.1% cotton, 43.9% polyester",
+        "inner": "94.2% polyester, 5.8% spandex"
+      },
+      "gsm": 390,
+      "colours_zh": [
+        "黑色",
+        "米杏",
+        "麻灰",
+        "粉色",
+        "浅卡其",
+        "白色",
+        "深卡其",
+        "藏青",
+        "雾霾蓝",
+        "浅米",
+        "大红",
+        "宝蓝",
+        "酒红",
+        "花灰",
+        "咖啡",
+        "墨绿",
+        "铁灰"
+      ],
+      "sources": [
+        "/Volumes/XBSHgtyp/服装项目/精梳棉430g加绒连帽/702色卡/微信图片_20261022133424_570_626.jpg"
+      ],
+      "source_image": "/img/cotton430-hoodie-colour-chart/colour-chart-01.webp",
+      "source_sha256": "8063d80a474232889be8838c1204d173abd3e2b68d9ebbde7df44bb0dc7d71ab",
+      "status": "transcribed",
+      "transcription": {
+        "method": "two independent visual reads by same worker; pass 1 by measurement, pass 2 by size from reopened originals",
+        "date": "2026-11-15",
+        "pass_sha256": {
+          "pass-1": "8361de9fadbdb1d384488d5d7cb33138e9a3bc7d51eb2c9fad5855dd9451fcf1",
+          "pass-2": "b1db039943c17a94decfa1927aaba286a66190d6205b168a19472d47432bbc4c"
+        },
+        "disagreements": []
+      },
+      "header_keys": {
+        "衣长": "length",
+        "胸围": "chest",
+        "肩宽": "shoulder",
+        "袖长": "sleeve",
+        "体重(斤)": "weight_jin"
+      },
+      "row_annotations": {
+        "S": {
+          "crossed_in_source": true,
+          "unreadable_cells": [
+            "sleeve"
+          ],
+          "reason": "Red hand-drawn strike hides sleeve digits; other legible cells transcribed without reconstructing digits."
+        }
+      },
+      "note": "Source heading 702#. S row crossed in source; legible values retained, sleeve null. Printed 390g conflicts with catalog family 430gsm; this transcription does not resolve composition/weight or SKU applicability.",
+      "style_code": "702"
+    },
+    "zip-025": {
+      "title_zh": "025# 华棉真超开衫",
+      "unit": "cm / 斤",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL",
+        "4XL"
+      ],
+      "rows": {
+        "length": [
+          65,
+          67,
+          69,
+          71,
+          73,
+          75,
+          77
+        ],
+        "chest": [
+          48,
+          51,
+          54,
+          57,
+          60,
+          63,
+          66
+        ],
+        "shoulder": [
+          50,
+          53,
+          56,
+          59,
+          62,
+          65,
+          68
+        ],
+        "sleeve": [
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58
+        ],
+        "weight_jin": [
+          "<100",
+          "100-115",
+          "115-130",
+          "130-155",
+          "155-175",
+          "175-200",
+          "200-220"
+        ]
+      },
+      "colours_zh": [
+        "花灰",
+        "米杏",
+        "麻灰",
+        "酒红色",
+        "藏青色",
+        "铁灰",
+        "黑色"
+      ],
+      "sources": [
+        "/Volumes/XBSHgtyp/服装项目/精梳棉连帽套装卫衣/尺码表/微信图片_20261022140605_742_626.jpg"
+      ],
+      "style_code": "025",
+      "status": "seeded",
+      "source_sha256": "3a3eafbf9f5beb92e4348d58203a21c3d68ab3f3bcb5b884980f6898ee057f06"
+    },
+    "standcollar-039": {
+      "title_zh": "039# 华棉真超立领开衫（面料：华棉，男女通用）",
+      "unit": "cm / 斤",
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL",
+        "4XL"
+      ],
+      "rows": {
+        "length": [
+          68,
+          70,
+          72,
+          74,
+          76,
+          78,
+          80
+        ],
+        "chest": [
+          56,
+          58,
+          60,
+          62,
+          64,
+          66,
+          68
+        ],
+        "shoulder": [
+          59,
+          61,
+          63,
+          65,
+          67,
+          69,
+          71
+        ],
+        "sleeve": [
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59
+        ],
+        "weight_jin": [
+          "90-115",
+          "115-140",
+          "140-160",
+          "165-185",
+          "185-210",
+          "210-230",
+          "230-245"
+        ]
+      },
+      "colours_zh": [
+        "麻灰色",
+        "藏蓝色",
+        "黑色"
+      ],
+      "tolerance": "±1-3cm",
+      "sources": [
+        "/Volumes/XBSHgtyp/服装项目/精梳棉连帽套装卫衣/尺码表/微信图片_20261022140613_743_626.jpg"
+      ],
+      "style_code": "039",
+      "status": "seeded",
+      "source_sha256": "436b66f3644c17825b8bc3bd88e5765ca3bf3074939aada6f5ba7d86f38d6167"
+    },
+    "set-400g-silverfox": {
+      "title_zh": "400g银狐绒连帽开衫套装",
+      "unit": "cm / 斤",
+      "sizes": [
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL",
+        "4XL",
+        "5XL"
+      ],
+      "rows": {
+        "top_length": [
+          66,
+          68,
+          70,
+          72,
+          74,
+          76,
+          78
+        ],
+        "top_chest": [
+          52,
+          54,
+          56,
+          58,
+          60,
+          62,
+          64
+        ],
+        "top_shoulder": [
+          46,
+          47.5,
+          49,
+          50.5,
+          52,
+          53.5,
+          55
+        ],
+        "top_sleeve": [
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64
+        ],
+        "pants_waist": [
+          60,
+          64,
+          68,
+          72,
+          76,
+          80,
+          84
+        ],
+        "pants_hip": [
+          49,
+          51,
+          53,
+          55,
+          57,
+          59,
+          61
+        ],
+        "pants_length": [
+          98,
+          100,
+          102,
+          103,
+          104,
+          105,
+          106
+        ],
+        "weight_jin": [
+          "90-105",
+          "105-120",
+          "120-140",
+          "140-160",
+          "160-180",
+          "180-200",
+          "200-220"
+        ]
+      },
+      "colours_zh": [
+        "深麻灰色",
+        "深灰色",
+        "藏青色",
+        "黑色"
+      ],
+      "sources": [
+        "/Volumes/XBSHgtyp/服装项目/精梳棉连帽套装卫衣/款10_1102/微信图片_20261022135654_662_626.jpg"
+      ],
+      "tolerance": "±1-3cm（手工测量）",
+      "status": "seeded",
+      "source_sha256": "5a4a756368e9009e0781b40a6c6e71deff1ea9ea5336c411b86340ea7ebe48d2"
+    }
+  },
+  "not_charts": [
+    {
+      "file": "/Volumes/XBSHgtyp/服装项目/精梳棉连帽套装卫衣/尺码表/微信图片_20261022134505_626_626.png",
+      "what": "不是尺码表：带 Dior 式标识的加绒连帽+阔腿裤套装产品图，被放在尺码表文件夹"
+    }
+  ],
+  "seed_sha256": "940462f49e5ab657a40fb59a328a7e2315b5411211611b352906f0a0677fcad5",
+  "measurement_note": "Garment measurements in cm. Legacy chest key preserved; no conversion to body circumference. Optional rows.weight_jin is a source weight range in Chinese jin, not cm."
+}
