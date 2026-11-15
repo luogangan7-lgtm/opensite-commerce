@@ -9,7 +9,7 @@ for (const slug of ['crew-fleece-8900-31','apparel-59043','pullover-hoodie-69008
  await expect(main).toHaveAttribute('src',`/img/${slug}/structure.webp`);
  await expect(main).toHaveCSS('object-fit','contain');
  if (process.env.APPAREL_STRUCTURE_IMAGES==='1') await expect.poll(()=>main.evaluate((img:HTMLImageElement)=>img.complete && img.naturalWidth===1254 && img.naturalHeight===1254)).toBe(true);
- const box=await main.boundingBox(); expect(box!.width/box!.height).toBeCloseTo(4/5,2);
+ const box=await main.boundingBox(); expect(box!.width/box!.height).toBeCloseTo(4/3,2);
  await expect(page.locator('[data-digital-label]')).toHaveCount(0);
  await expect(main).toHaveAttribute('alt', /.+/);
  await page.locator('[data-gallery-zoom]').click();
