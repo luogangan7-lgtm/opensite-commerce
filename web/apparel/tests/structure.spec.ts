@@ -1,11 +1,12 @@
 /** C12: representative accepted structures use the existing localized disclosure and contain viewer. */
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+const caption = JSON.parse(readFileSync(new URL('../src/i18n/zh.json', import.meta.url), 'utf8')).pdpDetailCaption;
 for (const slug of ['crew-fleece-8900-31','apparel-59043','pullover-hoodie-69008']) test(`accepted structure ${slug}`, async ({page}) => {
  await page.goto(`/zh/products/${slug}/`);
  const link=page.locator('.gallery-thumbs:not([hidden]) a[data-role="structure"]');
  await expect(link).toHaveCount(1);
  await link.click();
- const caption='AI生成示意，实际细节以确认样品为准';
  const main=page.locator('[data-gallery-main]');
  await expect(main).toHaveAttribute('src',`/img/${slug}/structure.webp`);
  await expect(main).toHaveCSS('object-fit','contain');

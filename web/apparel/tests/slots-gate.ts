@@ -2,6 +2,7 @@
 import digital from '../digital-sources.json';
 import frozen from '../design/collection-frozen.json';
 import { createHash } from 'node:crypto';
+import products from '../src/data/products.json';
 import { assertSlotReferences } from '../image-plan';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -35,7 +36,9 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   const collection = readFileSync(join(root, locale === 'en' ? '' : locale, 'collections/index.html'), 'utf8');
   for (const asset of frozen.assets) if (!collection.includes(`src="${asset.src}"`)) errors.push(`Collection missing frozen image: ${locale}/${asset.id}`);
   const dictionary = JSON.parse(readFileSync(`web/apparel/src/i18n/${locale}.json`, 'utf8'));
+  // Legacy PDP slot reviews stay in the packaging inventory; FD1 retires their page placement.
   for (const [page, slots] of Object.entries(inventory)) for (const route of routes[page]) {
+    if (page === 'pdp') continue;
     const html = readFileSync(join(root, locale === 'en' ? '' : locale, route, 'index.html'), 'utf8');
     try { assertSlotReferences(html, slots.filter(slot => passing.includes(`${page}/${slot}`)).map(slot => ({ id: `${page}/${slot}` })), page); } catch (error) { errors.push(`${locale}/${route}: ${error}`); }
     for (const slot of slots.filter(slot => passing.includes(`${page}/${slot}`))) {
@@ -49,6 +52,20 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
       } else if (!picture.includes('loading="lazy"') || !picture.includes('decoding="async"')) errors.push(`${id}: missing lazy/async`);
     }
   }
+}
+// Product-bound FD1 output replaces the three generic craft slots for every localized PDP.
+for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
+ const dictionary = JSON.parse(readFileSync(`web/apparel/src/i18n/${locale}.json`, 'utf8'));
+ for (const product of products) {
+  const html = readFileSync(join(root, locale === 'en' ? '' : locale, 'products', product.slug, 'index.html'), 'utf8');
+  const whole = product.images.find(image => image.role === 'front')!;
+  const detail = product.images.find(image => image.role === 'structure' && image.colour === whole.colour)!;
+  for (const [role, image] of [['whole', whole], ['detail', detail]] as const) {
+   const tag = [...html.matchAll(/<img\b[^>]*>/g)].find(match => match[0].includes(`data-pdp-${role}`))?.[0] || '';
+   if (!tag.includes(`src="${image.src}"`) || !tag.includes('loading="lazy"') || !tag.includes('decoding="async"')) errors.push(`${locale}/${product.slug}: missing own ${role} FIT media`);
+  }
+  if (!html.includes('data-pdp-media') || !html.includes(dictionary.pdpDetailCaption.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')) || html.includes('data-slot="pdp/craft_')) errors.push(`${locale}/${product.slug}: FD1 media/caption missing or retired craft slot present`);
+ }
 }
 if (errors.length) throw Error(errors.join('\n'));
 console.log(`PASS: ${passing.length} ${manifest ? 'review-passing published slots' : 'build templates; publication filtered at packaging'}, eight localized alts, responsive sources, geometry and home LCP priority.`);

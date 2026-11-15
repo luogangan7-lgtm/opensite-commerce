@@ -1,15 +1,8 @@
 /** Browser regression for §6.2/6.3: served PDP interaction, disclosure and uncropped details. */
 import { test, expect } from '@playwright/test';
-const captions = {
- en: 'AI-generated illustration; actual details are subject to the confirmed sample.',
- zh: 'AI生成示意，实际细节以确认样品为准',
- es: 'Ilustración generada por IA; los detalles reales dependen de la muestra confirmada.',
- fr: 'Illustration générée par IA ; les détails réels sont ceux de l’échantillon confirmé.',
- de: 'KI-generierte Illustration; maßgeblich sind die tatsächlichen Details des bestätigten Musters.',
- pt: 'Ilustração gerada por IA; os detalhes reais dependem da amostra confirmada.',
- ru: 'Иллюстрация создана ИИ; фактические детали определяются подтверждённым образцом.',
- ar: 'رسم توضيحي مولّد بالذكاء الاصطناعي؛ التفاصيل الفعلية وفق العينة المعتمدة.',
-};
+import { readFileSync } from 'node:fs';
+const dictionaries: Record<string,{pdpDetailCaption:string}> = Object.fromEntries(['en','zh','es','fr','de','pt','ru','ar'].map(locale=>[locale,JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`,import.meta.url),'utf8'))]));
+const captions = Object.fromEntries(Object.entries(dictionaries).map(([locale,t])=>[locale,t.pdpDetailCaption]));
 for (const [locale, caption] of Object.entries(captions)) test(`gallery details ${locale}`, async ({ page }) => {
  await page.goto(`${locale === 'en' ? '' : '/' + locale}/products/crew-fleece-8900-31/`);
  const links = page.locator('.gallery-thumbs:not([hidden]) a');

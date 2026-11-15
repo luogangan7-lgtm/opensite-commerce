@@ -1,5 +1,6 @@
 /** CTA-07/08 browser contract: localized PDP links preserve product and distinct sample intent. */
 import { test, expect } from '@playwright/test';
+import products from '../src/data/products.json' with { type: 'json' };
 import { readFileSync } from 'node:fs';
 const sampleLabel = (locale: string): string => JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`, import.meta.url), 'utf8')).requestSample;
 for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
@@ -10,7 +11,10 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
       for (const sample of [false, true]) {
         await page.goto(`${prefix}/products/${slug}/`);
         await page.locator('.product-info .actions a').nth(sample ? 1 : 0).click();
-        await expect(page).toHaveURL(`${test.info().project.use.baseURL}${prefix}/contact/?product=${slug}${sample ? '&type=sample' : ''}#rfq-form`);
+        const expected=new URL(`${prefix}/contact/`,test.info().project.use.baseURL);
+        expected.search=new URLSearchParams({product:slug,type:sample?'sample':'quote',colour:products.find(p=>p.slug===slug)!.images.find(i=>i.role==='front')!.colour}).toString();
+        expected.hash='rfq-form';
+        await expect(page).toHaveURL(expected.href);
         await expect(page.locator('#rfq-form')).toBeVisible();
         await expect(page.locator('[name="product_slug"]')).toHaveValue(slug);
         await expect(page.locator('[name="message"]')).toBeVisible();

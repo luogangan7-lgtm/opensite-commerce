@@ -302,5 +302,7 @@
   "cp6.auto/lead-time": "Plazo de entrega",
   "cp6.auto/per-order": "Por pedido",
   "cp6.auto/payment": "Pago",
-  "cp6.auto/stated-in-your-quote": "Indicado en tu cotización"
+  "cp6.auto/stated-in-your-quote": "Indicado en tu cotización",
+  "pdpDetailCaption": "Ilustración generada por IA; los detalles reales se ajustarán a la muestra confirmada.",
+  "galleryClose": "Cerrar"
 }

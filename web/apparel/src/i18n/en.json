@@ -302,5 +302,7 @@
   "cp6.auto/lead-time": "Lead time",
   "cp6.auto/per-order": "Per order",
   "cp6.auto/payment": "Payment",
-  "cp6.auto/stated-in-your-quote": "Stated in your quote"
+  "cp6.auto/stated-in-your-quote": "Stated in your quote",
+  "pdpDetailCaption": "AI-generated illustration; actual details are subject to the confirmed sample.",
+  "galleryClose": "Close"
 }
