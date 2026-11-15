@@ -173,3 +173,18 @@ footer { padding-block-end: var(--sy-space-section-sm); }
  #mobile-navigation [data-menu-close] { display: flex; margin-inline-start: auto; min-width: 44px; min-height: 44px; }
  .mobile-languages { padding: 0; border: 0; }
 }
+
+/* Figma Sourcyo/Type Mobile mode; tablet retains Desktop, matching existing 650px switch. */
+@media (max-width: 650px) {
+ :root {
+  --sy-text-eyebrow: var(--sy-text-eyebrow-mobile);
+  --sy-text-body: var(--sy-text-body-mobile);
+  --sy-text-lead: var(--sy-text-lead-mobile);
+  --sy-text-h4: var(--sy-text-h4-mobile);
+  --sy-text-h3: var(--sy-text-h3-mobile);
+  --sy-text-h2: var(--sy-text-h2-mobile);
+  --sy-text-h1: var(--sy-text-h1-mobile);
+  --sy-text-small: var(--sy-text-small-mobile);
+  --sy-text-tile: var(--sy-text-tile-mobile);
+ }
+}
