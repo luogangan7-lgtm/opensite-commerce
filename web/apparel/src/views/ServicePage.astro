@@ -6,6 +6,7 @@ import Shell from '../layouts/Shell.astro';
 import RFQ from '../components/RFQ.astro';
 import { dictionaries, pageLocale } from '../i18n';
 import copy from '../content/launch-pages.json';
+import legalUI from '../content/legal-ui.json';
 interface Props { kind: 'oem-odm' | 'sampling' | 'shipping' | 'privacy' | 'terms' }
 const { kind } = Astro.props;
 const locale = pageLocale(Astro.url), t = copy[locale];
@@ -14,8 +15,8 @@ const [title, intro, sections] = t[kind] as [string, string, [string, string][]]
 const legal = kind === 'privacy' || kind === 'terms';
 ---
 <Shell title={title}>
-  <section class="wrap" data-service-page={kind}>
-    <h1>{title}</h1><p class="lead">{intro}</p>
+  <section class:list={["wrap", { "legal-page": legal }]} data-service-page={kind}>
+    <h1>{title}</h1>{legal && <p class="legal-updated">{legalUI[locale].updated}</p>}<p class="lead">{intro}</p>
     <div class="service-copy">
       {sections.map(([heading, text], index) => <div id={kind === 'privacy' && index === 2 ? 'cookies' : undefined}><h2>{heading}</h2><p>{text}</p>{kind === 'privacy' && index === 2 && <button type="button" data-cookie-reopen>{ui.cookieSettings}</button>}</div>)}
       {legal && <aside><h3>{t.identity}</h3><p>湖南旋粮生态科技有限公司<br /><bdi>Hunan Xuanliang Eco-Technology Co., Ltd.</bdi><br /><bdi>91430105MA7J4C1WX7</bdi></p><p>{t.address}</p></aside>}
@@ -27,4 +28,12 @@ const legal = kind === 'privacy' || kind === 'terms';
 <style>
   .service-copy { max-inline-size: 72ch; }
   .service-copy > div, aside { margin-block: var(--sy-space-grid-y); }
+  .legal-page { inline-size: auto; margin: 0; padding: var(--sy-space-gutter-lg); border: 0; }
+  .legal-page > *, .legal-page .service-copy { max-inline-size: 896px; }
+  .legal-page h1 { font-size: var(--sy-text-h2); margin-block: 0 var(--sy-space-grid-x); }
+  .legal-page h2 { font-size: var(--sy-text-h4); }
+  .legal-updated { margin-block: 0 var(--sy-space-section-sm); }
+  .legal-page .lead { font: inherit; margin-block-end: var(--sy-space-section-sm); }
+  .legal-page .service-copy > div, .legal-page aside { margin-block: var(--sy-space-section-sm); }
+  @media (max-width: 600px) { .legal-page { padding: var(--sy-space-gutter-mobile); } .legal-page h1 { font-size: var(--sy-text-h3); } }
 </style>

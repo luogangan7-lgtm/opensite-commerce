@@ -1,8 +1,30 @@
 ---
-/** Explicit static 404 prevents Pages SPA fallback for unpublished products. */
+/** Locale recovery template; static routes and native Pages 404.html share these exact bytes. */
 import Shell from '../layouts/Shell.astro';
-import { dictionaries, pageLocale } from '../i18n';
+import { pageLocale } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
-const locale = pageLocale(Astro.url), t = dictionaries[locale];
+import copy from '../content/legal-ui.json';
+import { products } from '../data/catalog';
+const locale = pageLocale(Astro.url), t = copy[locale];
+const destinations = ['collections/', `products/${products[0].slug}/`, 'oem-odm/', 'contact/'];
+const labels = [t.collections, t.details, t.oem, t.quote];
 ---
-<Shell title={t.notFound}><section class="wrap"><h1>{t.notFound}</h1><a class="button" href={getRelativeLocaleUrl(locale, '/collections/')}>{t.browse}</a></section></Shell>
+<Shell title={t.title}>
+  <section class="recovery" data-not-found>
+    <p class="error-code" aria-hidden="true">404</p><h1>{t.title}</h1><p>{t.intro}</p>
+    <div class="recovery-grid">{destinations.map((path, i) => <a class="recovery-card" data-recovery-card href={getRelativeLocaleUrl(locale, path)}><div><img src={products[i].images[0].src} alt="" width="64" height="72" /><span>{labels[i]} <bdi aria-hidden="true">→</bdi></span></div><p>{t.descriptions[i]}</p></a>)}</div>
+    <a class="button" href={getRelativeLocaleUrl(locale, '/')}>{t.home}</a>
+  </section>
+</Shell>
+<style>
+  .recovery { padding: var(--sy-space-section-sm) var(--sy-space-gutter-lg); text-align: center; border: 0; }
+  .error-code { font-family: var(--sy-font-heading); font-size: var(--sy-text-h1); line-height: 1.2; margin: 0; }
+  .recovery h1 { font-size: var(--sy-text-h3); }
+  .recovery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-grid-x); max-inline-size: 768px; margin: var(--sy-space-grid-x) auto; }
+  .recovery-card { display: flex; flex-direction: column; gap: var(--sy-space-grid-x); padding: var(--sy-space-grid-x); background: var(--sy-color-surface); text-align: start; text-decoration: none; }
+  .recovery-card > div { display: flex; gap: var(--sy-space-grid-x); align-items: center; }
+  .recovery-card span { min-inline-size: 0; overflow-wrap: anywhere; }
+  .recovery-card img { inline-size: 64px; block-size: 72px; object-fit: cover; flex-shrink: 0; }
+  .recovery-card p { margin: 0; }
+  @media (max-width: 600px) { .recovery { padding: var(--sy-space-section-sm) var(--sy-space-gutter-mobile); } .recovery-grid { grid-template-columns: minmax(0, 1fr); } .recovery h1 { font-size: var(--sy-text-h4); } }
+</style>

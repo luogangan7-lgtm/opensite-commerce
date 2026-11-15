@@ -1,5 +1,6 @@
 /** L1 acceptance against served build: complete localized copy, reciprocal SEO and legal boundaries. */
 import { test, expect } from '@playwright/test';
+import legalCopy from '../src/content/launch-pages.json';
 const languages = ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'];
 const routes = ['oem-odm', 'sampling', 'shipping', 'privacy', 'terms'];
 for (const locale of languages) for (const route of routes) {
@@ -25,6 +26,8 @@ for (const locale of languages) for (const route of routes) {
     if (route === 'privacy' || route === 'terms') {
       expect(text).toContain('sales@sourcyowear.com');
       expect(text).toContain('91430105MA7J4C1WX7');
+      await expect(page.locator('.legal-updated')).toContainText('OWNER-INPUT');
+      expect(await page.locator('.service-copy > div > p').allTextContents()).toEqual(legalCopy[locale as keyof typeof legalCopy][route as 'privacy' | 'terms'][2].map(section => section[1]));
       await expect(page.locator('#rfq-form')).toHaveCount(0);
     }
     if (route === 'privacy') {
@@ -33,3 +36,17 @@ for (const locale of languages) for (const route of routes) {
     }
   });
 }
+
+// Exercise the actual Pages asset router, including deep misses; Python's static server cannot prove this.
+for (const locale of languages) test(`native Pages missing routes ${locale}`, async ({ request }) => {
+  const origin = process.env.APPAREL_PREVIEW_URL || `http://127.0.0.1:${Number(process.env.APPAREL_TEST_PORT || 4322) + 1}`;
+  const prefix = locale === 'en' ? '' : '/' + locale;
+  for (const path of ['/missing-legal-test', '/products/missing-legal-test/deeper/']) {
+    const response = await request.get(origin + prefix + path);
+    expect(response.status()).toBe(404);
+    const body = await response.text();
+    expect(body).toContain(`lang="${locale}" dir="${locale === 'ar' ? 'rtl' : 'ltr'}"`);
+    expect([...body.matchAll(/data-recovery-card/g)]).toHaveLength(4);
+    expect(body).toContain(`href="${prefix}/"`);
+  }
+});
