@@ -30,13 +30,13 @@ const legal = kind === 'privacy' || kind === 'terms';
   .service-copy > div, aside { margin-block: var(--sy-space-grid-y); }
   /* Approved legal typography keeps its own ramp when the global mobile ramp changes. */
   .legal-page { --sy-text-h2: 56px; --sy-text-h3: 36px; --sy-text-h4: 24px; inline-size: auto; margin: 0; padding: var(--sy-space-gutter-lg); border: 0; }
-  .legal-page > *, .legal-page .service-copy { max-inline-size: 896px; }
-  .legal-page h1 { font-size: var(--sy-text-h2); margin-block: 0 var(--sy-space-grid-x); }
-  .legal-page h1, .legal-page h2, .legal-page h3 { font-weight: var(--sy-weight-body); }
+  .legal-page > *, .legal-page .service-copy { max-inline-size: 760px; }
+  .legal-page h1 { font-size: var(--sy-text-h2); margin-block: 0 var(--sy-space-md); }
+  .legal-page h1, .legal-page h2, .legal-page h3 { font-weight: var(--sy-weight-body); line-height: 1.2; }
   .legal-page .service-copy p { max-inline-size: none; }
   .legal-page h2 { font-size: var(--sy-text-h4); }
-  .legal-updated { margin-block: 0 var(--sy-space-section-sm); }
-  .legal-page .lead { font: inherit; margin-block-end: var(--sy-space-section-sm); }
-  .legal-page .service-copy > div, .legal-page aside { margin-block: var(--sy-space-section-sm); }
+  .legal-updated { margin-block: 0 var(--sy-space-gutter-lg); }
+  .legal-page .lead { font: inherit; margin-block-end: var(--sy-space-gutter-lg); }
+  .legal-page .service-copy > div, .legal-page aside { margin-block: var(--sy-space-gutter-lg); }
   @media (max-width: 600px) { .legal-page { padding: var(--sy-space-gutter-mobile); } .legal-page h1 { font-size: var(--sy-text-h3); } }
 </style>

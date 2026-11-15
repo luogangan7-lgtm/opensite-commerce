@@ -66,7 +66,9 @@ for (const locale of ['en', 'zh', 'ar']) for (const width of [1440, 768, 390]) t
       await expect(page.locator('.recovery-card').first()).toHaveCSS('background-color', 'rgb(239, 231, 214)');
     } else {
       await expect(page.locator('h1')).toHaveCSS('font-size', width === 390 ? '36px' : '56px');
-      expect(await page.locator('.service-copy > div > p').first().evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe(Math.min(896, width - (width === 390 ? 48 : 96)));
+      const column = await page.locator('.service-copy').boundingBox();
+      expect(locale === 'ar' ? Math.round(column!.x + column!.width) : Math.round(column!.x)).toBe(locale === 'ar' ? width - (width === 390 ? 24 : 48) : width === 390 ? 24 : 48);
+      expect(await page.locator('.service-copy > div > p').first().evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe(Math.min(760, width - (width === 390 ? 48 : 96)));
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `evidence/cp-legal-${route}-${locale}-${width}.png`, fullPage: true });
