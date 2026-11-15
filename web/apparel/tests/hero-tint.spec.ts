@@ -5,9 +5,9 @@ import tint from '../design/hero-tint.json' with { type: 'json' };
 const luminance = (rgb: number[]) => rgb.map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((sum,v,i) => sum + v * [.2126,.7152,.0722][i],0);
 for (const width of [390,768,1280]) test(`hero transmits image and preserves AA contrast ${width}`, async ({ page }) => {
  await page.setViewportSize({width,height:900});
- await page.route('**/img/site/illustrative_home_hero-*', route => route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200"><path fill="white" d="M0 0h800v1200H0z"/><path fill="black" d="M800 0h800v1200H800z"/></svg>'}));
+ await page.route('**/img/home/hero-*', route => route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200"><path fill="white" d="M0 0h800v1200H0z"/><path fill="black" d="M800 0h800v1200H800z"/></svg>'}));
  await page.goto('/');
- const image = page.locator('.hero-picture img');
+ const image = page.locator('.hero-photo.is-active .hero-picture img');
  await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
  const state = await page.locator('.hero-shade').evaluate(el => {
   const style = getComputedStyle(el),text = getComputedStyle(document.querySelector('.hero p')!);
@@ -25,7 +25,7 @@ for (const width of [390,768,1280]) test(`hero transmits image and preserves AA 
  const hero = await page.locator('.hero').boundingBox();
  const clip = {x:hero!.x+8,y:hero!.y+8,width:64,height:64};
  const visible = await page.screenshot({clip,animations:'disabled'});
- await page.locator('.hero-picture').evaluate(el => (el as HTMLElement).style.visibility='hidden');
+ await page.locator('.hero-photo.is-active .hero-picture').evaluate(el => (el as HTMLElement).style.visibility='hidden');
  const hidden = await page.screenshot({clip,animations:'disabled'});
  expect(visible.equals(hidden),'hero image must change actual rendered pixels under the tint').toBe(false);
 });

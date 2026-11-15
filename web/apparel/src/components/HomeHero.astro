@@ -13,7 +13,7 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
   <div class="hero-shade"></div>
   <div class="hero-content"><p class="eyebrow">{text(1)}</p><h1 data-hero-title>{text(2)}</h1><p class="hero-sub"><span class="wide-sub">{text(5)}</span><span class="small-sub">{text(6)}</span></p><a class="button secondary" href="#home-inquiry">{t.request}<span aria-hidden="true">→</span></a></div>
   <div class="hero-dots" role="group" aria-label={text(1)}>{slides.map((_,i)=><button type="button" data-slide-to={i} aria-label={text(i+2).replaceAll('\n',' ')} aria-pressed={i===0}><span aria-hidden="true">{i===0?'●':'○'}</span></button>)}</div>
-  <p class="hero-counter" aria-live="polite" aria-atomic="true"><span data-slide-counter>1</span> / 3</p>
+  <p class="hero-counter" dir="ltr" aria-live="polite" aria-atomic="true"><span data-slide-counter>1</span> / 3</p>
   <p class="hero-disclosure">{text(15)}</p>
   <button class="hero-playback" type="button" data-playback>{text(16)}</button>
  </div>

@@ -41,6 +41,8 @@ for (const locale of ['en','ar','zh']) for (const width of [390,768,1280]) test(
  await page.setViewportSize({width,height:900}); await page.emulateMedia({reducedMotion:'reduce'});
  await page.goto(locale==='en'?'/':`/${locale}/`); await page.evaluate(()=>document.fonts.ready);
  if(process.env.CP3_SCREENSHOTS) {
+  // Lazy images only load near the viewport: walk the page, then wait for every image to decode.
+  await page.evaluate(async()=>{for(let y=0;y<document.body.scrollHeight;y+=500){scrollTo(0,y);await new Promise(r=>setTimeout(r,80));}scrollTo(0,0);await Promise.all([...document.images].map(img=>img.decode().catch(()=>{})));});
   const path=process.env.CP3_SCREENSHOTS;
   await page.screenshot({path:`${path}/${locale}-${width}-full.png`,fullPage:true});
   const sections=page.locator('main > section');
@@ -48,5 +50,6 @@ for (const locale of ['en','ar','zh']) for (const width of [390,768,1280]) test(
  }
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await expect(page.locator('[data-home-category]')).toHaveCount(4);
+ await expect(page.locator('[data-home-category] img').nth(3)).toHaveAttribute('src',/hoodie-set-k01-0256-tz2800-10\/digital-model-03/);
  if(width===390) expect(await page.locator('[data-home-categories]').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(2);
 });

@@ -140,9 +140,11 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) 
         ['/products/apparel-59043/', 'apparel-70171'],
       ]) {
         await page.goto(`${prefix}${origin}`);
-        const card = page.locator(`.tile[href="${prefix}/products/${sku}/"]`);
+        // Frozen Home product cards are .home-card-grid links with a <strong> title; related cards keep .tile/h3.
+        const home = origin === '/', card = page.locator(`${home ? '.home-card-grid a' : '.tile'}[href="${prefix}/products/${sku}/"]`);
         await expect(card).toHaveCount(1);
-        await expect(card.locator('h3')).toHaveText(cardTitle(locale, sku));
+        // Home shows the frozen short Figma labels (dictionary-backed); related cards show the full identity title.
+        if (home) await expect(card.locator('strong')).not.toBeEmpty(); else await expect(card.locator('h3')).toHaveText(cardTitle(locale, sku));
         await card.click();
         await expect(page).toHaveURL(`${prefix}/products/${sku}/`);
         await expect(page.locator('h1')).toHaveText(cardTitle(locale, sku));
