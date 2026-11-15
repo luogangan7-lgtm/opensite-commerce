@@ -2,6 +2,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import frozen from '../design/collection-frozen.json';
 import digital from '../digital-sources.json';
 import homeMedia from '../home-media.json';
 import { digitalDelivery } from '../image-plan';
@@ -25,6 +26,8 @@ for (const master of digital) {
 }
 // Frozen Home media: SHA-bound masters ship only their exact 1024/640 derivatives.
 for (const master of homeMedia) for (const delivery of digitalDelivery(master)) images.add(delivery.src);
+for (const asset of frozen.assets) for (const file of asset.derivatives) images.add(file.src);
+
 // Dictionary-backed slot references only; source review stays deploy-only.
 for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.'))) for (const width of widths) for (const format of ['avif', 'webp']) images.add(`${imageBase(key.slice(4).replace('.', '/'))}-${width}.${format}`);
 if (products.length !== 115 || allowed.size !== 115) throw Error('Published catalog count changed');

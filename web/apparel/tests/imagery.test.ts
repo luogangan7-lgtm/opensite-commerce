@@ -59,12 +59,12 @@ test('the real slot gate rejects a missing passing slot in a disposable built fi
   const dir = mkdtempSync(join(tmpdir(), 'apparel-r4b-slot-'));
   try {
     cpSync('web/apparel/dist', dir, { recursive: true });
-    const file = join(dir, 'collections/index.html');
-    writeFileSync(file, readFileSync(file, 'utf8').replace(/<picture\b[^>]*data-slot="collection\/hero"[^>]*>[\s\S]*?<\/picture>/, ''));
+    const file = join(dir, 'about/index.html');
+    writeFileSync(file, readFileSync(file, 'utf8').replace(/<picture\b[^>]*data-slot="about\/hero"[^>]*>[\s\S]*?<\/picture>/, ''));
     const red = Bun.spawnSync(['bun', 'web/apparel/tests/slots-gate.ts'], { env: { ...process.env, APPAREL_DIST: dir } });
     expect(red.exitCode).not.toBe(0);
-    expect(red.stderr.toString()).toContain('missing slot or localized alt collection/hero');
-    console.log('RED proven: missing passing collection/hero rejected by real HTML gate');
+    expect(red.stderr.toString()).toContain('missing slot or localized alt about/hero');
+    console.log('RED proven: missing passing about/hero rejected by real HTML gate');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -90,7 +90,7 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
   const { tmpdir } = await import('node:os'), { join } = await import('node:path');
   const dir = mkdtempSync(join(tmpdir(), 'apparel-r4b-filtered-'));
   const slots: Record<string, Record<string, string>> = {};
-  for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.') && !key.startsWith('alt.home.'))) {
+  for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.') && !key.startsWith('alt.home.') && !key.startsWith('alt.collection.'))) {
     const [page, slot] = key.slice(4).split('.');
     (slots[page] ||= {})[slot] = `illustrative_${page}_${slot}.png`;
   }
@@ -111,8 +111,8 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
     writeFixture();
     expect(gate().exitCode).toBe(0);
     expect(readFileSync(join(dir, 'contact/index.html'), 'utf8')).not.toContain('data-slot="contact/banner"');
-    const file = join(dir, 'collections/index.html'), original = readFileSync(file, 'utf8');
-    writeFileSync(file, original.replace(/<picture\b[^>]*data-slot="collection\/hero"[^>]*>[\s\S]*?<\/picture>/, ''));
+    const file = join(dir, 'about/index.html'), original = readFileSync(file, 'utf8');
+    writeFileSync(file, original.replace(/<picture\b[^>]*data-slot="about\/hero"[^>]*>[\s\S]*?<\/picture>/, ''));
     expect(gate().exitCode).not.toBe(0);
     writeFileSync(file, original);
     review.find(row => row.role === 'illustrative_contact_banner')!.pass = true;

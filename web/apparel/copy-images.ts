@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { verifyBuildReceipt } from './build-receipt';
 import products from './src/data/products.json';
+import frozen from './design/collection-frozen.json';
 import digital from './digital-sources.json';
 import homeMedia from './home-media.json';
 import details from './detail-sources.json';
@@ -18,13 +19,17 @@ const sharp = createRequire(import.meta.resolve('astro/package.json'))('sharp');
 const common = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
 const sourceRoot = process.env.APPAREL_SOURCE_DIR || resolve(dirname(resolve(common)), 'work/apparel-b2b');
 const hd = join(sourceRoot, 'hd'), destination = resolve(process.argv[2] || '');
-if (!process.argv[2] || !existsSync(join(destination, 'index.html')) || existsSync(join(destination, 'img')) || existsSync(join(destination, 'deploy-manifest.json'))) throw Error('Pass a fresh downloaded apparel-dist directory');
+// Clean CI includes only verified collection delivery files; other pre-existing img output is refused.
+const collectionFiles = new Map([...frozen.assets, ...frozen.catalog].flatMap(a => a.derivatives.map(d => [d.src, d.sha256])));
+const existingImages = existsSync(join(destination, 'img')) ? readdirSync(join(destination, 'img'), {recursive:true}).filter(p => /\.[a-z]+$/.test(String(p))).map(p => '/img/' + p) : [];
+const invalidImages = existingImages.some(url => !collectionFiles.has(url) || createHash('sha256').update(readFileSync(join(destination,url))).digest('hex') !== collectionFiles.get(url));
+if (!process.argv[2] || !existsSync(join(destination, 'index.html')) || invalidImages || existsSync(join(destination, 'deploy-manifest.json'))) throw Error('Pass a fresh downloaded apparel-dist directory');
 const packagerSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const build = verifyBuildReceipt(destination, packagerSha, process.env.APPAREL_BUILD_RECEIPT_SHA256 || '');
 const json = (file: string) => JSON.parse(readFileSync(file, 'utf8'));
 const slotInput = json(join(hd, '_site/slots.json'));
-// Home no longer publishes review slots (frozen Figma Home uses home-media.json); ignore legacy external home entries.
 delete slotInput.home;
+delete slotInput.collection;
 const review: Review[] = readFileSync(join(hd, 'review.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
 const detailLedger = readDetailLedger(sourceRoot);
 const plan = imagePlan({ slots: slotInput, review, provenance: json(join(hd, '_site/provenance.json')), digital, detailLedger, details: details as DetailSource[], published: products.map(p => p.slug) });
@@ -71,7 +76,7 @@ for (const receipt of await packageDetails(plan.details, sourceRoot, destination
   dimensions.set(receipt.src, {w:receipt.w, h:receipt.h});
   record(receipt.src, receipt.sourceSha256);
 }
-for (const image of [...plan.digital, ...homeMedia]) {
+for (const image of [...plan.digital, ...homeMedia, ...frozen.assets]) {
   await packageDigital(image, sourceRoot, destination);
   for (const delivery of digitalDelivery(image)) {
     const outputMetadata = await sharp(join(destination, delivery.src)).metadata();

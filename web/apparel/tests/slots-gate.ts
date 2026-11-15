@@ -1,12 +1,15 @@
 /** CI output contract, independent of page implementation; deploy checks use the external slot inventory. */
+import digital from '../digital-sources.json';
+import frozen from '../design/collection-frozen.json';
+import { createHash } from 'node:crypto';
 import { assertSlotReferences } from '../image-plan';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 export const inventory = {
-  // Frozen Figma Home uses SHA-bound home-media.json; it publishes no review slots.
+  // Frozen Home and Collection use SHA-bound manifests; neither publishes review slots.
   home: [],
-  collection: ['hero', 'tile_apparel', 'tile_pullover-hoodie', 'tile_cotton430-hoodie', 'tile_crew-fleece', 'tile_hoodie-set'],
+  collection: [],
   about: ['hero', 'founder', 'facility_inspection', 'facility_production', 'facility_warehouse'],
   oem: ['hero', 'fabric_swatches', 'trims'],
   pdp: ['craft_fleece', 'craft_stack', 'craft_stitching'],
@@ -21,7 +24,16 @@ const ids = Object.entries(inventory).flatMap(([page, slots]) => slots.map(slot 
 const passing: string[] = manifest ? manifest.slotReviews.filter((row: { pass: boolean }) => row.pass === true).map((row: { id: string }) => row.id) : ids;
 if (manifest && (JSON.stringify(manifest.slotReviews.map((row: { id: string }) => row.id).sort()) !== JSON.stringify([...ids].sort()) || JSON.stringify(manifest.slots.map((row: { id: string }) => row.id).sort()) !== JSON.stringify([...passing].sort()))) throw Error('Review inventory and published slots disagree');
 const errors: string[] = [];
+for (const asset of frozen.catalog) if (!digital.some(row => row.src === asset.src && row.sha256 === asset.sha256 && row.source === asset.source)) errors.push(`Collection catalog master not accepted: ${asset.src}`);
+// Published collection derivatives are verified against the frozen export receipts.
+for (const asset of [...frozen.assets, ...frozen.catalog]) for (const file of asset.derivatives) {
+  const path = join(root, file.src);
+  if (!existsSync(path) || createHash('sha256').update(readFileSync(path)).digest('hex') !== file.sha256 || file.sourceSha256 !== asset.sha256) errors.push(`Collection digest mismatch: ${file.src}`);
+}
+
 for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
+  const collection = readFileSync(join(root, locale === 'en' ? '' : locale, 'collections/index.html'), 'utf8');
+  for (const asset of frozen.assets) if (!collection.includes(`src="${asset.src}"`)) errors.push(`Collection missing frozen image: ${locale}/${asset.id}`);
   const dictionary = JSON.parse(readFileSync(`web/apparel/src/i18n/${locale}.json`, 'utf8'));
   for (const [page, slots] of Object.entries(inventory)) for (const route of routes[page]) {
     const html = readFileSync(join(root, locale === 'en' ? '' : locale, route, 'index.html'), 'utf8');

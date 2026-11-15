@@ -77,7 +77,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   await expect(page.locator('[data-english-fallback]')).toHaveCount(0);
   await expect(page.locator('h1')).toContainText('卫衣');
   await page.goto('/zh/collections/');
-  await expect(page.locator('.tile h3').first()).toContainText('卫衣');
+  await expect(page.locator('.tile h3').first()).toHaveText(cardTitle('zh', 'apparel-59043'));
   for (const locale of ['zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
     for (const route of ['shipping', 'privacy', 'terms']) {
       await page.goto(`/${locale}/${route}/`);
@@ -116,7 +116,8 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) 
       await page.setViewportSize({ width, height: 1000 });
       // Fail closed: every RFQ is intercepted before navigation; no real customer request.
       await page.route('**/api/rfq', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }));
-      await page.goto(`${prefix}/collections/`);
+      const category = products.find(product => product.slug === sku)!.category;
+      await page.goto(`${prefix}/collections/${category}/`);
       const card = page.locator('.tile').filter({ has: page.locator('bdi', { hasText: new RegExp(`^${style}$`) }) });
       await expect(card).toHaveCount(1);
       const title = cardTitle(locale, sku);

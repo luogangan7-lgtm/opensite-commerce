@@ -3,6 +3,7 @@
  * Integration into rendered pages requires a separate release gate.
  */
 import rawFacts from './sku-source-delta.json';
+import { categories } from '../src/data/catalog';
 import { publicId } from '../src/data/imagery';
 const facts = rawFacts.map(f => ({ ...f, slug: publicId(f.slug) }));
 if (new Set(facts.map(f => f.slug)).size !== facts.length) throw Error('Conflicting public SEO identities');
@@ -16,7 +17,7 @@ function origin(value: string): string {
 }
 function route(path: string): string {
   // Closed inventory: L1 service/legal pages are explicitly included; other editorial routes stay excluded.
-  if (path !== '/' && path !== '/collections/' && path !== '/contact/' && !['/oem-odm/', '/sampling/', '/shipping/', '/privacy/', '/terms/'].includes(path) && !facts.some(f => path === `/products/${f.slug}/`)) throw Error('Unapproved route');
+  if (path !== '/' && path !== '/collections/' && path !== '/contact/' && !['/oem-odm/', '/sampling/', '/shipping/', '/privacy/', '/terms/'].includes(path) && !Object.keys(categories).some(c => path === `/collections/${c}/`) && !facts.some(f => path === `/products/${f.slug}/`)) throw Error('Unapproved route');
   return path;
 }
 export function urlFor(site: string, path: string, locale: Locale): string {
