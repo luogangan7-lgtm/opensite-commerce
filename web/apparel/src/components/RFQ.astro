@@ -13,7 +13,7 @@ const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entrie
 ---
 <form id="rfq-form" class="rfq" data-state="Default" novalidate action="/api/rfq" method="post" data-success-url={getRelativeLocaleUrl(locale, "/contact/") + "?sent=1"} data-sample-label={t.requestSample} data-messages={JSON.stringify(messages)}>
 <input type="hidden" name="locale" value={locale} />
-<h2>{t.rfqTitle}</h2><p class="muted rfq-intro" data-prefill-context>{t.rfqIntro}</p>
+{/\/contact\/?$/.test(Astro.url.pathname) && <h2>{t.rfqTitle}</h2>}<p class="muted rfq-intro" data-prefill-context>{t.rfqIntro}</p>
 <p class="form-status" tabindex="-1" role="status" aria-live="polite" id="rfq-status"></p>
 <div class="form-pair"><label>{t.firstName}<input name="first_name" placeholder={t.firstNamePlaceholder} autocomplete="given-name" required maxlength="50" /></label>
 <label>{t.lastName}<input name="last_name" placeholder={t.lastNamePlaceholder} autocomplete="family-name" required maxlength="50" /></label></div>
