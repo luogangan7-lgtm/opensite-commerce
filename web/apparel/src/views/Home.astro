@@ -1,28 +1,165 @@
 ---
-/** Home composition follows the supplied layout rhythm; all imagery is approved catalog content. */
+/** Home composition bound to frozen Figma Home / Desktop 1440 (30:560), Tablet 768 (30:806) and Mobile 390 (30:1039).
+ * Calls HomeHero/HomeMedia/RFQ; all copy comes from dictionaries (home.* keys), product facts from the catalog.
+ * Invariant: sections keep the frozen order; no repeated factory photo, no product-tail quote CTA, no duplicate browse-all. */
 import Shell from '../layouts/Shell.astro';
-import Grid from '../components/Grid.astro';
-import Illustration from '../components/Illustration.astro';
+import HomeHero from '../components/HomeHero.astro';
+import HomeMedia from '../components/HomeMedia.astro';
 import RFQ from '../components/RFQ.astro';
-import { products, categories } from '../data/catalog';
+import { products } from '../data/catalog';
+import { digitalAlt, digitalLabel } from '../data/imagery';
 import { dictionaries, pageLocale, type Key } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 const href = (route: string) => getRelativeLocaleUrl(locale, route);
-// Fixed Home identities from the adopted card contract; facts stay in the catalog.
-const featured = ['apparel-59043', 'cotton430-hoodie-58065', 'apparel-70171', 'crew-fleece-8900-38'].map(slug => {
-  const product = products.find(product => product.slug === slug);
-  if (!product) throw new Error(`Missing Home product: ${slug}`);
-  return product;
-});
-const benefits = [['styleFirst', 'styleText'], ['fabricFirst', 'fabricText'], ['sampleFirst', 'sampleText'], ['confirmFirst', 'confirmText']] as const;
+const c = (group: string, index: number) => t[`home.${group}.${index}` as Key];
+const product = (slug: string) => {
+  const found = products.find(row => row.slug === slug);
+  if (!found) throw new Error(`Missing Home product: ${slug}`);
+  return found;
+};
+// Fixed identities from the frozen Figma Home category tiles and product cards.
+// Set tile is the accepted full-silhouette model-03 (complete top + trousers), not images[0] (FD1 report).
+const categories = [['apparel-59043', 'apparel', 3], ['cotton430-hoodie-58065', 'cotton430-hoodie', 5], ['crew-fleece-8900-38', 'crew-fleece', 7], ['hoodie-set-k01-0256-tz2800-10', 'hoodie-set', 9, 'digital-model-03']] as const;
+const cards = [['apparel-59043', 2, 3], ['cotton430-hoodie-58065', 4, 5, 6], ['apparel-70171', 2, 7], ['crew-fleece-8900-38', 8, 9]] as const;
+const benefits = [2, 5, 8, 11].map(n => [c('benefits', n), c('benefits', n + 1), c('benefits', n + 2)]);
+const steps = [3, 6, 9].map(n => [c('process', n), c('process', n + 1), c('process', n + 2)]);
+const terms = [3, 5, 7, 9, 11].map(n => [c('terms', n), c('terms', n + 1)]);
+const image = (slug: string, file?: string) => {
+  const found = product(slug).images.find(row => !file || row.src.endsWith(`/${file}.webp`));
+  if (!found) throw new Error(`Missing Home image: ${slug} ${file}`);
+  return found;
+};
 ---
 <Shell title={t.heroTitle}>
-<section class="hero"><Illustration id="home/hero" hero sizes="100vw" class="hero-picture" /><div class="hero-shade"></div><div class="wrap hero-content"><h1>{t.heroTitle}</h1><p class="lead">{t.heroText}</p><div class="actions"><a class="button" href={href('/contact/')}>{t.request}</a><a class="button secondary" href={href('/collections/')}>{t.browse}</a></div></div><div class="strip"><div class="wrap"><span>{t.cotton}</span><span>{t.sets}</span><span>OEM / ODM</span><span>{t.samples}: {t.quote}</span></div></div></section>
-<section class="wrap"><h2>{t.partnerTitle}</h2><div class="benefits">{benefits.map(([title, body]) => <article><h3>{t[title]}</h3><p>{t[body]}</p></article>)}</div></section>
-<section class="wrap"><div class="section-heading"><div><h2>{t.makeTitle}</h2><p class="lead">{t.collectionLead}</p></div><a href={href('/collections/')}>{t.allCollections}</a></div><div class="product-lines"><a href={href("/collections/")}><Illustration id="home/line_collections" /><div><h3>{t.collections}</h3><span>{t.viewCollection}</span></div></a><a href={href("/about/") + "#oem"}><Illustration id="home/line_oem" /><div><h3>OEM / ODM</h3><span>{t.exploreOem}</span></div></a></div><nav class="category-links" aria-label={t.collections}>{Object.keys(categories).map(key => <a href={href(`/collections/${key}/`)}>{t[key as Key]}</a>)}</nav><Grid products={featured.slice(0, 4)} /></section>
-<section class="wrap"><h2>{t.partnerTitle}</h2><div class="split"><article><Illustration id="home/track_stock" /><h3>{t.styleFirst}</h3><p>{t.styleText}</p></article><article><Illustration id="home/track_custom" /><h3>{t.fabricFirst}</h3><p>{t.fabricText}</p></article></div></section>
-<section class="wrap split" id="oem"><div><h2>{t.briefTitle}</h2><p class="lead">{t.briefText}</p><a href={href('/about/') + '#oem'}>{t.exploreOem}</a></div><div class="steps">{benefits.slice(1).map(([title, body]) => <article><h3>{t[title]}</h3><p>{t[body]}</p></article>)}<p>{t.terms}: {t.quote}.</p></div></section>
-<section class="wrap"><div class="image-triptych"><Illustration id="home/process_pattern" /><Illustration id="home/process_sewing" /><Illustration id="home/process_qc" /></div></section>
-<section class="wrap split"><div><h2>{t.tellTitle}</h2><p class="lead">{t.tellText}</p></div><RFQ /></section>
+<HomeHero />
+<section class="home-section home-tiles"><div class="home-heading"><p class="home-eyebrow">{c('ways', 0)}</p><h2>{c('ways', 1)}</h2><p class="home-lead">{c('ways', 2)}</p></div>
+<div class="home-split-tiles"><a class="home-tile" href={href('/collections/')}><HomeMedia id="collections" alt="" /><span class="home-tile-label is-dark"><strong>{c('ways', 3)}</strong><span>{c('ways', 4)}</span></span></a><a class="home-tile" href={href('/oem-odm/')}><HomeMedia id="oem" alt="" /><span class="home-tile-label is-sand"><strong>{c('ways', 5)}</strong><span>{c('ways', 6)}</span></span></a></div></section>
+<section class="home-section home-band"><div class="home-heading"><p class="home-eyebrow">{c('benefits', 0)}</p><h2>{c('benefits', 1)}</h2></div>
+<ol class="home-benefits">{benefits.map(([number, title, body]) => <li><span class="home-number">{number}</span><h3>{title}</h3><p>{body}</p></li>)}</ol></section>
+<section class="home-section home-process sand"><div class="home-heading"><p class="home-eyebrow">{c('process', 0)}</p><h2>{c('process', 1)}</h2><p class="home-lead">{c('process', 2)}</p></div>
+<ol class="home-steps">{steps.map(([number, title, body]) => <li><span class="home-number">{number}</span><div><h3>{title}</h3><p>{body}</p></div></li>)}</ol></section>
+<section class="home-section home-categories"><div class="home-heading"><p class="home-eyebrow">{c('categories', 0)}</p><h2>{c('categories', 1)}</h2><p class="home-lead">{c('categories', 2)}</p></div>
+<ul class="home-category-grid" data-home-categories>{categories.map(([slug, category, n, file], index) => {
+  const img = image(slug, file);
+  return <li><a data-home-category href={href(`/collections/${category}/`)}><img src={img.src} alt={digitalAlt(img.src, locale) || c('categories', n)} width="600" height="720" loading="lazy" decoding="async" /><h3>{c('categories', n)}</h3><p>{c('categories', n + 1)}</p></a>{index === 3 && <p class="home-dye">{c('categories', 11)}</p>}</li>;
+})}</ul></section>
+<section class="home-section home-fabric"><div class="home-fabric-copy"><p class="home-eyebrow">{c('fabric', 0)}</p><h2>{c('fabric', 1)}</h2><p class="home-lead">{c('fabric', 2)}</p><a class="button secondary" href={href('/contact/') + '?subject=fabric-photos'}>{c('fabric', 3)}<span aria-hidden="true">{c('fabric', 4)}</span></a></div><div class="home-fabric-media"><HomeMedia id="fabric" alt="" /></div></section>
+<section class="home-section home-products"><div class="home-heading"><p class="home-eyebrow">{c('products', 0)}</p><h2>{c('products', 1)}</h2></div>
+<ul class="home-card-grid">{cards.map(([slug, title, code, note]) => {
+  const img = image(slug);
+  return <li><a href={href(`/products/${slug}/`)}><img src={img.src} alt={digitalAlt(img.src, locale) || c('products', title)} width="600" height="720" loading="lazy" decoding="async" />{digitalAlt(img.src, locale) && <span class="home-disclosure">{digitalLabel(locale)}</span>}<strong>{c('products', title)}</strong><span class="home-code"><bdi>{c('products', code)}</bdi></span></a>{note && <p class="home-dye">{c('products', note)}</p>}</li>;
+})}</ul>
+<div class="home-promo"><h3>{c('products', 10)}</h3><p>{c('products', 11)}</p></div></section>
+<section class="home-section home-terms"><div class="home-terms-copy"><p class="home-badge">{c('terms', 0)}</p><h2>{c('terms', 1)}</h2><p class="home-lead">{c('terms', 2)}</p><div class="home-terms-media"><HomeMedia id="terms-one" alt="" /><HomeMedia id="terms-two" alt="" /></div></div>
+<dl class="home-terms-list">{terms.map(([label, value]) => <div><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
+<section class="home-section home-closing" id="home-inquiry"><div class="home-closing-copy"><p class="home-eyebrow">{c('closing', 0)}</p><h2>{c('closing', 1)}</h2><p class="home-lead">{c('closing', 2)}</p></div>
+<div class="home-form"><h3>{c('closing', 3)}</h3><p>{c('closing', 4)}</p><RFQ /><p class="home-fine">{c('closing', 19)}</p></div></section>
 </Shell>
+<style>
+ /* Geometry binds the frozen frames (section padding 96/64, 1248 grid, 24 gutters); colour, type and space are project tokens. */
+ .home-section{--pad:var(--sy-space-section);--side:var(--sy-space-section);padding:var(--pad) var(--side);border:0;background:var(--sy-color-canvas);color:var(--sy-color-ink);}
+ .home-section>*{max-width:1248px;margin-inline:auto;}
+ .home-heading{max-width:820px;margin-inline:0;}
+ .home-section>.home-heading{margin-inline-start:max(0px,calc((100% - 1248px) / 2));}
+ .home-eyebrow{margin:0 0 var(--sy-space-md);font-size:var(--sy-text-eyebrow);font-weight:var(--sy-weight-label);letter-spacing:var(--sy-tracking-eyebrow);text-transform:uppercase;color:var(--sy-color-accent);}
+ .home-section h2{margin:0 0 var(--sy-space-lg);}
+ .home-lead{margin:0;font-size:var(--sy-text-lead);color:var(--sy-color-muted);max-width:none;}
+ .home-number{font-family:var(--sy-font-heading);font-weight:var(--sy-weight-heading);font-size:var(--sy-text-h4);}
+ .sand,.home-fabric-media{background:var(--sy-color-surface-alt);}
+ /* Split tiles */
+ .home-tiles{padding-inline:0;}
+ .home-tiles>.home-heading{margin-inline-start:var(--sy-space-section);}
+ .home-tiles>.home-split-tiles{max-width:none;margin-block-start:var(--sy-space-2xl);}
+ .home-split-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
+ .home-tile{position:relative;display:block;height:600px;overflow:hidden;text-decoration:none;color:inherit;}
+ .home-tile :global(picture){position:absolute;inset:0;}
+ .home-tile :global(img){width:100%;height:100%;object-fit:cover;}
+ .home-tile-label{position:absolute;inset-inline:0;inset-block-end:0;display:grid;gap:var(--sy-space-xs);padding:var(--sy-space-xl) var(--sy-space-gutter-lg);}
+ .home-tile-label strong{font-family:var(--sy-font-heading);font-weight:var(--sy-weight-heading);font-size:var(--sy-text-h4);line-height:1.15;}
+ .home-tile-label.is-dark{background:var(--sy-color-inverse);color:var(--sy-color-on-inverse);}
+ .home-tile-label.is-dark span{color:var(--sy-color-on-inverse-muted);}
+ .home-tile-label.is-sand{background:var(--sy-color-surface-alt);}
+ .home-tile-label.is-sand span{color:var(--sy-color-muted);}
+ .home-tile:hover .home-tile-label strong{text-decoration:underline;text-underline-offset:.25em;}
+ /* Dark band */
+ .home-band{background:var(--sy-color-inverse);color:var(--sy-color-on-inverse);}
+ .home-band .home-eyebrow,.home-band .home-number{color:var(--sy-color-label-accent);}
+ .home-benefits{list-style:none;margin:var(--sy-space-3xl) auto 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);align-items:start;}
+ .home-benefits h3{margin:var(--sy-space-md) 0 var(--sy-space-sm);}
+ .home-benefits p{margin:0;color:var(--sy-color-on-inverse-muted);}
+ .home-benefits li{padding-block-start:var(--sy-space-lg);}
+ /* Process */
+ .home-steps{list-style:none;margin:var(--sy-space-xl) auto 0;padding:0;display:grid;gap:var(--sy-space-lg);}
+ .home-steps li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sy-space-lg);padding-block:var(--sy-space-md);}
+ .home-steps .home-number{color:var(--sy-color-accent);min-width:1.5em;}
+ .home-steps h3{margin:0 0 var(--sy-space-xs);font-size:var(--sy-text-lead);}
+ .home-steps p{margin:0;color:var(--sy-color-muted);max-width:none;}
+ /* Categories */
+ .home-category-grid,.home-card-grid{list-style:none;margin:var(--sy-space-2xl) auto 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);align-items:start;}
+ .home-category-grid a,.home-card-grid a{display:block;text-decoration:none;color:inherit;}
+ .home-category-grid img{width:100%;aspect-ratio:4 / 5;object-fit:cover;border-radius:var(--sy-radius-card);}
+ .home-category-grid h3{margin:var(--sy-space-sm) 0 var(--sy-space-2xs);font-size:var(--sy-text-lead);}
+ .home-category-grid p,.home-card-grid .home-code{margin:0;color:var(--sy-color-muted);}
+ .home-dye{margin:var(--sy-space-sm) 0 0;color:var(--sy-color-accent);}
+ /* Fabric split */
+ .home-fabric{display:grid;grid-template-columns:5fr 4fr;padding:0;background:var(--sy-color-inverse);color:var(--sy-color-on-inverse);}
+ .home-fabric>*{min-width:0;max-width:none;margin:0;}
+ .home-fabric-copy{align-self:center;padding:var(--sy-space-section);}
+ .home-fabric-copy .home-eyebrow{color:var(--sy-color-label-accent);}
+ .home-fabric-copy .home-lead{color:var(--sy-color-on-inverse-muted);margin-block-end:var(--sy-space-xl);}
+ .home-fabric-copy .button{color:var(--sy-color-on-inverse);border-color:currentColor;background:transparent;gap:var(--sy-space-sm);font-weight:var(--sy-weight-label);}
+ .home-fabric-media{position:relative;min-height:720px;padding:var(--sy-space-md);}
+ .home-fabric-media :global(picture),.home-fabric-media :global(img){width:100%;height:100%;}
+ .home-fabric-media :global(img){object-fit:cover;}
+ /* Products */
+ .home-card-grid img{width:100%;aspect-ratio:4 / 5;object-fit:cover;border-radius:var(--sy-radius-card);}
+ .home-card-grid strong{display:block;margin-block:var(--sy-space-sm) var(--sy-space-2xs);}
+ .home-disclosure{display:block;color:var(--sy-color-muted);font-size:var(--sy-text-eyebrow);}
+ .home-promo{margin-block-start:var(--sy-space-lg);padding:var(--sy-space-2xl);background:var(--sy-color-surface-alt);}
+ .home-promo h3{margin:0 0 var(--sy-space-sm);font-size:var(--sy-text-h3);}
+ .home-promo p{margin:0;color:var(--sy-color-muted);max-width:none;}
+ /* Terms */
+ .home-terms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-section);background:var(--sy-color-surface);align-items:start;}
+ .home-terms>*{max-width:none;margin:0;}
+ .home-badge{display:inline-block;margin:0 0 var(--sy-space-md);padding:var(--sy-space-2xs) var(--sy-space-sm);background:var(--sy-color-accent);color:var(--sy-color-on-accent);font-size:var(--sy-text-small);border-radius:var(--sy-radius-sm);}
+ .home-terms-media{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-sm);margin-block-start:var(--sy-space-xl);}
+ .home-terms-media :global(img){width:100%;aspect-ratio:266 / 224;object-fit:cover;}
+ .home-terms-list{margin:0;}
+ .home-terms-list div{display:grid;grid-template-columns:180px minmax(0,1fr);gap:var(--sy-space-lg);padding:var(--sy-space-sm);border-block-end:var(--sy-space-hair) solid var(--sy-color-hairline);}
+ .home-terms-list dt{color:var(--sy-color-muted);}
+ .home-terms-list dd{margin:0;}
+ /* Closing */
+ .home-closing{display:grid;grid-template-columns:592px minmax(0,560px);justify-content:space-between;gap:var(--sy-space-section);align-items:start;}
+ .home-closing>*{max-width:none;margin:0;}
+ .home-form{padding:var(--sy-space-xl);background:var(--sy-color-surface);border:var(--sy-space-hair) solid var(--sy-color-hairline);border-radius:var(--sy-radius-card);}
+ .home-form h3{margin:0 0 var(--sy-space-sm);font-size:var(--sy-text-h3);}
+ .home-form>p{color:var(--sy-color-muted);}
+ .home-fine{margin:var(--sy-space-lg) 0 0;font-size:var(--sy-text-small);}
+ @media(max-width:1023px){
+  .home-section{--pad:var(--sy-space-section-sm);--side:var(--sy-space-gutter-lg);}
+  .home-tiles>.home-heading{margin-inline-start:var(--sy-space-gutter-lg);}
+  .home-tile{height:420px;}
+  .home-tile-label{padding:var(--sy-space-lg) var(--sy-space-xl);}
+  .home-benefits{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-xl) var(--sy-space-xl);margin-block-start:var(--sy-space-2xl);}
+  .home-category-grid,.home-card-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-grid-y) var(--sy-space-lg);}
+  .home-fabric{grid-template-columns:416fr 352fr;}
+  .home-fabric-copy{padding:var(--sy-space-section-sm) var(--sy-space-gutter-lg);}
+  .home-fabric-media{min-height:520px;}
+  .home-terms,.home-closing{grid-template-columns:minmax(0,1fr);gap:var(--sy-space-xl);}
+  .home-closing-copy{max-width:672px;}
+ }
+ @media(max-width:650px){
+  .home-section{--side:var(--sy-space-gutter-mobile);}
+  .home-tiles>.home-heading{margin-inline-start:var(--sy-space-gutter-mobile);}
+  .home-split-tiles{grid-template-columns:minmax(0,1fr);}
+  .home-tile{height:340px;}
+  .home-benefits{grid-template-columns:minmax(0,1fr);gap:var(--sy-space-lg);}
+  .home-category-grid,.home-card-grid{gap:var(--sy-space-xl) var(--sy-space-md);}
+  .home-fabric{grid-template-columns:minmax(0,1fr);}
+  .home-fabric-media{order:-1;min-height:320px;}
+  .home-fabric-copy{padding:var(--sy-space-section-sm) var(--sy-space-gutter-mobile);}
+  .home-promo{padding:var(--sy-space-lg);}
+  .home-terms-list div{grid-template-columns:minmax(0,1fr);gap:var(--sy-space-2xs);}
+ }
+</style>

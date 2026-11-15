@@ -1,0 +1,74 @@
+[
+  {
+    "id": "hero-visit",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave4/HERO-FINAL/hero-visit-h4b.png",
+    "sha256": "554c725bed2e74aa901b3da4b679e5fa62fc551b643cbf04826745e66cc5a9d7",
+    "src": "/img/home/hero-visit.webp",
+    "authority": "Figma Home/HeroCarousel 687:135947; FD2/H8a",
+    "width": 1536,
+    "height": 1024
+  },
+  {
+    "id": "hero-overhead",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave4/HERO-FINAL/hero-overhead-h4b.png",
+    "sha256": "7d4c6b046718ea0533067a4468b0ab948b67b2ddd0ca2f518d0c2c4445c3ccc4",
+    "src": "/img/home/hero-overhead.webp",
+    "authority": "Figma Home/HeroCarousel 687:135947; FD2/H8a",
+    "width": 1536,
+    "height": 1024
+  },
+  {
+    "id": "hero-lifestyle",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave4/HERO-FINAL/hero-lifestyle-h8a.png",
+    "sha256": "c5f77b2366a8abcdbd1929a058c71d1771974414a0e6e17f658bdcc47bbecc6b",
+    "src": "/img/home/hero-lifestyle.webp",
+    "authority": "Figma Home/HeroCarousel 687:135947; FD2/H8a",
+    "width": 1536,
+    "height": 1024
+  },
+  {
+    "id": "collections",
+    "source": "figma-evidence/v13/upload-jpg/out-w1__apparel-70171.jpg",
+    "sha256": "d9416f37d715216a4efb88a6616282fa2fd2c45c1195454d4e3253598f15f309",
+    "src": "/img/home/collections.webp",
+    "authority": "Frozen Figma Home 30:560 imageHash fd8c4da9097ceac45868ed2dcc792071b0982fe0",
+    "width": 1122,
+    "height": 1402
+  },
+  {
+    "id": "oem",
+    "source": "hd/_site/b2b_home_oem.png",
+    "sha256": "d55bde8b7e0145f286c14035c4b7e3483e3772e358312235f38596ee56da164a",
+    "src": "/img/home/oem.webp",
+    "authority": "Frozen Figma Home 30:560 imageHash 1595fc3d2278781d8f564bbde0a3523456551427",
+    "width": 1536,
+    "height": 1024
+  },
+  {
+    "id": "fabric",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave5/CP3/masters/fabric.raw",
+    "sha256": "894889a679666fb85ecee3a651f8c392d1cd6748f622eee1c2ab5cc2947d3aba",
+    "src": "/img/home/fabric.webp",
+    "authority": "Frozen Figma Home 30:560 imageHash d72041f2b91b95269925d0454e87ce01176c03f9",
+    "width": 314,
+    "height": 210
+  },
+  {
+    "id": "terms-one",
+    "source": "figma-evidence/v13/upload-jpg/out-p5__illus-quote-1.jpg",
+    "sha256": "ae382651412e3bfac65ac63d2fc5b9202df2740ad4bbd27bb8aa42dd2a510a92",
+    "src": "/img/home/terms-one.webp",
+    "authority": "Frozen Figma Home 30:560 imageHash 29f17fb5daf033f5ee6e270a9da129df102978a4",
+    "width": 1448,
+    "height": 1086
+  },
+  {
+    "id": "terms-two",
+    "source": "figma-evidence/v13/upload-jpg/out-p5__illus-quote-2.jpg",
+    "sha256": "5f8ef7bd5072cdf906019c7c9c6d796e72c246e77afd5d4df5092e3d0d33cf0f",
+    "src": "/img/home/terms-two.webp",
+    "authority": "Frozen Figma Home 30:560 imageHash 43c8b88290430702c8d55dca0b8fea2ddf3b9ecc",
+    "width": 1448,
+    "height": 1086
+  }
+]

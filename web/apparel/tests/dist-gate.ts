@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import digital from '../digital-sources.json';
+import homeMedia from '../home-media.json';
 import { digitalDelivery } from '../image-plan';
 import products from '../src/data/products.json';
 import { dictionaries, locales, type Locale } from '../src/i18n';
@@ -22,6 +23,8 @@ for (const master of digital) {
  if (!published || published.sha256_16 !== master.sha256.slice(0,16)) throw Error('Digital master differs from published catalog');
  for (const delivery of digitalDelivery(master)) images.add(delivery.src);
 }
+// Frozen Home media: SHA-bound masters ship only their exact 1024/640 derivatives.
+for (const master of homeMedia) for (const delivery of digitalDelivery(master)) images.add(delivery.src);
 // Dictionary-backed slot references only; source review stays deploy-only.
 for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.'))) for (const width of widths) for (const format of ['avif', 'webp']) images.add(`${imageBase(key.slice(4).replace('.', '/'))}-${width}.${format}`);
 if (products.length !== 115 || allowed.size !== 115) throw Error('Published catalog count changed');
