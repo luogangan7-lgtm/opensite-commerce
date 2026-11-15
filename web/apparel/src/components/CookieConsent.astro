@@ -1,21 +1,23 @@
 ---
-/** Shared localized consent UI; normal flow keeps RFQ controls unobstructed. */
+/** Shared localized consent UI; overlay presentation; existing consent state and events stay unchanged. */
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { dictionaries, pageLocale } from '../i18n';
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 ---
 <aside class="cookie-banner" data-cookie-banner hidden aria-labelledby="cookie-title">
-  <div><h2 id="cookie-title">{t.cookieTitle}</h2><p>{t.cookieText}</p></div>
-  <div class="cookie-actions"><button type="button" data-cookie-choice="essential">{t.cookieEssential}</button><button type="button" data-cookie-choice="all">{t.cookieAccept}</button><a href={getRelativeLocaleUrl(locale, '/privacy/') + '#cookies'}>{t.cookieSettings}</a></div>
+  <div><h2 id="cookie-title">{t.cookieTitle}</h2><p>{t.cookieBannerText}</p></div>
+  <div class="cookie-actions"><button type="button" data-cookie-choice="all">{t.cookieAccept}</button><button type="button" data-cookie-choice="essential">{t.cookieEssential}</button><a href={getRelativeLocaleUrl(locale, '/privacy/') + '#cookies'}>{t.cookieSettings}</a></div>
 </aside>
 <style>
-  .cookie-banner { padding: 1.5rem; background: var(--color-surface, #f4f2ee); border-block: 1px solid currentColor; text-align: start; }
-  .cookie-banner:not([hidden]) { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; }
-  .cookie-banner h2 { font-size: 1.2rem; margin: 0; }
-  .cookie-banner p { margin-block: .5rem 0; max-width: 65ch; }
-  .cookie-actions { display: flex; gap: .75rem; flex-wrap: wrap; flex-shrink: 0; }
-  .cookie-actions button, .cookie-actions a { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; }
-  @media (max-width: 900px) { .cookie-banner:not([hidden]) { flex-direction: column; align-items: stretch; } .cookie-actions { flex-direction: column; } }
+.cookie-banner { position: fixed; z-index: 10; inset-inline: var(--sy-space-grid-x); inset-block-end: var(--sy-space-grid-x); max-width: var(--sy-layout-max); margin-inline: auto; padding: var(--sy-space-lg); background: var(--sy-color-surface); border: var(--sy-space-hair) solid var(--sy-color-border); border-radius: var(--sy-radius-card); text-align: start; color: var(--sy-color-ink); }
+.cookie-banner:not([hidden]) { display: flex; align-items: center; justify-content: space-between; gap: var(--sy-space-md); }
+.cookie-banner h2 { font: var(--sy-weight-title) var(--sy-text-lead)/1.5 var(--sy-font-body); margin: 0; }
+.cookie-banner p { margin-block: var(--sy-space-xs) 0; font-size: var(--sy-text-small); color: var(--sy-color-muted); }
+.cookie-actions { display: flex; gap: var(--sy-space-sm); flex-shrink: 0; }
+.cookie-actions button, .cookie-actions a { min-height: calc(var(--sy-space-xl) + var(--sy-space-sm)); padding: var(--sy-space-sm) var(--sy-space-lg); font-size: var(--sy-text-body); display: inline-flex; align-items: center; justify-content: center; }
+.cookie-actions a { color: var(--sy-color-ink); }
+@media (max-width: 1100px) { .cookie-banner:not([hidden]) { flex-direction: column; align-items: stretch; } .cookie-actions { flex-wrap: wrap; } .cookie-actions button { flex: 1; } }
+@media (max-width: 650px) { .cookie-actions { flex-direction: column; } }
 </style>
 <script>
   const key = 'sourcyo-cookie-consent-v1';

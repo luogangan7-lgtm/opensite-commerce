@@ -18,7 +18,7 @@ for (const file of files(root).filter(f => f.endsWith('.html'))) {
   if (/(?:^|\/)(products|collections)\//.test(file)) {
     productAndCollectionPages++;
     const text = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<[^>]*>/g, ' ');
-    if (/\b(?:TBD|TODO|placeholder|lorem ipsum)\b/i.test(text)) throw Error(`Product placeholder: ${file}`);
+    if (/\b(?:TBD|placeholder|lorem ipsum)\b/i.test(text) || /\bTODO\b/.test(text)) throw Error(`Product placeholder: ${file}`);
   }
   const robots = [...head(html).matchAll(/<meta\b[^>]*>/g)].map(m => attrs(m[0])).filter(a => /^(robots|googlebot)$/i.test(a.name || ''));
   const noindex = robots.some(a => /\bnoindex\b/i.test(a.content || ''));

@@ -17,6 +17,8 @@ import '@fontsource/noto-sans-sc/400.css';
 import '@fontsource/noto-sans-sc/500.css';
 import '@fontsource/noto-sans-sc/700.css';
 import '../styles.css';
+import BrandLogo from '../components/BrandLogo.astro';
+import '../shell.css';
 import CookieConsent from '../components/CookieConsent.astro';
 import { analyticsScript, measurementId } from '../../analytics/config.mjs';
 const gaSource = analyticsScript(measurementId(import.meta.env.PUBLIC_GA4_ID));
@@ -30,13 +32,13 @@ interface Props { title: string; lcpImage?: string; lcpMobile?: string }
 const { title, lcpImage, lcpMobile } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale], path = pagePath(Astro.url);
 const href = (route: string) => getRelativeLocaleUrl(locale, route);
-const closeMenu = { en: 'Close', zh: '关闭', ar: 'إغلاق', es: 'Cerrar', fr: 'Fermer', de: 'Schließen', pt: 'Fechar', ru: 'Закрыть' }[locale];
+const closeMenu = t.menuClose;
 const origin = new URL(seoOrigin);
 const seo = publishedPaths.includes(path) ? page(seoOrigin, path, locale) : null;
 const canonical = new URL(getRelativeLocaleUrl(locale, path), origin).href;
 ---
 <!doctype html>
-<html lang={locale} dir={locale === 'ar' ? 'rtl' : 'ltr'}><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />{!isProduction && <meta name="robots" content="noindex" />}<title>{title} | Sourcyo Apparel</title><meta name="description" content={t.heroText} />
+<html lang={locale} dir={locale === 'ar' ? 'rtl' : 'ltr'}><head><meta charset="UTF-8" /><link rel="icon" type="image/png" sizes="16x16" href="/brand/icon-16.png" /><link rel="icon" type="image/png" sizes="32x32" href="/brand/icon-32.png" /><link rel="apple-touch-icon" sizes="180x180" href="/brand/icon-180.png" /><link rel="manifest" href="/brand/site.webmanifest" /><meta name="viewport" content="width=device-width, initial-scale=1" />{!isProduction && <meta name="robots" content="noindex" />}<title>{title} | Sourcyo Apparel</title><meta name="description" content={t.heroText} />
 {lcpImage && <link rel="preload" as="image" href={lcpImage} media={lcpMobile ? '(min-width: 768px)' : undefined} fetchpriority="high" />}
 {lcpMobile && <link rel="preload" as="image" href={lcpMobile} media="(max-width: 767px)" fetchpriority="high" />}
 <link rel="canonical" href={canonical} /><meta property="og:title" content={`${title} | Sourcyo Apparel`} /><meta property="og:description" content={t.heroText} /><meta property="og:type" content={seo?.structuredData ? 'product' : 'website'} /><meta property="og:url" content={canonical} /><meta property="og:site_name" content="Sourcyo Apparel" />
@@ -44,19 +46,24 @@ const canonical = new URL(getRelativeLocaleUrl(locale, path), origin).href;
 {path === '/' && <link rel="preload" as="image" fetchpriority="high" type="image/avif" imagesrcset={imageSrcset('home/hero', 'avif')} imagesizes={heroSizes} />}
 {locales.map(lang => <link rel="alternate" hreflang={lang === 'zh' ? 'zh-Hans' : lang} href={new URL(getRelativeLocaleUrl(lang, path), origin)} />)}<link rel="alternate" hreflang="x-default" href={new URL(getRelativeLocaleUrl('en', path), origin)} />{gaSource && <script is:inline set:html={gaSource} />}</head>
 <body><a class="skip" href="#content">{t.skip}</a>
-<header><div class="wrap header-inner"><a class="brand" href={href('/')}>Sourcyo Apparel</a><nav aria-label={t.mainNav}><a href={href('/')}>{t.home}</a><a href={href('/collections/')}>{t.collections}</a><a href={href('/oem-odm/')}>OEM / ODM</a><a href={href('/about/')}>{t.factory}</a><a href={href('/contact/')}>{t.contact}</a></nav><a class="button" href={href('/contact/')}>{t.request}</a>
+<header class:list={{ 'header-over-image': path === '/' }}><div class="wrap header-inner"><a class="brand" href={href('/')} aria-label={t.brandName}><BrandLogo variant={path === '/' ? 'reverse' : 'primary'} /></a><nav aria-label={t.mainNav}><a href={href('/')}>{t.shellHome}</a><a href={href('/collections/')}>{t.shellCollections}</a><a href={href('/oem-odm/')}>{t.navOem}</a><a href={href('/about/')}>{t.shellFactory}</a><a href={href('/contact/')}>{t.shellContact}</a></nav><a class="button" href={href('/contact/')}>{t.shellRequest}</a>
 <details class="language-switcher"><summary>{languageNames[locale]}</summary><nav aria-label={t.language}>{locales.map(lang => <a data-locale-link href={getRelativeLocaleUrl(lang, path)} lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'} aria-current={lang === locale ? 'page' : undefined}>{languageNames[lang]}</a>)}</nav></details>
 <button type="button" class="menu-toggle" data-menu-toggle aria-label={t.mainNav} aria-controls="mobile-navigation" aria-expanded="false"><span aria-hidden="true">☰</span></button>
 <div class="menu-backdrop" data-menu-backdrop hidden>
 <section id="mobile-navigation" role="dialog" aria-modal="true" aria-label={t.mainNav}>
 <button type="button" data-menu-close aria-label={closeMenu}>×</button>
-<nav aria-label={t.mainNav}><a href={href('/')} aria-current={path === '/' ? 'page' : undefined}>{t.home}</a><a href={href('/collections/')} aria-current={path === '/collections/' ? 'page' : undefined}>{t.collections}</a><a href={href('/oem-odm/')} aria-current={path === '/oem-odm/' ? 'page' : undefined}>OEM / ODM</a><a href={href('/about/')} aria-current={path === '/about/' ? 'page' : undefined}>{t.factory}</a><a href={href('/contact/')} aria-current={path === '/contact/' ? 'page' : undefined}>{t.contact}</a></nav>
-<a class="button" href={href('/contact/') + '#rfq-form'}>{t.request}</a>
+<nav aria-label={t.mainNav}><a href={href('/')} aria-current={path === '/' ? 'page' : undefined}>{t.shellHome}</a><a href={href('/collections/')} aria-current={path === '/collections/' ? 'page' : undefined}>{t.shellCollections}</a><a href={href('/oem-odm/')} aria-current={path === '/oem-odm/' ? 'page' : undefined}>{t.navOem}</a><a href={href('/about/')} aria-current={path === '/about/' ? 'page' : undefined}>{t.shellFactory}</a><a href={href('/contact/')} aria-current={path === '/contact/' ? 'page' : undefined}>{t.shellContact}</a></nav>
+<a class="button" href={href('/contact/') + '#rfq-form'}>{t.shellRequest}</a>
 <details class="mobile-languages"><summary>{t.language}: {languageNames[locale]}</summary><nav aria-label={t.language}>{locales.map(lang => <a data-locale-link href={getRelativeLocaleUrl(lang, path)} lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'} aria-current={lang === locale ? 'page' : undefined}>{languageNames[lang]}</a>)}</nav></details>
 </section></div></div></header>
 <CookieConsent /><main id="content"><slot /></main>
-<footer><div class="wrap footer"><div><a class="brand" href={href('/')}>Sourcyo Apparel</a><p>{t.footerText}</p></div><nav aria-label={t.footerNav}><a href={href('/collections/')}>{t.collections}</a><a href={href('/about/')}>{t.factoryInfo}</a><a href={href('/contact/')}>{t.contact}</a></nav><div><p>{t.terms}</p><p>{t.quote}</p><a href={href('/contact/')}>{t.request}</a></div></div></footer>
-<a class="quote-float button" href={href('/contact/')}>{t.request}</a>
+<footer><div class="wrap footer">
+<div><a class="brand" href={href('/')} aria-label={t.brandName}><BrandLogo variant="reverse" footer /></a><p>{t.footerText}</p></div>
+<nav aria-label={t.footerNav}><h2>{t.footerNav}</h2><a href={href('/collections/')}>{t.shellCollections}</a><a href={href('/oem-odm/')}>{t.navOem}</a><a href={href('/about/')}>{t.shellFactory}</a><a href={href('/collections/')}>{t.footerSize}</a></nav>
+<nav aria-label={t.footerHelp}><h2>{t.footerHelp}</h2><a href={href('/sampling/')}>{t.footerSampling}</a><a href={href('/shipping/')}>{t.footerShipping}</a><a href={href('/terms/')}>{t.footerTerms}</a><a href={href('/privacy/')}>{t.footerPrivacy}</a></nav>
+<nav aria-label={t.shellContact}><h2>{t.shellContact}</h2><a href={href('/contact/')}>{t.shellRequest}</a><a href="https://wa.me/85270227648">{t.footerWhatsapp}</a><a href="mailto:sales@sourcyowear.com">{t.footerEmail}</a><a href={href('/contact/') + '#rfq-form'}>{t.footerContactForm}</a></nav>
+</div><div class="wrap footer-legal"><span>{t.footerCopyright}</span><span>{t.footerNotice}</span></div></footer>
+<a class="quote-float button" href={href('/contact/')}>{t.shellRequest}</a>
 </body></html>
 
 <script>
@@ -64,7 +71,7 @@ const canonical = new URL(getRelativeLocaleUrl(locale, path), origin).href;
   const toggle = document.querySelector<HTMLButtonElement>('[data-menu-toggle]')!;
   const backdrop = document.querySelector<HTMLElement>('[data-menu-backdrop]')!;
   const menu = document.querySelector<HTMLElement>('#mobile-navigation')!;
-  const mobile = window.matchMedia('(max-width: 650px)');
+  const mobile = window.matchMedia('(max-width: 1100px)');
   const background = [...document.querySelectorAll<HTMLElement>('body > :not(header):not(script), .header-inner > :not(.menu-toggle):not(.menu-backdrop)')];
   const inertBefore = new Map<HTMLElement, boolean>();
   let previousOverflow = '';

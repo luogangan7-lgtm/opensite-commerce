@@ -1,0 +1,10 @@
+---
+/** FL1 outlined Brand/Logo exports. Shell owns links and localized accessible names; lettering stays LTR. */
+interface Props { variant?: 'primary' | 'mono-ink' | 'reverse'; footer?: boolean }
+const { variant = 'primary', footer = false } = Astro.props;
+---
+<img class:list={['brand-logo', { 'brand-logo-footer': footer }]} src={`/brand/${variant}.svg`} width="400" height="140" alt="" aria-hidden="true" dir="ltr" />
+<style>
+.brand-logo { width: calc(var(--sy-space-grid-y) * 4); height: auto; background: transparent; flex-shrink: 0; }
+.brand-logo-footer { width: calc(var(--sy-space-grid-y) * 5); }
+</style>

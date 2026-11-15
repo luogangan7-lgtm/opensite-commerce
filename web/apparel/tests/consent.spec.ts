@@ -54,11 +54,14 @@ for (const choice of ['essential', 'all']) test(`RFQ success lead only when cons
   expect(JSON.stringify(recorded)).not.toMatch(/private@|Private Name|Private Company|Private inquiry/);
 });
 test('eight locales, RTL, touch targets and unobstructed submit', async ({ page }) => {
+  await page.addInitScript(() => localStorage.removeItem('sourcyo-cookie-consent-v1'));
   for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
     await page.goto(`${locale === 'en' ? '' : '/' + locale}/contact/`);
     const banner = page.locator('[data-cookie-banner]');
     await expect(banner).toBeVisible();
     for (const button of await banner.locator('button').all()) expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    // Frozen cookie overlay is dismissed before interacting with the underlying form.
+    await page.locator('[data-cookie-choice=essential]').click();
     const submit = page.locator('#rfq-form button[type=submit]');
     await submit.scrollIntoViewIfNeeded();
     await submit.click({ trial: true });
