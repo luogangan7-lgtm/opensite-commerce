@@ -20,7 +20,7 @@ const common = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding
 const sourceRoot = process.env.APPAREL_SOURCE_DIR || resolve(dirname(resolve(common)), 'work/apparel-b2b');
 const hd = join(sourceRoot, 'hd'), destination = resolve(process.argv[2] || '');
 // Clean CI includes only verified collection delivery files; other pre-existing img output is refused.
-const collectionFiles = new Map(frozen.assets.flatMap(a => a.derivatives.map(d => [d.src, d.sha256])));
+const collectionFiles = new Map([...frozen.assets, ...frozen.catalog].flatMap(a => a.derivatives.map(d => [d.src, d.sha256])));
 const existingImages = existsSync(join(destination, 'img')) ? readdirSync(join(destination, 'img'), {recursive:true}).filter(p => /\.[a-z]+$/.test(String(p))).map(p => '/img/' + p) : [];
 const invalidImages = existingImages.some(url => !collectionFiles.has(url) || createHash('sha256').update(readFileSync(join(destination,url))).digest('hex') !== collectionFiles.get(url));
 if (!process.argv[2] || !existsSync(join(destination, 'index.html')) || invalidImages || existsSync(join(destination, 'deploy-manifest.json'))) throw Error('Pass a fresh downloaded apparel-dist directory');

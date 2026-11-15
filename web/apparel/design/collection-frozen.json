@@ -113,5 +113,330 @@
         }
       ]
     }
+  ],
+  "catalog": [
+    {
+      "src": "/img/crew-fleece-8900-38/digital-front.webp",
+      "sha256": "9b3c96b42da64971791e144b6c58c3dd53973d5f542ab6580360880a8f2deb26",
+      "source": "img-wash/out-w1/crew-fleece-8900-38.png",
+      "derivatives": [
+        {
+          "src": "/img/crew-fleece-8900-38/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "9b3c96b42da64971791e144b6c58c3dd53973d5f542ab6580360880a8f2deb26",
+          "sha256": "9aec4edcab120b0c2923c5d1d35f6f1c6301187376b64eb077e8fd788c91fc39"
+        },
+        {
+          "src": "/img/crew-fleece-8900-38/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "9b3c96b42da64971791e144b6c58c3dd53973d5f542ab6580360880a8f2deb26",
+          "sha256": "d4cdd68293081ae623e4d47a97c5f44909b42388d5c2cc614faf4de215f1daa4"
+        }
+      ]
+    },
+    {
+      "src": "/img/apparel-59043/digital-front.webp",
+      "sha256": "55ea67a5e93b11a57c3a28a7054991e9da5ea4821dc51ff2d7999b077c274090",
+      "source": "img-wash/out-w1/apparel-59043.png",
+      "derivatives": [
+        {
+          "src": "/img/apparel-59043/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "55ea67a5e93b11a57c3a28a7054991e9da5ea4821dc51ff2d7999b077c274090",
+          "sha256": "23c41984175ddc28f41f50b5e5393cc5203ddba7a7c622ea69352980243a0b7c"
+        },
+        {
+          "src": "/img/apparel-59043/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "55ea67a5e93b11a57c3a28a7054991e9da5ea4821dc51ff2d7999b077c274090",
+          "sha256": "01db86f9232e24679477cc838e5021727c751eb993e608c6c4e42784f8e0cf0c"
+        }
+      ]
+    },
+    {
+      "src": "/img/apparel-70171/digital-front.webp",
+      "sha256": "3332173381b40acad5a7b420ca8d959a427bff67b2c8d135ce1fb0512724622c",
+      "source": "img-wash/out-w1/apparel-70171.png",
+      "derivatives": [
+        {
+          "src": "/img/apparel-70171/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "3332173381b40acad5a7b420ca8d959a427bff67b2c8d135ce1fb0512724622c",
+          "sha256": "36a9f431749fd26c5b9f281ff245abe02d1334c3edc26c548ccc921e42f3a0dd"
+        },
+        {
+          "src": "/img/apparel-70171/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "3332173381b40acad5a7b420ca8d959a427bff67b2c8d135ce1fb0512724622c",
+          "sha256": "2ecc9fd272404115e5354dc655e91c530aa27f7326293bdc61ee90aa971701fc"
+        }
+      ]
+    },
+    {
+      "src": "/img/apparel-70175/digital-front.webp",
+      "sha256": "46097db46e21c2addfabe3e15c9797d434091cb41cbc938d03ea304b6beca1ed",
+      "source": "img-wash/out-w1/apparel-70175.png",
+      "derivatives": [
+        {
+          "src": "/img/apparel-70175/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "46097db46e21c2addfabe3e15c9797d434091cb41cbc938d03ea304b6beca1ed",
+          "sha256": "d7e4f6fc5b848904c0f9666606ef3d857e22f8faee5971ef578839684ac7fb8d"
+        },
+        {
+          "src": "/img/apparel-70175/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "46097db46e21c2addfabe3e15c9797d434091cb41cbc938d03ea304b6beca1ed",
+          "sha256": "61a90b71cb57e04546f9a467e6718366362044dca6ab6f9f41b684c9e682675f"
+        }
+      ]
+    },
+    {
+      "src": "/img/cotton430-hoodie-58065/digital-front.webp",
+      "sha256": "1f7a31f66ce9975714a5ac1c1f2679095f48ec9938cecd25c741b9ec9e6f6756",
+      "source": "img-wash/out-w1/cotton430-hoodie-58065.png",
+      "derivatives": [
+        {
+          "src": "/img/cotton430-hoodie-58065/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "1f7a31f66ce9975714a5ac1c1f2679095f48ec9938cecd25c741b9ec9e6f6756",
+          "sha256": "89dc6c973e714b0b7af931d550cfb45775a037ccd2103b0972898adc3c6d100c"
+        },
+        {
+          "src": "/img/cotton430-hoodie-58065/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "1f7a31f66ce9975714a5ac1c1f2679095f48ec9938cecd25c741b9ec9e6f6756",
+          "sha256": "0cdac7534cd8d40be75e07405f878317ea080371d7d1302cf459d8adbc24e2dc"
+        }
+      ]
+    },
+    {
+      "src": "/img/hoodie-set-k02/digital-front.webp",
+      "sha256": "c5525ccb9ef389ae14b87edeb61515e64e530a80eb7dfcaa178698dc1eeaafa5",
+      "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fhoodie-set-k02%2Fmodel-01-front-r1/image.raw",
+      "derivatives": [
+        {
+          "src": "/img/hoodie-set-k02/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "c5525ccb9ef389ae14b87edeb61515e64e530a80eb7dfcaa178698dc1eeaafa5",
+          "sha256": "d3a4355063b2f3c693d6c0b6edbd9890264de0a8c8cd74ceb7ebbf63e04dc974"
+        },
+        {
+          "src": "/img/hoodie-set-k02/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "c5525ccb9ef389ae14b87edeb61515e64e530a80eb7dfcaa178698dc1eeaafa5",
+          "sha256": "6536363074b389cf9981eac879aac9448d7d56e46c89c386247aed6b656fc8c1"
+        }
+      ]
+    },
+    {
+      "src": "/img/hoodie-set-k12-3900-0253/digital-front.webp",
+      "sha256": "3e3bc3fab04f8d38f71d123708425840472a7c2958014a651249a29a24ced4b7",
+      "source": "img-wash/out-w1/hoodie-set-k12-3900-0253.png",
+      "derivatives": [
+        {
+          "src": "/img/hoodie-set-k12-3900-0253/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "3e3bc3fab04f8d38f71d123708425840472a7c2958014a651249a29a24ced4b7",
+          "sha256": "4385249f25ee0d012321a107041f8f77d8ec92a8d43f2faff4c8a4444373ca0c"
+        },
+        {
+          "src": "/img/hoodie-set-k12-3900-0253/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "3e3bc3fab04f8d38f71d123708425840472a7c2958014a651249a29a24ced4b7",
+          "sha256": "3d7e6de0858afa37b7bf5dadd698e15a4d9724f8a88124c03711b71ffd7a43ed"
+        }
+      ]
+    },
+    {
+      "src": "/img/hoodie-set-k12-3900-0252/digital-front.webp",
+      "sha256": "14c3e25ea2606144826c5c811efb95c36f466ece8c30f796047c21027f3a9eb2",
+      "source": "img-wash/out-w1/hoodie-set-k12-3900-0252.png",
+      "derivatives": [
+        {
+          "src": "/img/hoodie-set-k12-3900-0252/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "14c3e25ea2606144826c5c811efb95c36f466ece8c30f796047c21027f3a9eb2",
+          "sha256": "464c842c404e81f633df342937727b04fb6c488612b1bd9e9d83596a50a0388d"
+        },
+        {
+          "src": "/img/hoodie-set-k12-3900-0252/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "14c3e25ea2606144826c5c811efb95c36f466ece8c30f796047c21027f3a9eb2",
+          "sha256": "ed6145c703897d6ea721d80e7f897338f13ff94ec9473ee69a994ab820a3bf8b"
+        }
+      ]
+    },
+    {
+      "src": "/img/hoodie-set-k12-3900/digital-front.webp",
+      "sha256": "cac57e60060f85868d33eb964f9506d896c093c122997915ab082a8a4246dcb1",
+      "source": "img-wash/out-w1/hoodie-set-k12-3900.png",
+      "derivatives": [
+        {
+          "src": "/img/hoodie-set-k12-3900/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "cac57e60060f85868d33eb964f9506d896c093c122997915ab082a8a4246dcb1",
+          "sha256": "50a6d8caa02ad61c2085b8ba01290da22ebd8cdb7b214f4e1897855095857ab1"
+        },
+        {
+          "src": "/img/hoodie-set-k12-3900/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "cac57e60060f85868d33eb964f9506d896c093c122997915ab082a8a4246dcb1",
+          "sha256": "f08bcbd45902540882fef4818dc704a15270cf4834983ea923f0db857860bdfb"
+        }
+      ]
+    },
+    {
+      "src": "/img/hoodie-set-k13-3901/digital-front.webp",
+      "sha256": "1f69244c14ac2834018b4fcad0f3a230670bdfc5dd4d51756caf03a602a71a3c",
+      "source": "img-wash/out-w1/hoodie-set-k13-3901.png",
+      "derivatives": [
+        {
+          "src": "/img/hoodie-set-k13-3901/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "1f69244c14ac2834018b4fcad0f3a230670bdfc5dd4d51756caf03a602a71a3c",
+          "sha256": "9b760d7c6f3399afda0835704be7ac53ac47b193bef35d3e6a21be23d49ffd4e"
+        },
+        {
+          "src": "/img/hoodie-set-k13-3901/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "1f69244c14ac2834018b4fcad0f3a230670bdfc5dd4d51756caf03a602a71a3c",
+          "sha256": "068a9da9475f5036f19b5d52f735aa09de9b68d09ec1e3d602072cec359d7cc0"
+        }
+      ]
+    },
+    {
+      "src": "/img/hoodie-set-k14-3902/digital-front.webp",
+      "sha256": "eaab4c4169e032abcd84a97e56a66134386afb4aeee166f517dad224a28d5203",
+      "source": "img-wash/out-w1/hoodie-set-k14-3902.png",
+      "derivatives": [
+        {
+          "src": "/img/hoodie-set-k14-3902/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "eaab4c4169e032abcd84a97e56a66134386afb4aeee166f517dad224a28d5203",
+          "sha256": "c7487ee83dd6a76618c46802f3996b96b645c8a074280fd38e775844543c4b36"
+        },
+        {
+          "src": "/img/hoodie-set-k14-3902/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "eaab4c4169e032abcd84a97e56a66134386afb4aeee166f517dad224a28d5203",
+          "sha256": "6cf863be33d5f2bc4ceea496dd73e130eea7b2ca40bf852eaeafc400742043bc"
+        }
+      ]
+    },
+    {
+      "src": "/img/hoodie-set-k15-3903/digital-front.webp",
+      "sha256": "75d002b29483d36dacdd4172aab48f0d2ee285ae1a6dc8d6d1396e130207fc67",
+      "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/regen-queue-01/quarantine/regen-queue-01%2Fhoodie-set-k15-3903%2Fmodel-01-front-r1/image.raw",
+      "derivatives": [
+        {
+          "src": "/img/hoodie-set-k15-3903/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "75d002b29483d36dacdd4172aab48f0d2ee285ae1a6dc8d6d1396e130207fc67",
+          "sha256": "fe8ee1bd49f599724275484fcd4939e44eeab7d8421a3ea4531e770087a02364"
+        },
+        {
+          "src": "/img/hoodie-set-k15-3903/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "75d002b29483d36dacdd4172aab48f0d2ee285ae1a6dc8d6d1396e130207fc67",
+          "sha256": "c9e4e6ab9ff8dfe6c6142966fb937fe9b7d4129b309d9887b8fcefbf6dc05eb0"
+        }
+      ]
+    },
+    {
+      "src": "/img/hoodie-set-k16-3904/digital-front.webp",
+      "sha256": "39361d942a5916d1581d2829623879c802c376da6a3c58b7d3f6471e90296c17",
+      "source": "img-wash/out-w1/hoodie-set-k16-3904.png",
+      "derivatives": [
+        {
+          "src": "/img/hoodie-set-k16-3904/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "39361d942a5916d1581d2829623879c802c376da6a3c58b7d3f6471e90296c17",
+          "sha256": "cd790ef19d8545ac3b9b70e53e0ebe3aec440891020063ef75d19b4981d4a582"
+        },
+        {
+          "src": "/img/hoodie-set-k16-3904/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "39361d942a5916d1581d2829623879c802c376da6a3c58b7d3f6471e90296c17",
+          "sha256": "b01406632696c54c9ef2bac539ab3ce684c020fdce450d7597d38676aef460c9"
+        }
+      ]
+    },
+    {
+      "src": "/img/hoodie-set-k17-3905/digital-front.webp",
+      "sha256": "4ab3e2b9cbfb08740d30fa747ffe038e5bca4a230589e6602f94492f89155f89",
+      "source": "img-wash/out-w1/hoodie-set-k17-3905.png",
+      "derivatives": [
+        {
+          "src": "/img/hoodie-set-k17-3905/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "4ab3e2b9cbfb08740d30fa747ffe038e5bca4a230589e6602f94492f89155f89",
+          "sha256": "96bf26571e9fc8f0dca050f3efde02c75f0bf490763e90232a1adb640520a6ae"
+        },
+        {
+          "src": "/img/hoodie-set-k17-3905/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "4ab3e2b9cbfb08740d30fa747ffe038e5bca4a230589e6602f94492f89155f89",
+          "sha256": "ca1c484626e483029020a9c01f97df2bcc54f00b9ffb3724a9ac3c510282093a"
+        }
+      ]
+    },
+    {
+      "src": "/img/hoodie-set-k18-3906/digital-front.webp",
+      "sha256": "5e1eb22ecac0e9122b2111523b3b350d4db2f90f0f51612df4360ee530be657e",
+      "source": "img-wash/out-w1/hoodie-set-k18-3906.png",
+      "derivatives": [
+        {
+          "src": "/img/hoodie-set-k18-3906/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "5e1eb22ecac0e9122b2111523b3b350d4db2f90f0f51612df4360ee530be657e",
+          "sha256": "a650639576b923777aae78264bd3521d023e37295090cbc37a04eadd20561fb4"
+        },
+        {
+          "src": "/img/hoodie-set-k18-3906/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "5e1eb22ecac0e9122b2111523b3b350d4db2f90f0f51612df4360ee530be657e",
+          "sha256": "a003d005009fe0cf1eb4b6a1e2053c144682c9136bbd9a2492841d03f9000f12"
+        }
+      ]
+    },
+    {
+      "src": "/img/hoodie-set-k19-3907/digital-front.webp",
+      "sha256": "4c26b23344899484e2e4eedd314f375627a6db73ed69f73022e56616b80697ca",
+      "source": "img-wash/out-w1/hoodie-set-k19-3907.png",
+      "derivatives": [
+        {
+          "src": "/img/hoodie-set-k19-3907/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "4c26b23344899484e2e4eedd314f375627a6db73ed69f73022e56616b80697ca",
+          "sha256": "9a4a6674270f31997b8e741e66dfcd3e701b0407cb57aeb308ae711027dc5d0f"
+        },
+        {
+          "src": "/img/hoodie-set-k19-3907/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "4c26b23344899484e2e4eedd314f375627a6db73ed69f73022e56616b80697ca",
+          "sha256": "72f33073c2685bb45309f4ce57a442b81cabdd98833bb73e9942e3c1afa6587e"
+        }
+      ]
+    },
+    {
+      "src": "/img/pullover-hoodie-69008/digital-front.webp",
+      "sha256": "098fcc26cd2e6edac96578972d8c37eb96da5684605938a0b670e012bf1843be",
+      "source": "img-wash/out-w1/aston-hoodie-69008.png",
+      "derivatives": [
+        {
+          "src": "/img/pullover-hoodie-69008/digital-front.webp",
+          "width": 1024,
+          "sourceSha256": "098fcc26cd2e6edac96578972d8c37eb96da5684605938a0b670e012bf1843be",
+          "sha256": "e8cb0005c3649d608a19c125a1df7de1625ee0fc3fadfe9a4dc43fe250e1d30b"
+        },
+        {
+          "src": "/img/pullover-hoodie-69008/digital-front-640.webp",
+          "width": 640,
+          "sourceSha256": "098fcc26cd2e6edac96578972d8c37eb96da5684605938a0b670e012bf1843be",
+          "sha256": "4431cac882759a0be29dc8b1e2dd0e4ec0e5d590f953f4404fd6b19f9b7d63e5"
+        }
+      ]
+    }
   ]
 }
