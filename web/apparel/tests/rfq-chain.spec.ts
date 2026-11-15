@@ -33,7 +33,7 @@ for (const mode of ['success', 'validation', 'timeout', 'duplicate'] as const) {
       });
     });
     await page.goto('/contact/');
-    await page.locator('[name="name"]').fill('CI');
+    await page.locator('[name="first_name"]').fill('CI'); await page.locator('[name="last_name"]').fill('Buyer'); await page.locator('[name="quantity_note"]').fill('100 pieces');
     await page.locator('[name="company"]').fill('Example');
     await page.locator('[name="email"]').fill('ci@example.invalid');
     await page.locator('[name="message"]').fill('Synthetic RFQ');

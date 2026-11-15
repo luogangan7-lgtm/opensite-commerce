@@ -4,11 +4,13 @@ import products from '../src/data/products.json' with { type: 'json' };
 import identities from './card-identities.json' with { type: 'json' };
 import en from '../src/i18n/en.json' with { type: 'json' };
 import zh from '../src/i18n/zh.json' with { type: 'json' };
+import enProducts from '../src/i18n/products.en.json' with { type: 'json' };
+import zhProducts from '../src/i18n/products.zh.json' with { type: 'json' };
 const cardTitle = (locale: string, sku: string) => identities.find(identity => identity.slug === sku)!.localized_titles[locale as keyof typeof identities[0]['localized_titles']];
 const slug = products[0].slug;
 test('contact prefill and language switching retain path/query/fragment', async ({ page }) => {
   await page.goto(`/contact/?product=${slug}&type=sample&subject=fabric-photos#rfq-form`);
-  await expect(page.locator('textarea')).toHaveValue(`${slug} (${products[0].style_codes.join(' / ')})\n${en.requestSample}\nfabric-photos`);
+  await expect(page.locator('textarea')).toHaveValue(`${enProducts[slug].name} (${products[0].style_codes.join(' / ')})\n${en.requestSample}\nfabric-photos`);
   const mobile = await page.locator('[data-menu-toggle]').isVisible();
   if (mobile) await page.locator('[data-menu-toggle]').click();
   const switcher = page.locator(mobile ? '.mobile-languages' : '.language-switcher');
@@ -21,7 +23,7 @@ test('contact prefill and language switching retain path/query/fragment', async 
   await expect(page.locator('[name="product_slug"]')).toHaveValue(slug);
   expect(new URL(page.url()).hash).toBe('#rfq-form');
   await expect(page.locator('[name="locale"]')).toHaveValue('zh');
-  await expect(page.locator('textarea')).toHaveValue(`${slug} (${products[0].style_codes.join(' / ')})\n${zh.requestSample}\nfabric-photos`);
+  await expect(page.locator('textarea')).toHaveValue(`${zhProducts[slug].name} (${products[0].style_codes.join(' / ')})\n${zh.requestSample}\nfabric-photos`);
 });
 test('invalid query and obsolete fragment query are ignored; sent status renders', async ({ page }) => {
   await page.goto('/contact/?product=unknown&type=bad&subject=%3Cscript%3E#rfq-form?subject=fabric-photos');
@@ -30,7 +32,7 @@ test('invalid query and obsolete fragment query are ignored; sent status renders
   await expect(page.locator('.form-status')).toHaveText(/已收到/);
 });
 async function fill(page: import('@playwright/test').Page) {
-  await page.locator('[name="name"]').fill('CI');
+  await page.locator('[name="first_name"]').fill('CI'); await page.locator('[name="last_name"]').fill('Buyer'); await page.locator('[name="quantity_note"]').fill('100 pieces');
   await page.locator('[name="company"]').fill('Example');
   await page.locator('[name="email"]').fill('ci@example.invalid');
   await page.locator('[name="message"]').fill('Synthetic sample request');
@@ -40,7 +42,7 @@ test('failed submission retains values, retry succeeds at localized sent route',
   await page.route('**/api/rfq', route => route.fulfill({ status: ++calls === 1 ? 503 : 201, contentType: 'application/json', body: '{}' }));
   await page.goto('/zh/contact/'); await fill(page);
   await page.locator('button[type="submit"]').click();
-  await expect(page.locator('.form-status')).toHaveText(/未保存/);
+  await expect(page.locator('.form-status')).toHaveText(zh.rfqServerError);
   await expect(page.locator('textarea')).toHaveValue('Synthetic sample request');
   await expect(page.locator('.form-status')).toBeFocused();
   await page.locator('button[type="submit"]').click();

@@ -36,7 +36,7 @@ for (const locale of ['en', 'ar']) for (const route of ['/', '/collections/crew-
 test('Spanish form renders server message keys as Spanish strings', async ({ page }) => {
   await page.route('**/api/rfq', route => route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ errors: { email: 'error.email' } }) }));
   await page.goto('/es/contact/');
-  await page.locator('[name="name"]').fill('CI'); await page.locator('[name="company"]').fill('Example');
+  await page.locator('[name="first_name"]').fill('CI'); await page.locator('[name="last_name"]').fill('Buyer'); await page.locator('[name="quantity_note"]').fill('100 pieces'); await page.locator('[name="company"]').fill('Example');
   await page.locator('[name="email"]').fill('ci@example.invalid'); await page.locator('[name="message"]').fill('Sample');
   await page.locator('button[type="submit"]').click();
   await expect(page.locator('.form-status')).toContainText('Introduce una dirección de correo válida.');

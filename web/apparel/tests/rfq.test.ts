@@ -86,3 +86,15 @@ test('static RLS and client privacy boundary', async () => {
   expect(server).not.toMatch(/console\.(log|warn|error|info|debug)/);
 
 });
+
+test('frozen RFQ accepts split names and required style/quantity, preserving legacy name for storage', async () => {
+  const f = fixture({ first_name: ' Alex ', last_name: ' Morgan ', email: valid.email, company: valid.company, quantity_note: '100 pieces', message: valid.message });
+  expect((await f.run()).status).toBe(204);
+  const row = await f.writes[0].json();
+  expect(row.first_name).toBe('Alex'); expect(row.last_name).toBe('Morgan');
+  expect(row.name).toBe('Alex Morgan'); expect(row.quantity_note).toBe('100 pieces');
+});
+for (const field of ['first_name', 'last_name', 'quantity_note']) test(`frozen RFQ rejects missing ${field}`, async () => {
+  const f = fixture({ first_name: 'Alex', last_name: 'Morgan', quantity_note: '100 pieces', email: valid.email, company: valid.company, message: valid.message, [field]: '' });
+  expect((await f.run()).status).toBe(400); expect((await Promise.resolve(f.writes)).length).toBe(0);
+});

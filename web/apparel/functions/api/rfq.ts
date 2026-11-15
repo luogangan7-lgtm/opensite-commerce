@@ -28,7 +28,7 @@ async function abuseCheck(request: Request, env: Context['env']): Promise<Respon
     await cache.put(key, Response.json(counter, { headers: { 'Cache-Control': `max-age=${Math.max(60, Math.ceil((counter.expires - now) / 1000))}` } }));
   } catch { return reply(503, { error: 'error.storage' }); }
 }
-const limits = { name: 100, company: 150, email: 254, message: 2000 } as const;
+const limits = { name: 101, company: 150, email: 254, message: 2000 } as const;
 const optionalLimits = { country: 80, product_slug: 120, quantity_note: 200, source_page: 300 } as const;
 const reply = (status: number, body: object) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 export async function onRequestPost({ request, env }: Context): Promise<Response> {
@@ -45,9 +45,20 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
   if (typeof input.website === 'string' && input.website.trim()) return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
   const errors: Record<string, string> = {};
   const record: Record<string, string | null> = {};
+  // Expand first: old preview clients may still send name while the frozen form sends split names.
+  const splitName = input.first_name !== undefined || input.last_name !== undefined;
+  if (splitName) {
+    for (const field of ['first_name', 'last_name', 'quantity_note']) {
+      const value = input[field];
+      const max = field === 'quantity_note' ? 200 : 50;
+      if (typeof value !== 'string' || !value.trim() || value.length > max) errors[field] = 'error.required';
+      else record[field] = value.trim();
+    }
+    input.name = [record.first_name, record.last_name].filter(Boolean).join(' ');
+  }
   for (const [field, max] of Object.entries(limits)) {
     const value = input[field];
-    if (typeof value !== 'string' || !value.trim() || value.length > max) errors[field] = 'error.required';
+    if (typeof value !== 'string' || !value.trim() || value.length > (field === 'name' && !splitName ? 100 : max)) errors[field] = 'error.required';
     else record[field] = value.trim();
   }
   for (const [field, max] of Object.entries(optionalLimits)) {
