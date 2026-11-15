@@ -8,10 +8,13 @@
     "preview": "astro preview --host 127.0.0.1 --port 4322"
   },
   "dependencies": {
-    "astro": "7.3.8",
+    "@fontsource/literata": "5.3.0",
+    "@fontsource/manrope": "5.3.0",
+    "@fontsource/noto-sans-arabic": "5.3.0",
+    "@fontsource/noto-sans-sc": "5.3.1",
+    "@fontsource/noto-serif-sc": "5.3.1",
     "@opensite/design-tokens": "workspace:*",
-    "@fontsource/inter": "5.3.0",
-    "@fontsource/outfit": "5.3.0"
+    "astro": "7.3.8"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",

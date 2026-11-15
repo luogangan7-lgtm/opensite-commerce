@@ -1,10 +1,21 @@
 ---
 /** Shared static document; Astro locale URLs, reciprocal alternates and navigation. All apparel pages consume this layout; desktop navigation stays unchanged. No backend state. */
 import '@opensite/design-tokens/css';
-import '@fontsource/inter/400.css';
-import '@fontsource/inter/500.css';
-import '@fontsource/outfit/300.css';
-import '@fontsource/outfit/500.css';
+// Frozen Figma families; Fontsource CSS self-hosts WOFF2 with font-display: swap.
+import '@fontsource/literata/500.css';
+import '@fontsource/literata/600.css';
+import '@fontsource/manrope/400.css';
+import '@fontsource/manrope/500.css';
+import '@fontsource/manrope/700.css';
+import '@fontsource/noto-sans-arabic/400.css';
+import '@fontsource/noto-sans-arabic/500.css';
+import '@fontsource/noto-sans-arabic/600.css';
+import '@fontsource/noto-sans-arabic/700.css';
+import '@fontsource/noto-serif-sc/500.css';
+import '@fontsource/noto-serif-sc/600.css';
+import '@fontsource/noto-sans-sc/400.css';
+import '@fontsource/noto-sans-sc/500.css';
+import '@fontsource/noto-sans-sc/700.css';
 import '../styles.css';
 import CookieConsent from '../components/CookieConsent.astro';
 import { analyticsScript, measurementId } from '../../analytics/config.mjs';
