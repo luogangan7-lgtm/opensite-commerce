@@ -1,7 +1,7 @@
 /** CP4 rendered-media regression against frozen FD1/FD3/FD5. */
 import { test, expect } from '@playwright/test';
 import products from '../src/data/products.json' with { type: 'json' };
-import { productText, dictionaries as translations } from '../src/i18n';
+import { readFileSync } from 'node:fs';
 const dictionaries = Object.fromEntries(['en','zh','es','fr','de','pt','ru','ar'].map(locale=>[locale,{}]));
 const path=(locale:string,slug='hoodie-set-k02')=>`${locale==='en'?'':'/'+locale}/products/${slug}/`;
 test('all 115 served PDPs use their own primary whole and same-colour structure', async ({page}) => {
@@ -17,10 +17,11 @@ test('all 115 served PDPs use their own primary whole and same-colour structure'
 for(const [locale,t] of Object.entries(dictionaries)) test(`caption ${locale}`,async({page})=>{
  await page.goto(path(locale));
  await expect(page.locator('[data-pdp-media] figcaption')).toHaveCount(0);
- const language = locale as keyof typeof translations;
+ const translations = JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`, import.meta.url),'utf8'));
+ const productText = JSON.parse(readFileSync(new URL(`../src/i18n/products.${locale}.json`, import.meta.url),'utf8'));
  const detailAlt = await page.locator('[data-pdp-detail]').getAttribute('alt');
- expect(detailAlt).toContain(productText[language]['hoodie-set-k02'].name);
- expect(detailAlt).toContain(translations[language].view);
+ expect(detailAlt).toContain(productText['hoodie-set-k02'].name);
+ expect(detailAlt).toContain(translations.view);
 });
 for(const locale of ['en','ar','zh']) for(const width of [390,768,1280]) test(`FIT pair and viewer ${locale} ${width}`,async({page})=>{
  await page.setViewportSize({width,height:1000});
