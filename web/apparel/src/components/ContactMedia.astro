@@ -1,0 +1,9 @@
+---
+/** Frozen Contact media; copy-images packages digest-bound external masters. */
+import media from '../../contact-media.json';
+interface Props { id: string; alt?: string; hero?: boolean }
+const { id, alt = '', hero = false } = Astro.props;
+const image = media.find(row => row.id === id);
+if (!image) throw Error(`Unknown Contact master ${id}`);
+---
+<img data-contact-media={id} src={image.src} width={image.width} height={image.height} alt={alt} loading={hero ? 'eager' : 'lazy'} decoding="async" />

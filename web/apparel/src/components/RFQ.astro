@@ -49,7 +49,6 @@ const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entrie
       ].filter(Boolean);
       if (lines.length) message.value = lines.join('\n');
       if (prefill.product) {
-        form.querySelector<HTMLInputElement>('[name="quantity_note"]')!.value = prefill.product.style_codes.join(' / ');
         form.querySelector<HTMLElement>('[data-prefill-context]')!.textContent = lines.join(' · ');
       }
       if (prefill.product) {

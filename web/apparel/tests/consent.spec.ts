@@ -41,7 +41,9 @@ for (const choice of ['essential', 'all']) test(`RFQ success lead only when cons
   await page.route('**/api/rfq', route => route.fulfill({ json: { ok: true } }));
   await page.goto('/contact/?email=private@example.invalid');
   await page.locator(`[data-cookie-choice="${choice}"]`).click();
-  await page.locator('[name=name]').fill('Private Name');
+  await page.locator('[name=first_name]').fill('Private');
+  await page.locator('[name=last_name]').fill('Name');
+  await page.locator('[name=quantity_note]').fill('100 pieces');
   await page.locator('[name=email]').fill('private@example.invalid');
   await page.locator('[name=company]').fill('Private Company');
   await page.locator('[name=message]').fill('Private inquiry');
