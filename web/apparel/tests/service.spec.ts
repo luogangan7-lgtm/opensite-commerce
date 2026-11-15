@@ -17,6 +17,19 @@ for(const locale of locales) for(const kind of ['oem-odm','sampling','shipping']
    await expect(portrait).toHaveCSS('object-fit','cover');
   }
   if(kind==='oem-odm') await expect(view.locator('.opening')).toHaveCSS('padding-top',width>900?'48px':'24px');
+  if(kind==='oem-odm'&&width===1440) {
+   const heights=await view.locator('.matrix > div').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().height));
+   expect(heights[0]).toBeCloseTo(heights[1],0);
+  }
+  if(locale==='ru'&&kind==='oem-odm'&&width===390) {
+   const lastPhraseTogether=await view.locator('.quote h2').evaluate(n=>{
+    const text=n.firstChild!,s=text.textContent!,last=s.lastIndexOf(' '),before=s.lastIndexOf(' ',last-1);
+    const a=document.createRange(),b=document.createRange();
+    a.setStart(text,before+1);a.setEnd(text,last);b.setStart(text,last+1);b.setEnd(text,s.length);
+    return Math.abs(a.getBoundingClientRect().y-b.getBoundingClientRect().y)<1;
+   });
+   expect(lastPhraseTogether).toBe(true);
+  }
   for(const grid of await view.locator('.three,.four,.techniques').all()) {
    const gap=await grid.evaluate(n=>n.getBoundingClientRect().top-n.previousElementSibling!.getBoundingClientRect().bottom);
    expect(gap).toBeCloseTo(48,0);

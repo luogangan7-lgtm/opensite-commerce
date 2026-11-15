@@ -34,7 +34,7 @@ const photographs = ['catalog-hoodie', 'catalog-green', 'catalog-crew'];
 {phases.map(([kicker,number,heading,body], i) => <section class:list={{inverse:i===1,phase:true}}><div class="svc-wrap"><p class="eyebrow phase-kicker">{c(kicker)}</p><div class:list={{split:true,reverse:i===1}}><div class="phase-copy"><p class="step-number">{c(number)}</p><h2>{c(heading)}</h2><p class="lead">{c(body)}</p></div><ServiceMedia id={photographs[i]} alt="" /></div></div></section>)}
 {sample ? <section><div class="svc-wrap"><p class="eyebrow">{c(865)}</p><h2>{c(866)}</h2><p class="lead">{c(867)}</p></div></section> : <section><div class="svc-wrap"><p class="eyebrow">{c(881)}</p><h2>{c(882)}</h2><div class="three">{[883,886,889].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{n===889 ? <a href="mailto:sales@sourcyowear.com"><bdi>{c(n+2)}</bdi></a> : c(n+2)}</p></article>)}</div></div></section>}
 </>}
-<section class="inverse"><div class="svc-wrap"><p class="eyebrow">{c(848)}</p><h2>{c(oem ? 849 : sample ? 868 : 892)}</h2><p class="lead">{c(850)}</p><a class="button" data-service-rfq href={href}>{t.shellRequest} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a></div></section>
+<section class="inverse quote"><div class="svc-wrap"><p class="eyebrow">{c(848)}</p><h2>{c(oem ? 849 : sample ? 868 : 892)}</h2><p class="lead">{c(850)}</p><a class="button" data-service-rfq href={href}>{t.shellRequest} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a></div></section>
 </div>
 </Shell>
 <style>
@@ -64,7 +64,7 @@ p { max-inline-size: none; margin: 0; }
 .svc-page :global([data-service-media^="catalog-"] img) { object-position: 50% 0%; }
 .opening :global(img) { block-size: 540px; object-fit: cover; }
 .capability-panel,.capabilities-strip { background: var(--sy-color-surface-alt); }
-.capability-panel,.brief-panel { padding: var(--sy-space-lg); align-self: start; }
+.capability-panel,.brief-panel { padding: var(--sy-space-lg); align-self: stretch; }
 .capability-panel h2,.brief-panel h2 { font-size: var(--sy-text-h3); }
 .lines { white-space: pre-line; }
 .inverse { background: var(--sy-color-ink); color: var(--sy-color-on-ink); }
@@ -83,6 +83,7 @@ p { max-inline-size: none; margin: 0; }
  .svc-wrap { margin-inline: var(--sy-space-gutter-mobile); }
  section { padding-block: var(--sy-space-section-sm); }
  h1,h2 { font-size: var(--sy-text-h2-mobile); }
+ .quote h2 { font-size: var(--sy-text-h3-mobile); }
  h3,.phase-copy h2,.capability-panel h2,.brief-panel h2 { font-size: var(--sy-text-h3-mobile); }
  .three,.matrix,.split,.opening { grid-template-columns: minmax(0,1fr); }
  .four,.techniques { grid-template-columns: repeat(2,minmax(0,1fr)); }
