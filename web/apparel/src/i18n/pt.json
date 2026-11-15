@@ -302,5 +302,7 @@
   "cp6.auto/lead-time": "Prazo de entrega",
   "cp6.auto/per-order": "Por encomenda",
   "cp6.auto/payment": "Pagamento",
-  "cp6.auto/stated-in-your-quote": "Indicado na sua cotação"
+  "cp6.auto/stated-in-your-quote": "Indicado na sua cotação",
+  "pdpDetailCaption": "Ilustração gerada por IA; os detalhes reais seguem a amostra confirmada.",
+  "galleryClose": "Fechar"
 }

@@ -1,5 +1,5 @@
 /** Gallery role adapter for Product; only colour-bound accepted roles enter the PDP sequence. */
-import type { Locale } from '../i18n';
+import { dictionaries, locales, type Locale } from '../i18n';
 export type GalleryRole = 'front' | 'turn' | 'back' | 'garment' | 'print' | 'structure' | 'fabric';
 export interface GalleryImage { src: string; role?: string; colour?: string }
 const order: Record<GalleryRole, number> = { front: 0, turn: 1, back: 2, garment: 3, print: 4, structure: 5, fabric: 6 };
@@ -22,16 +22,14 @@ export function galleryColours<T extends GalleryImage>(images: T[]): T[] {
     seen.add(image.colour); return true;
   });
 }
-/** Owner review pending for non-Chinese translations; never claim technical properties in generated alt. */
-export const detailCaption: Record<Locale, string> = {
- en: 'AI-generated illustration; actual details are subject to the confirmed sample.',
- zh: 'AI生成示意，实际细节以确认样品为准',
- es: 'Ilustración generada por IA; los detalles reales dependen de la muestra confirmada.',
- fr: 'Illustration générée par IA ; les détails réels sont ceux de l’échantillon confirmé.',
- de: 'KI-generierte Illustration; maßgeblich sind die tatsächlichen Details des bestätigten Musters.',
- pt: 'Ilustração gerada por IA; os detalhes reais dependem da amostra confirmada.',
- ru: 'Иллюстрация создана ИИ; фактические детали определяются подтверждённым образцом.',
- ar: 'رسم توضيحي مولّد بالذكاء الاصطناعي؛ التفاصيل الفعلية وفق العينة المعتمدة.',
-};
-
-export const galleryClose: Record<Locale, string> = { en: 'Close', zh: '关闭', es: 'Cerrar', fr: 'Fermer', de: 'Schließen', pt: 'Fechar', ru: 'Закрыть', ar: 'إغلاق' };
+/** Frozen FD1 pattern: primary accepted W1 front plus same-colour G structure (fabric fallback). */
+export function pdpMediaPair<T extends GalleryImage>(images: T[]): { whole: T; detail: T } {
+ const whole = images.find(image => image.role === 'front' && image.colour === primaryColour(images));
+ const detail = images.find(image => image.role === 'structure' && image.colour === whole?.colour)
+  || images.find(image => image.role === 'fabric' && image.colour === whole?.colour);
+ if (!whole || !detail) throw Error('PDP requires an accepted whole garment and same-colour G detail');
+ return { whole, detail };
+}
+/** Compatibility exports for existing gallery callers; visible copy is owned by the dictionaries. */
+export const detailCaption = Object.fromEntries(locales.map(locale => [locale, dictionaries[locale].pdpDetailCaption])) as Record<Locale, string>;
+export const galleryClose = Object.fromEntries(locales.map(locale => [locale, dictionaries[locale].galleryClose])) as Record<Locale, string>;

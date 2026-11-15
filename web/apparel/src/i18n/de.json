@@ -302,5 +302,7 @@
   "cp6.auto/lead-time": "Lieferzeit",
   "cp6.auto/per-order": "Je Auftrag",
   "cp6.auto/payment": "Zahlung",
-  "cp6.auto/stated-in-your-quote": "In Ihrem Angebot genannt"
+  "cp6.auto/stated-in-your-quote": "In Ihrem Angebot genannt",
+  "pdpDetailCaption": "KI-generierte Illustration; die tatsächlichen Details richten sich nach dem bestätigten Muster.",
+  "galleryClose": "Schließen"
 }
