@@ -71,7 +71,6 @@ const relatedCards = (featuredRelated ? [featuredRelated, ...related.filter(p =>
     if (!main) return; event.preventDefault(); main.closest('picture')?.querySelector('source')?.removeAttribute('srcset'); main.src = link.getAttribute('href')!;
     const thumbnail = link.querySelector('img')!;
     main.alt = thumbnail.alt;
-        if (label) label.textContent = link.dataset.digital || '';
     main.dataset.fit = link.dataset.fit || '';
     document.querySelectorAll('.gallery-thumbs a').forEach(item => item.removeAttribute('aria-current'));
     link.setAttribute('aria-current', 'true');

@@ -11,7 +11,7 @@ import frozen from './design/collection-frozen.json';
 import { slotInventory, staticImages, assertSlotReferences, digitalDelivery } from './image-plan';
 import { imageBase, digitalAlt } from './src/data/imagery';
 import { dictionaries, productText, locales, type Locale } from './src/i18n';
-import { detailCaption } from './src/data/gallery';
+import { orderedGallery } from './src/data/gallery';
 export function htmlFiles(dir: string): string[] {
  return readdirSync(dir, {withFileTypes:true}).flatMap(e => e.isDirectory() ? htmlFiles(join(dir,e.name)) : e.name.endsWith('.html') ? [join(dir,e.name)] : []);
 }
@@ -28,7 +28,8 @@ export function packagingGate(root: string) {
   const route=relative(root,file), prefix=route.split('/')[0];
   const locale: Locale=locales.find(l=>l===prefix)||'en', t=dictionaries[locale];
   const html=readFileSync(file,'utf8');
-  const localized=new Set([...Object.values(t), ...Object.values(productText[locale]).map(p=>p.name), detailCaption[locale]].map(escape));
+  const localized=new Set([...Object.values(t), ...Object.values(productText[locale]).map(p=>p.name)].map(escape));
+  for (const p of products) for (const [index] of orderedGallery(p.images).entries()) localized.add(escape(`${productText[locale][p.slug].name}: ${t.view} ${index + 1}`));
   for(const p of products) for(const src of p.size_chart) localized.add(escape(`${t.sizeChart}: ${p.style_codes.join(', ')}`));
   for (const match of html.matchAll(/<img\b[^>]*>/g)) {
    images++; const tag=match[0],src=tag.match(/\bsrc="([^"]+)"/)?.[1]||'',alt=tag.match(/\balt="([^"]*)"/)?.[1] ?? (/\salt(?:\s|\/?>)/.test(tag) ? '' : undefined);
