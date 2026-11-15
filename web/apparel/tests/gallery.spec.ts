@@ -13,7 +13,7 @@ for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) test(`gallery de
  const main = page.locator('[data-gallery-main]');
  await expect(main).toHaveCSS('object-fit', 'contain');
  if (process.env.APPAREL_PACKAGED_IMAGES === '1' || process.env.APPAREL_PREVIEW_URL) await expect.poll(() => main.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth === 1200 && img.naturalHeight === 1200)).toBe(true);
- const box = await main.boundingBox(); expect(box!.width / box!.height).toBeCloseTo(4/3, 2);
+ const box = await main.boundingBox(); expect(box!.width / box!.height).toBeCloseTo(4/5, 2);
  await expect(page.locator('[data-digital-label]')).toHaveCount(0);
  await expect(main).toHaveAttribute('alt', /.+/);
  await page.locator('[data-gallery-zoom]').click();

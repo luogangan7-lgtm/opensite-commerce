@@ -26,7 +26,7 @@ header { border-block-end: 1px solid var(--sy-color-hairline); background: var(-
 header nav { display: flex; flex-wrap: wrap; gap: var(--sy-space-grid-x); margin-inline: auto; }
 .header-inner > nav { flex: 1; justify-content: center; }
 header nav a { text-decoration: none; }
-.button, button { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: .75rem var(--sy-space-grid-x); border: 1px solid var(--sy-color-accent); border-radius: var(--sy-radius-control); background: var(--sy-color-accent); color: var(--sy-color-on-accent); text-decoration: none; cursor: pointer; }
+.button, button { display: inline-flex; align-items: center; justify-content: center; gap: var(--sy-space-xs); min-height: 46px; padding: .75rem var(--sy-space-grid-x); border: 1px solid var(--sy-color-accent); border-radius: var(--sy-radius-control); background: var(--sy-color-accent); color: var(--sy-color-on-accent); text-decoration: none; cursor: pointer; }
 .button:hover, button:hover { background: var(--sy-color-accent-hover); color: var(--sy-color-on-accent); }
 .secondary { background: transparent; color: var(--sy-color-ink); border-color: var(--sy-color-ink); }
 button:disabled { opacity: .6; cursor: wait; }
@@ -68,7 +68,7 @@ picture img { width: 100%; }
 .category-links a { text-decoration: none; border: 1px solid var(--sy-color-border); border-radius: var(--sy-radius-pill); padding: .5rem var(--sy-space-grid-x); }
 .category-links a[aria-current] { background: var(--sy-color-ink); color: var(--sy-color-on-ink); }
 .language-switcher { border: 0; position: relative; padding: 0; }
-.language-switcher summary { min-height: 44px; display: flex; align-items: center; }
+.language-switcher summary { gap: var(--sy-space-xs); min-height: 44px; display: flex; align-items: center; }
 .language-switcher nav { position: absolute; inset-inline-end: 0; inset-block-start: 100%; background: var(--sy-color-canvas); border: 1px solid var(--sy-color-border); padding: var(--sy-space-grid-x); min-width: 10rem; display: grid; gap: .5rem; z-index: 3; }
 .language-switcher a { min-height: 36px; }
 .language-switcher [aria-current] { color: var(--sy-color-accent); text-decoration: underline; }
