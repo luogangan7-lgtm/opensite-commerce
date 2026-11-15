@@ -44,7 +44,9 @@ picture img { width: 100%; }
 .category-previews { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sy-space-grid-x); margin-block: var(--sy-space-grid-y); }
 .category-previews a { min-width: 0; text-decoration: none; }
 .category-previews img { aspect-ratio: 3 / 2; object-fit: cover; }
-.hero-shade { z-index: -1; background: var(--sy-color-overlay); }
+/* Frozen Home/HeroCarousel tint opacity; source: design/hero-tint.json.
+   Keep opacity on this empty layer so the image shows through and text stays opaque. */
+.hero-shade { z-index: -1; background: var(--sy-color-overlay); opacity: .66; }
 .hero-content { padding-block: var(--sy-space-section); }
 .hero h1 { max-width: 18ch; }
 .hero p { max-width: 48ch; }
