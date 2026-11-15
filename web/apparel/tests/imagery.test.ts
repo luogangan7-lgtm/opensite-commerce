@@ -90,7 +90,7 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
   const { tmpdir } = await import('node:os'), { join } = await import('node:path');
   const dir = mkdtempSync(join(tmpdir(), 'apparel-r4b-filtered-'));
   const slots: Record<string, Record<string, string>> = {};
-  for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.') && !key.startsWith('alt.home.') && !key.startsWith('alt.collection.') && !key.startsWith('alt.contact.'))) {
+  for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.') && !key.startsWith('alt.home.') && !key.startsWith('alt.collection.') && !key.startsWith('alt.contact.') && !key.startsWith('alt.pdp.'))) {
     const [page, slot] = key.slice(4).split('.');
     (slots[page] ||= {})[slot] = `illustrative_${page}_${slot}.png`;
   }
@@ -123,7 +123,7 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
     writeFixture();
     expect(gate().exitCode).toBe(0);
     expect(readFileSync(join(dir, 'about/index.html'), 'utf8')).toContain('data-slot="about/hero"');
-    console.log('PASS: real gate 24 passing slots, missing-slot RED, fixture review flip restores 25');
+    console.log('PASS: real gate active passing slots, missing-slot RED, fixture review flip restores hero');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

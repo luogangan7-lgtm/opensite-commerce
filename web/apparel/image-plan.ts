@@ -102,3 +102,17 @@ export function digitalDelivery(image: {src: string; sha256: string}) {
  if (!/^\/img\/[a-z0-9_/-]+\.webp$/.test(image.src) || !/^[a-f0-9]{64}$/.test(image.sha256)) throw Error('Invalid digital delivery master');
  return [{src:image.src,width:1024,sourceSha256:image.sha256},{src:image.src.replace(/\.webp$/, '-640.webp'),width:640,sourceSha256:image.sha256}];
 }
+
+/** Active template placements shared by CI and packaging; retired reviews remain external history. */
+export const slotInventory: Record<string, string[]> = {
+ home: [], collection: [],
+ about: ['hero', 'founder', 'facility_inspection', 'facility_production', 'facility_warehouse'],
+ oem: ['hero', 'fabric_swatches', 'trims'],
+ pdp: [], contact: [],
+};
+export const staticImages: Record<string, {w: number; h: number}> = {
+ '/brand/primary.svg': {w:400,h:140}, '/brand/reverse.svg': {w:400,h:140},
+};
+export function activeSlotInput(input: Record<string, Record<string, string>>) {
+ return Object.fromEntries(Object.entries(input).filter(([page]) => !Object.hasOwn(slotInventory,page) || slotInventory[page].length));
+}
