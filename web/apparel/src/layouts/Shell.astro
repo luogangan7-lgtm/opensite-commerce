@@ -63,7 +63,7 @@ const canonical = new URL(getRelativeLocaleUrl(locale, path), origin).href;
 <nav aria-label={t.footerHelp}><h2>{t.footerHelp}</h2><a href={href('/sampling/')}>{t.footerSampling}</a><a href={href('/shipping/')}>{t.footerShipping}</a><a href={href('/terms/')}>{t.footerTerms}</a><a href={href('/privacy/')}>{t.footerPrivacy}</a></nav>
 <nav aria-label={t.shellContact}><h2>{t.shellContact}</h2><a href={href('/contact/')}>{t.shellRequest}</a><a href="https://wa.me/85270227648">{t.footerWhatsapp}</a><a href="mailto:sales@sourcyowear.com">{t.footerEmail}</a><a href={href('/contact/') + '#rfq-form'}>{t.footerContactForm}</a></nav>
 </div><div class="wrap footer-legal"><span>{t.footerCopyright}</span><span>{t.footerNotice}</span></div></footer>
-<a class="quote-float button" href={href('/contact/')}>{t.shellRequest}</a>
+{!/^\/(?:privacy|terms|404(?:\.html)?)\/?$/.test(path) && <a class="quote-float button" href={href('/contact/')}>{t.shellRequest}</a>}
 </body></html>
 
 <script>
