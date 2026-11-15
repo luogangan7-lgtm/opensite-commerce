@@ -4,7 +4,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 export const inventory = {
-  home: ['hero', 'line_collections', 'line_oem', 'process_pattern', 'process_qc', 'process_sewing', 'track_custom', 'track_stock'],
+  // Frozen Figma Home uses SHA-bound home-media.json; it publishes no review slots.
+  home: [],
   collection: ['hero', 'tile_apparel', 'tile_pullover-hoodie', 'tile_cotton430-hoodie', 'tile_crew-fleece', 'tile_hoodie-set'],
   about: ['hero', 'founder', 'facility_inspection', 'facility_production', 'facility_warehouse'],
   oem: ['hero', 'fabric_swatches', 'trims'],
