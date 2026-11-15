@@ -35,3 +35,10 @@ for await (const path of new Bun.Glob('**/*.{html,js}').scan(root)) {
 }
 if (scanned === 0) throw Error('RFQ privacy scan found no client assets');
 console.log(`PASS: RFQ privacy boundary scanned ${scanned} client assets`);
+
+// Native Pages walks up to the nearest 404.html; localized route pages alone do not suffice.
+for (const locale of languages) {
+  const fallback = readFileSync(join(root, locale === 'en' ? '' : locale, '404.html'), 'utf8');
+  if (!fallback.includes(`lang="${locale}" dir="${locale === 'ar' ? 'rtl' : 'ltr'}"`)) throw Error(`404 fallback locale ${locale}`);
+  if ([...fallback.matchAll(/data-recovery-card/g)].length !== 4) throw Error(`404 recovery count ${locale}`);
+}
