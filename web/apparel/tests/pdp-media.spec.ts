@@ -45,3 +45,20 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280]) test(`F
  await swatches.nth(1).click(); await expect(swatches.nth(1)).toHaveAttribute('aria-pressed','true');
  await expect(page.locator('[data-gallery-main]')).toHaveAttribute('src',await page.locator('.gallery-thumbs:not([hidden]) a').first().getAttribute('href') || '');
 });
+for(const locale of Object.keys(dictionaries)) test(`RFQ selected colour contract ${locale}`,async({page})=>{
+ await page.goto(path(locale));
+ const swatches=page.locator('[data-gallery-swatch]');
+ for(const swatch of [swatches.first(),swatches.nth(1),swatches.first()]) {
+  await swatch.click();
+  const colour=await swatch.getAttribute('data-gallery-swatch');
+  for(const [index,type] of ['quote','sample'].entries()) {
+   const href=await page.locator('.product-info .actions a').nth(index).getAttribute('href');
+   const url=new URL(href!,'https://fixture.test');
+   expect(url.pathname).toBe(`${locale==='en'?'':'/'+locale}/contact/`);
+   expect(url.searchParams.get('product')).toBe('hoodie-set-k02');
+   expect(url.searchParams.get('type')).toBe(type);
+   expect(url.searchParams.get('colour')).toBe(colour);
+   expect(url.hash).toBe('#rfq-form');
+  }
+ }
+});
