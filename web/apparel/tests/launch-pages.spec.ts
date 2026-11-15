@@ -1,6 +1,6 @@
 /** L1 acceptance against served build: complete localized copy, reciprocal SEO and legal boundaries. */
 import { test, expect } from '@playwright/test';
-import legalCopy from '../src/content/launch-pages.json';
+import legalCopy from '../src/content/launch-pages.json' with { type: 'json' };
 const languages = ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'];
 const routes = ['oem-odm', 'sampling', 'shipping', 'privacy', 'terms'];
 for (const locale of languages) for (const route of routes) {
