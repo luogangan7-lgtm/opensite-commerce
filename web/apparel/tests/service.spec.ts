@@ -1,7 +1,9 @@
 /** CP-SVC actual output: all locales preserve sources, capability groups and RFQ entry. */
 import { test, expect } from '@playwright/test';
-import media from '../service-media.json';
-import { dictionaries, locales, type Key } from '../src/i18n';
+import { readFileSync } from 'node:fs';
+const media: {id:string;kind:string;src:string;altKey:string}[] = JSON.parse(readFileSync(new URL('../service-media.json',import.meta.url),'utf8'));
+const locales=['en','zh','es','fr','de','pt','ru','ar'];
+const dictionaries: Record<string,Record<string,string>>=Object.fromEntries(locales.map(locale=>[locale,JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`,import.meta.url),'utf8'))]));
 for(const locale of locales) for(const kind of ['oem-odm','sampling','shipping']) test(`${locale} ${kind} approved service contract`,async({page})=>{
  const prefix=locale==='en'?'':`/${locale}`;
  await page.goto(`${prefix}/${kind}/`);
@@ -15,7 +17,7 @@ for(const locale of locales) for(const kind of ['oem-odm','sampling','shipping']
   for(const image of media.filter(row=>row.kind==='technique')) {
    const tile=view.locator(`[data-service-media="${image.id}"]`);
    await expect(tile.locator('img')).toHaveAttribute('src',image.src);
-   await expect(tile.locator('img')).toHaveAttribute('alt',dictionaries[locale][image.altKey as Key]);
+   await expect(tile.locator('img')).toHaveAttribute('alt',dictionaries[locale][image.altKey]);
    await expect(tile.locator('img')).toHaveAttribute('srcset',`${image.src.replace('.webp','-640.webp')} 640w, ${image.src} 1024w`);
    await expect(tile).toHaveText('');
   }
