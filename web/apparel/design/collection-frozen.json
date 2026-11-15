@@ -1,0 +1,32 @@
+{
+  "file": "iV07xrwn5UfjWpIQ3LWPoE",
+  "frozen": "2026-11-14",
+  "channel": "Fleet Bridge read-only PNG layer exports",
+  "assets": [
+    {
+      "node": "230:407",
+      "path": "web/apparel/public/collection-frozen/hero.png",
+      "sha256": "ab0db0b0ded23eb493ba47a8fd16bd3dc9b970aac27bc72d63f7ef94441adcfb"
+    },
+    {
+      "node": "31:519",
+      "path": "web/apparel/public/collection-frozen/lining.png",
+      "sha256": "f044824abd2e935286a2d5433d8bced257931c73c27b3946415aeae286e2270e"
+    },
+    {
+      "node": "31:511",
+      "path": "web/apparel/public/collection-frozen/swatch.png",
+      "sha256": "f686d32834cb2fcd4b0c3ef55761858657b3175e18e297774a68d44347f6937a"
+    },
+    {
+      "node": "I232:622;224:381",
+      "path": "web/apparel/public/collection-frozen/terms-a.png",
+      "sha256": "1d8d36c90bf5a96933adf4e9f6d7f4390920bd2f0010114c0bc8d8773ca23e97"
+    },
+    {
+      "node": "I232:622;224:382",
+      "path": "web/apparel/public/collection-frozen/terms-b.png",
+      "sha256": "fa438e15359fa3c9af8179f3ae5919f2bfddb86adbe3daeb2fe54ff9ad03cdfe"
+    }
+  ]
+}

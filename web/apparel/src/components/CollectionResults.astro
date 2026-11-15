@@ -1,0 +1,53 @@
+---
+/** Collection filter UI owns URL state and empty results; Grid owns product presentation.
+ * Depends on explicit catalog facts and Locale dictionaries; static rendering shows all products.
+ */
+import Grid from './Grid.astro';
+import type { Product } from '../data/catalog';
+import { dictionaries, pageLocale } from '../i18n';
+interface Props { products: Product[]; landing?: boolean }
+const { products,landing=false }=Astro.props;
+const t=dictionaries[pageLocale(Astro.url)];
+const facets=[['lining','unlined','cp6.filter-unlined'],['lining','fleece','cp6.chip-fleece'],['weight','light','cp6.copy/280-gsm'],['weight','mid','cp6.copy/280-350-gsm'],['weight','heavy','cp6.copy/350-gsm']] as const;
+---
+<div data-collection-results data-facts={JSON.stringify(products.map(p=>({fabric_weight_fit:p.fabric_weight_fit})))}>
+  <div class:list={["facets",{wrap:landing}]}>{facets.map(([name,value,key])=><button type="button" class="facet" data-facet={name} value={value} aria-pressed="false">{t[key]}</button>)}</div>
+  <slot />
+  <div class:list={[{wrap:landing}]}>
+  <p data-result-count role="status" aria-live="polite">{products.length}</p>
+  <Grid products={products}/>
+  <div data-empty hidden><h3>{t['cp6.copy/no-styles-match-these-filters']}</h3><p>{t['cp6.copy/try-removing-a-filter-or-request-a-style-tha']}</p><button type="button" data-clear>{t['cp6.copy/clear-filters']}</button></div>
+</div></div>
+<script>
+import { matchesFilters } from '../data/collection-filters';
+for(const root of document.querySelectorAll<HTMLElement>('[data-collection-results]')) {
+ const facts=JSON.parse(root.dataset.facts!);
+ const chips=[...root.querySelectorAll<HTMLButtonElement>('[data-facet]')];
+ const tiles=[...root.querySelectorAll<HTMLElement>('.product-grid > a')];
+ function render(){
+  const q=new URLSearchParams(location.search);
+  for(const chip of chips) chip.setAttribute('aria-pressed',String(q.getAll(chip.dataset.facet!).includes(chip.value)));
+  let count=0;
+  tiles.forEach((tile,i)=>{tile.hidden=!matchesFilters(facts[i],q);if(!tile.hidden)count++});
+  root.querySelector<HTMLElement>('[data-empty]')!.hidden=count!==0;
+  root.querySelector<HTMLElement>('[data-result-count]')!.textContent=String(count);
+ }
+ for(const chip of chips)chip.addEventListener('click',()=>{
+  const url=new URL(location.href), name=chip.dataset.facet!, values=url.searchParams.getAll(name);
+  url.searchParams.delete(name);
+  for(const v of values.filter(v=>v!==chip.value))url.searchParams.append(name,v);
+  if(!values.includes(chip.value))url.searchParams.append(name,chip.value);
+  history.pushState(null,'',url);render();
+ });
+ root.querySelector('[data-clear]')!.addEventListener('click',()=>{
+  const url=new URL(location.href);url.searchParams.delete('lining');url.searchParams.delete('weight');history.pushState(null,'',url);render();
+ });
+ addEventListener('popstate',render);render();
+}
+</script>
+<style>
+.facets{display:flex;flex-wrap:wrap;gap:var(--sy-space-grid-x)}
+.facet{border-radius:var(--sy-radius-pill);background:var(--sy-color-canvas);color:var(--sy-color-ink);border-color:var(--sy-color-border)}
+.facet[aria-pressed="true"]{background:var(--sy-color-accent);color:var(--sy-color-on-accent)}
+[data-empty]{padding:var(--sy-space-grid-y);border:solid var(--sy-color-border);border-radius:var(--sy-radius-card)}
+</style>

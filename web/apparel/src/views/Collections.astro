@@ -1,11 +1,35 @@
 ---
-/** Collection index; shared category/grid patterns, no unsupported commercial claims. */
+/** Collection landing composition follows frozen Collection frames; category pages own full family grids. */
 import Shell from '../layouts/Shell.astro';
-import Grid from '../components/Grid.astro';
 import CollectionImages from '../components/CollectionImages.astro';
-import { products, categories } from '../data/catalog';
+import CollectionResults from '../components/CollectionResults.astro';
+
+import { products } from '../data/catalog';
 import { dictionaries, pageLocale, type Key } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
-const locale = pageLocale(Astro.url), t = dictionaries[locale];
+const locale=pageLocale(Astro.url),t=dictionaries[locale];
+const steps=[['copy/pick-a-style','copy/choose-a-blank-or-send-a-reference'],['copy/approve-a-sample','copy/your-logo-label-and-colour-on-a-sample'],['copy/go-to-bulk','copy/bulk-follows-the-approved-sample']];
 ---
-<Shell title={t.collections}><section class="wrap page-intro"><h1>{t.collectionTitle}</h1><p class="lead">{t.collectionLead}</p><nav class="category-links" aria-label={t.collections}>{Object.keys(categories).map(key => <a href={`#${key}`}>{t[key as Key]}</a>)}</nav><div class="benefits">{['styleFirst', 'fabricFirst', 'sampleFirst', 'confirmFirst'].map(key => <p>{t[key as Key]}</p>)}</div><CollectionImages /></section>{Object.keys(categories).map(key => <section class="wrap" id={key}><div class="section-heading"><h2>{t[key as Key]}</h2><a href={getRelativeLocaleUrl(locale, `/collections/${key}/`)}>{t.viewCollection}</a></div><Grid products={products.filter(p => p.category === key)} /></section>)}</Shell>
+<Shell title={t.collections}>
+<CollectionResults products={products.filter(p=>['apparel-59043','cotton430-hoodie-58065','apparel-70171','apparel-70175'].includes(p.slug))} landing><section class="collection-hero"><div><p>{t['cp6.copy/collections']}</p><h1>{t['cp6.copy/blanks-ready-to-carry-your-label']}</h1><p class="lead">{t['cp6.copy/tees-crews-hoodies-and-sets-pick-a-style']}</p><div class="actions"><a class="button" href={getRelativeLocaleUrl(locale,'/contact/')}>{t.request}</a><a class="button secondary" href={getRelativeLocaleUrl(locale,'/contact/')}>{t['cp6.copy/send-a-reference']}</a></div></div><img src="/collection-frozen/hero.png" alt="" width="760" height="780"/></section>
+<section class="wrap"><p>{t['cp6.copy/browse']}</p><h2>{t['cp6.copy/shop-by-category']}</h2><CollectionImages/></section>
+<section class="collection-dark"><div class="wrap"><p>{t['cp6.copy/how-ordering-works']}</p><h2>{t['cp6.copy/from-pick-to-bulk-in-three-steps']}</h2><div class="steps collection-steps">{steps.map(([title,body],i)=><article><p><bdi>{String(i+1).padStart(2,'0')}</bdi></p><h3>{t[`cp6.${title}` as Key]}</h3><p>{t[`cp6.${body}` as Key]}</p></article>)}</div></div></section>
+<div class="wrap"><p>{t['cp6.copy/styles-with-photos']}</p><h2>{t['cp6.copy/ready-to-quote-today']}</h2></div></CollectionResults><section class="wrap collection-promo"><img src="/collection-frozen/swatch.png" alt="" width="1152" height="320" loading="lazy"/><p>{t['cp6.copy/photos-for-the-rest-of-the-range-are-being-r']}</p><a class="button secondary" href={getRelativeLocaleUrl(locale,'/contact/')}>{t['cp6.auto/ask-for-the-full-range']}</a></section>
+<section class="collection-dark collection-lining"><div><p>{t['cp6.copy/lining']}</p><h2>{t['cp6.copy/lining-is-stated-per-style']}</h2><p class="lead">{t['cp6.copy/each-quote-lists-the-lining-fabric-weight-an']}</p><a class="button secondary" href={getRelativeLocaleUrl(locale,'/contact/')}>{t.request}</a></div><img src="/collection-frozen/lining.png" alt="" width="624" height="720" loading="lazy"/></section>
+<section class="wrap collection-terms"><div><p>{t.quote}</p><h2>{t['cp6.copy/what-your-quote-confirms']}</h2><p>{t['cp6.copy/one-written-quote-covers-everything-below-pe']}</p><div class="terms-images"><img src="/collection-frozen/terms-a.png" alt="" width="266" height="224" loading="lazy"/><img src="/collection-frozen/terms-b.png" alt="" width="266" height="224" loading="lazy"/></div></div><dl>{[['moq','per-style'],['unit-price','per-style-and-quantity'],['sample','before-bulk'],['lead-time','per-order'],['payment','stated-in-your-quote']].map(([label,value])=><div><dt>{t[`cp6.auto/${label}` as Key]}</dt><dd>{t[`cp6.auto/${value}` as Key]}</dd></div>)}</dl></section>
+</Shell>
+<style>
+.collection-dark{background:var(--sy-color-ink);color:var(--sy-color-on-ink)}
+.collection-hero>div,.collection-lining>div{padding:var(--sy-space-section);background:var(--sy-color-ink);color:var(--sy-color-on-ink)}
+.collection-hero,.collection-lining{padding:0}
+.collection-hero :global(img),.collection-lining img{height:100%;object-fit:contain}
+.collection-lining,.collection-terms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-grid-x)}
+.terms-images{display:flex;gap:var(--sy-space-grid-x)}
+.terms-images img{width:50%;min-width:0;object-fit:contain}
+.collection-terms dl>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-grid-x);border-block-end:solid var(--sy-color-hairline);padding-block:var(--sy-space-grid-x)}
+.collection-terms dd{margin:0}
+.collection-hero{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-split);align-items:center}
+.collection-hero :global(img){width:100%;aspect-ratio:4/5;object-fit:cover}
+.collection-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sy-space-grid-x)}
+@media(max-width:1024px){.collection-hero>div,.collection-lining>div{padding:var(--sy-space-section-sm) var(--sy-space-gutter-mobile)}.collection-hero :global(img),.collection-lining img{height:auto;aspect-ratio:auto}.collection-hero,.collection-steps,.collection-lining,.collection-terms{grid-template-columns:minmax(0,1fr)}}
+</style>

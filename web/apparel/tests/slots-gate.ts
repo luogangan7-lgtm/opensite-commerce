@@ -4,9 +4,9 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 export const inventory = {
-  // Frozen Figma Home uses SHA-bound home-media.json; it publishes no review slots.
+  // Frozen Home and Collection use SHA-bound manifests; neither publishes review slots.
   home: [],
-  collection: ['hero', 'tile_apparel', 'tile_pullover-hoodie', 'tile_cotton430-hoodie', 'tile_crew-fleece', 'tile_hoodie-set'],
+  collection: [],
   about: ['hero', 'founder', 'facility_inspection', 'facility_production', 'facility_warehouse'],
   oem: ['hero', 'fabric_swatches', 'trims'],
   pdp: ['craft_fleece', 'craft_stack', 'craft_stitching'],

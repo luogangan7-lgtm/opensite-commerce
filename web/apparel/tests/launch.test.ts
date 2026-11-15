@@ -1,6 +1,6 @@
 /** Launch regression: catalog is the independent public inventory; no private assets or network. */
 import { test, expect } from 'bun:test';
-import products from '../src/data/products.json';
+import { products, categories } from '../src/data/catalog';
 import { factPaths, productData, sitemap } from '../seo/contract';
 import { publishedPaths } from '../seo/published';
 import { GET } from '../src/pages/robots.txt';
@@ -14,7 +14,7 @@ test('all 115 approved public identities have eight SEO routes and Product data'
     expect(publishedPaths).toContain(path);
     expect(productData('https://example.org', path, 'ar')).toMatchObject({ '@type': 'Product', url: `https://example.org/ar${path}` });
   }
-  expect(sitemap('https://example.org', publishedPaths).length).toBe(984);
+  expect(sitemap('https://example.org', publishedPaths).length).toBe((123 + Object.keys(categories).length) * 8);
   expect(() => productData('https://example.org', '/products/unknown/', 'en')).toThrow();
   expect(() => productData('https://example.org', '/products/aston-hoodie-69012/', 'en')).toThrow();
 });

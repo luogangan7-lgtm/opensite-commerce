@@ -90,7 +90,7 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
   const { tmpdir } = await import('node:os'), { join } = await import('node:path');
   const dir = mkdtempSync(join(tmpdir(), 'apparel-r4b-filtered-'));
   const slots: Record<string, Record<string, string>> = {};
-  for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.') && !key.startsWith('alt.home.'))) {
+  for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.') && !key.startsWith('alt.home.') && !key.startsWith('alt.collection.'))) {
     const [page, slot] = key.slice(4).split('.');
     (slots[page] ||= {})[slot] = `illustrative_${page}_${slot}.png`;
   }
