@@ -67,6 +67,18 @@ const canonical = new URL(getRelativeLocaleUrl(locale, path), origin).href;
 </body></html>
 
 <script>
+  // Carry only the HOME-BM allow-listed intent through static catalog/style/RFQ links.
+  // No session persistence: leaving this journey removes the intent.
+  const intentQuery = new URLSearchParams(location.search);
+  if (intentQuery.getAll('intent').length === 1 && intentQuery.get('intent') === 'private-label') {
+    for (const link of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+      const target = new URL(link.href, location.href);
+      if (target.origin === location.origin && /^\/(?:zh\/|es\/|fr\/|de\/|pt\/|ru\/|ar\/)?(?:collections|products|contact)(?:\/|$)/.test(target.pathname)) {
+        target.searchParams.set('intent', 'private-label'); link.href = target.href;
+      }
+    }
+  }
+
   // Keep the header trigger available for pointer toggling; keyboard focus stays in the dialog.
   const toggle = document.querySelector<HTMLButtonElement>('[data-menu-toggle]')!;
   const backdrop = document.querySelector<HTMLElement>('[data-menu-backdrop]')!;

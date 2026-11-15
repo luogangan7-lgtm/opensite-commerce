@@ -22,3 +22,7 @@ test('prefill accepts only one catalog colour belonging to the selected product'
   expect(parseRfqPrefill(new URLSearchParams({product:p.slug,colour:'<script>'})).colour).toBeUndefined();
   expect(parseRfqPrefill(new URLSearchParams(`product=${p.slug}&colour=${colour}&colour=${colour}`)).colour).toBeUndefined();
 });
+test('private-label intent is allow-listed and rejects ambiguity', () => {
+ expect(parseRfqPrefill(new URLSearchParams('intent=private-label')).intent).toBe('private-label');
+ for (const query of ['intent=evil','intent=private-label&intent=private-label','intent=private-label&intent=evil']) expect(parseRfqPrefill(new URLSearchParams(query))).toEqual({});
+});

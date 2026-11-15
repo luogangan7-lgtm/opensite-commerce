@@ -6,7 +6,9 @@ export function parseRfqPrefill(query: URLSearchParams) {
   const colour = single('colour');
   const type = single('type');
   const subject = single('subject');
+  const intent = single('intent');
   return {
+    ...(intent === 'private-label' ? { intent } : {}),
     ...(product ? { product } : {}),
     ...(product && colour && product.images.some(image => image.colour === colour) ? { colour } : {}),
     ...(type === 'sample' ? { type } : {}),
