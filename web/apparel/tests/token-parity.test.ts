@@ -35,3 +35,26 @@ for (const v of variables) {
     }
   });
 }
+
+// Font families and weights come from current native text/style reads; numeric/color
+// variables alone cannot detect a font substitution (the CP0 regression).
+const typography = snapshot.typography;
+for (const [role, expected] of Object.entries({
+  'font-body': typography.latin.body, 'font-heading': typography.latin.heading,
+  'weight-heading': typography.latin.headingWeight, 'weight-title': typography.latin.titleWeight,
+  'weight-body': typography.latin.bodyWeight, 'weight-label': typography.latin.labelWeight,
+  'font-body-ar': typography.ar.body, 'font-heading-ar': typography.ar.heading,
+  'weight-heading-ar': typography.ar.headingWeight,
+  'font-body-zh': typography.zh.body, 'font-heading-zh': typography.zh.heading,
+})) test(`frozen typography ${role}`, () => {
+  const actual = tokens.get(`sy-${role}`);
+  if (typeof expected === 'number') expect(actual).toBe(String(expected));
+  else expect(actual?.split(',')[0].trim().replaceAll('"','')).toBe(expected);
+});
+for (const locale of ['ar','zh']) test(`locale ${locale} applies its own font tokens`, () => {
+ const block = styles.match(new RegExp(`:root:lang\\(${locale}\\)\\s*\\{([^}]+)\\}`))?.[1] || '';
+ const values = declarations(block);
+ expect(values.get('sy-font-body')).toBe(`var(--sy-font-body-${locale})`);
+ expect(values.get('sy-font-heading')).toBe(`var(--sy-font-heading-${locale})`);
+ if (locale === 'ar') expect(values.get('sy-weight-heading')).toBe('var(--sy-weight-heading-ar)');
+});

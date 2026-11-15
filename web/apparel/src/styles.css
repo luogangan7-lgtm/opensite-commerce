@@ -1,7 +1,9 @@
 /* Apparel visual system; sy tokens and native layout; shared by all static pages, no clipped overflow. */
+:root:lang(ar) { --sy-font-body: var(--sy-font-body-ar); --sy-font-heading: var(--sy-font-heading-ar); --sy-weight-heading: var(--sy-weight-heading-ar); }
+:root:lang(zh) { --sy-font-body: var(--sy-font-body-zh); --sy-font-heading: var(--sy-font-heading-zh); }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; color: var(--sy-color-ink); background: var(--sy-color-canvas); font: var(--sy-text-body)/1.6 var(--sy-font-body); }
+body { margin: 0; color: var(--sy-color-ink); background: var(--sy-color-canvas); font: var(--sy-weight-body) var(--sy-text-body)/1.6 var(--sy-font-body); }
 ::selection { background: var(--sy-color-accent); color: var(--sy-color-on-accent); }
 a { color: inherit; text-underline-offset: .25em; }
 a:hover { color: var(--sy-color-accent); }

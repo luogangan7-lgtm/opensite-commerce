@@ -1,6 +1,6 @@
 {
   "readAt": "2026-11-15T02:53:16.436Z",
-  "document": "OpenSite Commerce \u00b7 Sourcyo Apparel B2B",
+  "document": "OpenSite Commerce · Sourcyo Apparel B2B",
   "collections": [
     {
       "id": "VariableCollectionId:1:16",
@@ -1011,5 +1011,26 @@
       "Native names"
     ],
     "cssNaming": "sy-* preserved; primitives use sy-primitive- plus slash replaced by hyphen; mobile type suffix -mobile; breakpoint 650px inherited from apparel"
+  },
+  "typography": {
+    "authority": "Frozen Figma iV07xrwn5UfjWpIQ3LWPoE; local read 2026-11-14; Home 30:560, AR 35:736, ZH 198:5862; text styles Heading/H1-H4, AR/Heading and AR/Body",
+    "latin": {
+      "body": "Manrope",
+      "heading": "Literata",
+      "headingWeight": 600,
+      "titleWeight": 500,
+      "bodyWeight": 400,
+      "labelWeight": 700
+    },
+    "ar": {
+      "body": "Noto Sans Arabic",
+      "heading": "Noto Sans Arabic",
+      "headingWeight": 500
+    },
+    "zh": {
+      "body": "Noto Sans SC",
+      "heading": "Noto Serif SC",
+      "headingWeight": 600
+    }
   }
 }
