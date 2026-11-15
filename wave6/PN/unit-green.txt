@@ -1,0 +1,27 @@
+bun test v1.3.12 (700fc117)
+
+web/apparel/tests/pdp-notes.test.ts:
+(pass) product copy contains no internal sourcing notes: web/apparel/src/data/products.json [7.08ms]
+(pass) product copy contains no internal sourcing notes: web/apparel/src/i18n/products.ar.json [0.19ms]
+(pass) product copy contains no internal sourcing notes: web/apparel/src/i18n/products.es.json [0.18ms]
+(pass) product copy contains no internal sourcing notes: web/apparel/src/i18n/products.fr.json
+(pass) product copy contains no internal sourcing notes: web/apparel/src/i18n/products.en.json [0.38ms]
+(pass) product copy contains no internal sourcing notes: web/apparel/src/i18n/products.pt.json [0.16ms]
+(pass) product copy contains no internal sourcing notes: web/apparel/src/i18n/products.ru.json [0.18ms]
+(pass) product copy contains no internal sourcing notes: web/apparel/src/i18n/products.de.json [0.21ms]
+(pass) product copy contains no internal sourcing notes: web/apparel/src/i18n/products.zh.json [0.05ms]
+
+web/apparel/tests/i18n.test.ts:
+(pass) every UI dictionary has identical, nonempty keys and translated commercial text [5.18ms]
+(pass) each published product has reviewed name and descriptions in every language [2.16ms]
+(pass) K24/K25 preserve stand collar, zip jacket and trousers in all seven translations [1.04ms]
+(pass) empty-code titles retain catalog identity without inventing style codes [0.39ms]
+(pass) cross-check fixes retain the reviewed wording and consent placeholders [2.95ms]
+(pass) illustration alt descriptions are localized across all eight locales [9.29ms]
+(pass) Arabic fleece descriptions never claim wool fibre [0.55ms]
+(pass) all localized product card and page content is free of placeholders [1.64ms]
+
+ 17 pass
+ 0 fail
+ 8032 expect() calls
+Ran 17 tests across 2 files. [169.00ms]
