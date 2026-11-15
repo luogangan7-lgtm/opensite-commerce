@@ -16,7 +16,7 @@ test('home-media masters are SHA-bound and unique with exact derivatives', () =>
 test('Home view reads copy from dictionaries and media only from the manifest', () => {
  const home = readFileSync(join(import.meta.dir, '../src/views/Home.astro'), 'utf8');
  expect(home).not.toMatch(/<Illustration|\.(png|jpe?g|webp)["']/);
- for (const id of ['collections', 'oem', 'fabric', 'terms-one', 'terms-two']) expect(home).toContain(`id="${id}"`);
+ for (const id of ['collections', 'fabric', 'terms-one', 'terms-two']) expect(home).toContain(`id="${id}"`);
 });
 test('no media binaries are committed under Home paths', () => {
  const root = join(import.meta.dir, '..');
@@ -31,4 +31,15 @@ test('fabric master matches the owner-picked Figma image at native 3:2 resolutio
  expect(fabric.sha256).toBe('fcd1a560e9783c1660adff9d21d879e9aaf0f9569ec40b05db5dbba107a11b7c');
  expect(fabric.authority).toContain('bd87eac7130384b0fdb2848d1afd2fbbe68e4a7b');
  expect(fabric.src).toBe('/img/home/fabric.webp');
+});
+
+// HOME-BM approved copy remains the literal rendered source, including reviewed locale deltas.
+test('HOME-BM eight locale copy includes wholesale, private label and custom models', async () => {
+ for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) {
+  const t=JSON.parse(readFileSync(join(import.meta.dir, `../src/i18n/${locale}.json`),'utf8'));
+  for (const model of ['wholesale','private','custom']) for (const field of ['title','benefit','get','cta']) expect(t[`home.bm.${model}-${field}`].length).toBeGreaterThan(0);
+  expect(t['home.bm.wholesale-title']).toStartWith('01 · ');
+  expect(t['home.bm.private-title']).toStartWith('02 · ');
+  expect(t['home.bm.custom-title']).toStartWith('03 · ');
+ }
 });

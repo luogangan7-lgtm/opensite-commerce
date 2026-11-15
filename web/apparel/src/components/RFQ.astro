@@ -11,7 +11,7 @@ const code = locale === 'ar' ? `\u2068${product}\u2069` : product;
 const siteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY;
 const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entries(t).filter(([key]) => key.startsWith('error.') || ['sending', 'success', 'rfqError', 'rfqServerError'].includes(key))) };
 ---
-<form id="rfq-form" class="rfq" data-state="Default" novalidate action="/api/rfq" method="post" data-success-url={getRelativeLocaleUrl(locale, "/contact/") + "?sent=1"} data-sample-label={t.requestSample} data-messages={JSON.stringify(messages)}>
+<form id="rfq-form" class="rfq" data-state="Default" novalidate action="/api/rfq" method="post" data-success-url={getRelativeLocaleUrl(locale, "/contact/") + "?sent=1"} data-private-label={t["home.bm.private-title"].replace(/^02 · /, "")} data-sample-label={t.requestSample} data-messages={JSON.stringify(messages)}>
 <input type="hidden" name="locale" value={locale} />
 {/\/contact\/?$/.test(Astro.url.pathname) && <h2>{t.rfqTitle}</h2>}<p class="muted rfq-intro" data-prefill-context>{t.rfqIntro}</p>
 <p class="form-status" tabindex="-1" role="status" aria-live="polite" id="rfq-status"></p>
@@ -43,6 +43,7 @@ const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entrie
       const { productText, pageLocale } = await import('../i18n');
       const text = prefill.product ? productText[pageLocale(new URL(window.location.href))][prefill.product.slug] : undefined;
       const lines = [
+        prefill.intent === 'private-label' ? form.dataset.privateLabel! : '',
         prefill.product ? `${text?.name} (${prefill.product.slug}; ${prefill.product.style_codes.join(' / ')})` : '',
         prefill.colour || '',
         prefill.type === 'sample' ? form.dataset.sampleLabel! : '', prefill.subject || '',

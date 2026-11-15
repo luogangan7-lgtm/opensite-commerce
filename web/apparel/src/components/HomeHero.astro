@@ -1,18 +1,24 @@
 ---
 /** Frozen Home/HeroCarousel composition. Owns only local UI state; Home calls it.
  * Locale dictionaries and HomeMedia supply content; no storage or network actions. */
+import { getRelativeLocaleUrl } from 'astro:i18n';
 import HomeMedia from './HomeMedia.astro';
 import {dictionaries,pageLocale,type Key} from '../i18n';
-const t=dictionaries[pageLocale(Astro.url)];
+const locale=pageLocale(Astro.url), t=dictionaries[locale];
+const bm=(key:string)=>t[`home.bm.${key}` as Key];
+const models=[
+ {eyebrow:bm("hero-eyebrow"),title:bm("hero-title"),body:bm("hero-body"),cta:bm("wholesale-cta"),href:getRelativeLocaleUrl(locale,"/collections/")},
+ ...["private","custom"].map(model=>({eyebrow:bm(`${model}-title`),title:bm(`${model}-benefit`),body:bm(`${model}-get`),cta:bm(`${model}-cta`),href:getRelativeLocaleUrl(locale,model==="private"?"/collections/":"/oem-odm/")+(model==="private"?"?intent=private-label":"")}))
+];
 const slides=['hero-visit','hero-overhead','hero-lifestyle'];
 const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
 ---
-<section class="hero home-hero" data-home-carousel data-active="0" data-pause={text(16)} data-play={text(17)} role="region" aria-label={text(1)}>
+<section class="hero home-hero" data-home-carousel data-active="0" data-pause={text(16)} data-play={text(17)} role="region" aria-label={bm("ways-kicker")}>
  <div class="hero-visual">
-  {slides.map((id,i)=><div class:list={['hero-photo',{'is-active':i===0}]} data-slide data-title={text(i+2)} aria-hidden="true"><HomeMedia id={id} alt="" hero={i===0} class="hero-picture" /></div>)}
+  {slides.map((id,i)=><div class:list={['hero-photo',{'is-active':i===0}]} data-slide data-title={models[i].title} data-eyebrow={models[i].eyebrow} data-body={models[i].body} data-cta={models[i].cta} data-href={models[i].href} aria-hidden="true"><HomeMedia id={id} alt="" hero={i===0} class="hero-picture" /></div>)}
   <div class="hero-shade"></div>
-  <div class="hero-content"><p class="eyebrow">{text(1)}</p><h1 data-hero-title>{text(2)}</h1><p class="hero-sub"><span class="wide-sub">{text(5)}</span><span class="small-sub">{text(6)}</span></p><a class="button secondary" href="#home-inquiry">{t.request}<span aria-hidden="true">→</span></a></div>
-  <div class="hero-dots" role="group" aria-label={text(1)}>{slides.map((_,i)=><button type="button" data-slide-to={i} aria-label={text(i+2).replaceAll('\n',' ')} aria-pressed={i===0}><span aria-hidden="true">{i===0?'●':'○'}</span></button>)}</div>
+  <div class="hero-content"><p class="eyebrow" data-hero-eyebrow>{models[0].eyebrow}</p><h1 data-hero-title>{models[0].title}</h1><p class="hero-sub" data-hero-body>{models[0].body}</p><a class="button secondary" data-hero-cta href={models[0].href}><span data-hero-cta-label>{models[0].cta}</span><span aria-hidden="true">→</span></a></div>
+  <div class="hero-dots" role="group" aria-label={bm("ways-kicker")}>{slides.map((_,i)=><button type="button" data-slide-to={i} aria-label={models[i].title.replaceAll('\n',' ')} aria-pressed={i===0}><span aria-hidden="true">{i===0?'●':'○'}</span></button>)}</div>
   <p class="hero-counter" dir="ltr" aria-live="polite" aria-atomic="true"><span data-slide-counter>1</span> / 3</p>
   <button class="hero-playback" type="button" data-playback>{text(16)}</button>
  </div>
@@ -35,7 +41,11 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
    active=(index+slides.length)%slides.length; hero!.dataset.active=String(active);
    slides.forEach((slide,i)=>slide.classList.toggle('is-active',i===active));
    dots.forEach((dot,i)=>{dot.setAttribute('aria-pressed',String(i===active));dot.firstElementChild!.textContent=i===active?'●':'○';});
-   title.textContent=slides[active].dataset.title!;counter.textContent=String(active+1);schedule();
+   title.textContent=slides[active].dataset.title!;
+   hero!.querySelector('[data-hero-eyebrow]')!.textContent=slides[active].dataset.eyebrow!;
+   hero!.querySelector('[data-hero-body]')!.textContent=slides[active].dataset.body!;
+   hero!.querySelector('[data-hero-cta-label]')!.textContent=slides[active].dataset.cta!;
+   hero!.querySelector<HTMLAnchorElement>('[data-hero-cta]')!.href=slides[active].dataset.href!;counter.textContent=String(active+1);schedule();
   }
   dots.forEach((dot,i)=>{dot.addEventListener('click',()=>select(i));dot.addEventListener('mouseenter',()=>select(i));dot.addEventListener('focus',()=>select(i));});
   hero.addEventListener('mouseenter',()=>{hover=true;schedule();});
@@ -69,7 +79,7 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
  .eyebrow{font-size:var(--sy-text-eyebrow);font-weight:var(--sy-weight-label);margin:0 0 var(--sy-space-lg);}
  h1{white-space:pre-line;max-width:880px;font-size:var(--sy-text-h1);line-height:1.1;margin:0 0 var(--sy-space-lg);}
  .hero-sub{font-size:var(--sy-text-lead);margin:0 0 var(--sy-space-lg);}
- .small-sub{display:none;}
+
  .secondary,.hero-playback{background:transparent;color:inherit;border:var(--sy-space-hair) solid currentColor;border-radius:var(--sy-radius-control);gap:var(--sy-space-md);font-size:var(--sy-text-small);font-weight:var(--sy-weight-label);}
  .secondary:hover,.hero-playback:hover{background:var(--sy-color-ink);}
  .hero-dots{position:absolute;inset-inline-end:var(--sy-space-md);top:calc(50% - var(--home-control) * 1.5);display:grid;}
@@ -88,13 +98,15 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
  }
  @media(max-width:650px){
   .home-hero{--home-photo-height:560px;--home-facts-height:168px;--home-copy-top:176px;--home-gutter:var(--sy-space-gutter-mobile);}
+  /* Long locale copy must grow the hero instead of covering carousel controls. */
+  .hero-visual{height:auto;min-height:var(--home-photo-height);}
+  .hero-content{position:relative;inset-inline-start:auto;top:auto;max-width:none;margin-inline:var(--home-gutter);padding-block:var(--home-copy-top) calc(var(--sy-space-section) + var(--sy-space-2xl));}
   h1{font-size:var(--sy-text-h1-mobile);}
   .hero-sub{font-size:var(--sy-text-body);}
-  .wide-sub{display:none;}.small-sub{display:inline;}
   .hero-dots{inset-inline-end:auto;inset-inline-start:50%;top:auto;bottom:var(--sy-space-lg);transform:translateX(-50%);display:flex;direction:ltr;}
   :global([dir=rtl]) .hero-dots{transform:translateX(50%);}
-  .hero-playback{inset-inline-end:var(--home-gutter);min-width:80px;}
-  .hero-counter{inset-inline-end:var(--sy-space-section);bottom:var(--sy-space-section);}
+  .hero-playback{inset-inline-end:var(--home-gutter);min-width:80px;bottom:calc(var(--sy-space-section-sm) + var(--sy-space-md));}
+  .hero-counter{inset-inline-end:auto;inset-inline-start:var(--home-gutter);bottom:calc(var(--sy-space-section-sm) + var(--sy-space-md));}
   .hero-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding-block:var(--sy-space-lg);gap:var(--sy-space-lg);}
   .hero-photo:nth-child(3) :global(img){position:absolute;max-width:none;width:146.285714%;height:146.285714%;inset-inline-start:-38.74%;top:0;object-position:83.6935% 0;}
  }

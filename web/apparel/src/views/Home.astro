@@ -1,7 +1,7 @@
 ---
 /** Home composition bound to frozen Figma Home / Desktop 1440 (30:560), Tablet 768 (30:806) and Mobile 390 (30:1039).
  * Calls HomeHero/HomeMedia/RFQ; all copy comes from dictionaries (home.* keys), product facts from the catalog.
- * Invariant: sections keep the frozen order; no repeated factory photo, no product-tail quote CTA, no duplicate browse-all. */
+ * Invariant: sections keep the HOME-BM order; no repeated factory photo, no product-tail quote CTA, no duplicate browse-all. */
 import Shell from '../layouts/Shell.astro';
 import HomeHero from '../components/HomeHero.astro';
 import HomeMedia from '../components/HomeMedia.astro';
@@ -12,6 +12,7 @@ import { dictionaries, pageLocale, type Key } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 const href = (route: string) => getRelativeLocaleUrl(locale, route);
+const bm = (key: string) => t[`home.bm.${key}` as Key];
 const c = (group: string, index: number) => t[`home.${group}.${index}` as Key];
 const product = (slug: string) => {
   const found = products.find(row => row.slug === slug);
@@ -33,24 +34,27 @@ const image = (slug: string, file?: string) => {
 ---
 <Shell title={t.heroTitle}>
 <HomeHero />
-<section class="home-section home-tiles"><div class="home-heading"><p class="home-eyebrow">{c('ways', 0)}</p><h2>{c('ways', 1)}</h2><p class="home-lead">{c('ways', 2)}</p></div>
-<div class="home-split-tiles"><a class="home-tile" href={href('/collections/')}><HomeMedia id="collections" alt="" /><span class="home-tile-label is-dark"><strong>{c('ways', 3)}</strong><span>{c('ways', 4)}</span></span></a><a class="home-tile" href={href('/oem-odm/')}><HomeMedia id="oem" alt="" /><span class="home-tile-label is-sand"><strong>{c('ways', 5)}</strong><span>{c('ways', 6)}</span></span></a></div></section>
-<section class="home-section home-band"><div class="home-heading"><p class="home-eyebrow">{c('benefits', 0)}</p><h2>{c('benefits', 1)}</h2></div>
-<ol class="home-benefits">{benefits.map(([number, title, body]) => <li><span class="home-number">{number}</span><h3>{title}</h3><p>{body}</p></li>)}</ol></section>
-<section class="home-section home-process sand"><div class="home-heading"><p class="home-eyebrow">{c('process', 0)}</p><h2>{c('process', 1)}</h2><p class="home-lead">{c('process', 2)}</p></div>
-<ol class="home-steps">{steps.map(([number, title, body]) => <li><span class="home-number">{number}</span><div><h3>{title}</h3><p>{body}</p></div></li>)}</ol></section>
-<section class="home-section home-categories"><div class="home-heading"><p class="home-eyebrow">{c('categories', 0)}</p><h2>{c('categories', 1)}</h2><p class="home-lead">{c('categories', 2)}</p></div>
+<section class="home-section home-tiles"><div class="home-heading"><p class="home-eyebrow">{bm('ways-kicker')}</p><h2>{bm('ways-title')}</h2><p class="home-lead">{bm('ways-body')}</p></div>
+<div class="home-models">
+<article class="home-model wholesale" data-home-model="wholesale"><div class="wholesale-photo"><HomeMedia id="collections" alt="" /></div><div class="model-copy"><h3>{bm('wholesale-title')}</h3><p>{bm('wholesale-benefit')}</p><p>{bm('wholesale-get')}</p><a class="button" href={href('/collections/')}>{bm('wholesale-cta')} <span aria-hidden="true">→</span></a></div></article>
+<div class="secondary-models">{['private', 'custom'].map(model => <article class="home-model" data-home-model={model}><div class="model-copy"><h3>{bm(`${model}-title`)}</h3><p>{bm(`${model}-benefit`)}</p><p>{bm(`${model}-get`)}</p><a class="button" href={model === 'private' ? href('/collections/') + '?intent=private-label' : href('/oem-odm/')}>{bm(`${model}-cta`)} <span aria-hidden="true">→</span></a></div></article>)}</div>
+</div></section>
+<section class="home-section home-categories"><div class="home-heading"><p class="home-eyebrow">{c('categories', 0)}</p><h2>{c('categories', 1)}</h2><p class="home-lead">{bm('category-body')}</p></div>
 <ul class="home-category-grid" data-home-categories>{categories.map(([slug, category, n, file], index) => {
   const img = image(slug, file);
   return <li><a data-home-category href={href(`/collections/${category}/`)}><img src={img.src} alt={digitalAlt(img.src, locale) || c('categories', n)} width="600" height="720" loading="lazy" decoding="async" /><h3>{c('categories', n)}</h3><p>{c('categories', n + 1)}</p></a>{index === 3 && <p class="home-dye">{c('categories', 11)}</p>}</li>;
 })}</ul></section>
-<section class="home-section home-fabric"><div class="home-fabric-copy"><p class="home-eyebrow">{c('fabric', 0)}</p><h2>{c('fabric', 1)}</h2><p class="home-lead">{c('fabric', 2)}</p><a class="button secondary" href={href('/contact/') + '?subject=fabric-photos'}>{c('fabric', 3)}<span aria-hidden="true">{c('fabric', 4)}</span></a></div><div class="home-fabric-media"><HomeMedia id="fabric" alt="" /></div></section>
 <section class="home-section home-products"><div class="home-heading"><p class="home-eyebrow">{c('products', 0)}</p><h2>{c('products', 1)}</h2></div>
 <ul class="home-card-grid">{cards.map(([slug, title, code, note]) => {
   const img = image(slug);
   return <li><a href={href(`/products/${slug}/`)}><img src={img.src} alt={digitalAlt(img.src, locale) || c('products', title)} width="600" height="720" loading="lazy" decoding="async" /><strong>{c('products', title)}</strong><span class="home-code"><bdi>{c('products', code)}</bdi></span></a>{note && <p class="home-dye">{c('products', note)}</p>}</li>;
 })}</ul>
 <div class="home-promo"><h3>{c('products', 10)}</h3><p>{c('products', 11)}</p></div></section>
+<section class="home-section home-band"><div class="home-heading"><p class="home-eyebrow">{c('benefits', 0)}</p><h2>{c('benefits', 1)}</h2></div>
+<ol class="home-benefits">{benefits.map(([number, title, body]) => <li><span class="home-number">{number}</span><h3>{title}</h3><p>{body}</p></li>)}</ol></section>
+<section class="home-section home-process sand"><div class="home-heading"><p class="home-eyebrow">{c('process', 0)}</p><h2>{c('process', 1)}</h2><p class="home-lead">{c('process', 2)}</p></div>
+<ol class="home-steps">{steps.map(([number, title, body]) => <li><span class="home-number">{number}</span><div><h3>{title}</h3><p>{body}</p></div></li>)}</ol></section>
+<section class="home-section home-fabric"><div class="home-fabric-copy"><p class="home-eyebrow">{c('fabric', 0)}</p><h2>{c('fabric', 1)}</h2><p class="home-lead">{c('fabric', 2)}</p><a class="button secondary" href={href('/contact/') + '?subject=fabric-photos'}>{c('fabric', 3)}<span aria-hidden="true">{c('fabric', 4)}</span></a></div><div class="home-fabric-media"><HomeMedia id="fabric" alt="" /></div></section>
 <section class="home-section home-terms"><div class="home-terms-copy"><p class="home-badge">{c('terms', 0)}</p><h2>{c('terms', 1)}</h2><p class="home-lead">{c('terms', 2)}</p><div class="home-terms-media"><HomeMedia id="terms-one" alt="" /><HomeMedia id="terms-two" alt="" /></div></div>
 <dl class="home-terms-list">{terms.map(([label, value]) => <div><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
 <section class="home-section home-closing" id="home-inquiry"><div class="home-closing-copy"><p class="home-eyebrow">{c('closing', 0)}</p><h2>{c('closing', 1)}</h2><p class="home-lead">{c('closing', 2)}</p></div>
@@ -67,21 +71,21 @@ const image = (slug: string, file?: string) => {
  .home-lead{margin:0;font-size:var(--sy-text-lead);color:var(--sy-color-muted);max-width:none;}
  .home-number{font-family:var(--sy-font-heading);font-weight:var(--sy-weight-heading);font-size:var(--sy-text-h4);}
  .sand,.home-fabric-media{background:var(--sy-color-surface-alt);}
- /* Split tiles */
+ /* HOME-BM 30:600 and 1136:119877: wholesale primary, two secondary models. */
  .home-tiles{padding-inline:0;}
- .home-tiles>.home-heading{margin-inline-start:var(--sy-space-section);}
- .home-tiles>.home-split-tiles{max-width:none;margin-block-start:var(--sy-space-2xl);}
- .home-split-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
- .home-tile{position:relative;display:block;height:600px;overflow:hidden;text-decoration:none;color:inherit;}
- .home-tile :global(picture){position:absolute;inset:0;}
- .home-tile :global(img){width:100%;height:100%;object-fit:cover;}
- .home-tile-label{position:absolute;inset-inline:0;inset-block-end:0;display:grid;gap:var(--sy-space-xs);padding:var(--sy-space-xl) var(--sy-space-gutter-lg);}
- .home-tile-label strong{font-family:var(--sy-font-heading);font-weight:var(--sy-weight-heading);font-size:var(--sy-text-h4);line-height:1.15;}
- .home-tile-label.is-dark{background:var(--sy-color-inverse);color:var(--sy-color-on-inverse);}
- .home-tile-label.is-dark span{color:var(--sy-color-on-inverse-muted);}
- .home-tile-label.is-sand{background:var(--sy-color-surface-alt);}
- .home-tile-label.is-sand span{color:var(--sy-color-muted);}
- .home-tile:hover .home-tile-label strong{text-decoration:underline;text-underline-offset:.25em;}
+ .home-tiles>.home-heading{margin-inline-start:var(--sy-space-section);padding-inline-end:var(--sy-space-section);}
+ .home-tiles>.home-models{max-width:none;margin-block-start:var(--sy-space-2xl);}
+ .home-model{min-width:0;background:var(--sy-color-surface-alt);}
+ .wholesale{display:grid;grid-template-columns:40% minmax(0,1fr);background:var(--sy-color-inverse);color:var(--sy-color-on-inverse);}
+ .wholesale-photo{height:400px;}
+ .wholesale-photo :global(picture),.wholesale-photo :global(img){display:block;width:100%;height:100%;}
+ .wholesale-photo :global(img){object-fit:cover;}
+ .model-copy{padding:var(--sy-space-xl) var(--sy-space-gutter-lg);display:flex;flex-direction:column;align-items:flex-start;gap:var(--sy-space-xs);}
+ .model-copy h3{margin:0;font-size:var(--sy-text-h3);}
+ .model-copy p{margin:0;color:var(--sy-color-muted);max-width:none;}
+ .wholesale p{color:var(--sy-color-on-inverse-muted);}
+ .model-copy .button{background:var(--sy-color-on-inverse);color:var(--sy-color-ink);white-space:normal;}
+ .secondary-models{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
  /* Dark band */
  .home-band{background:var(--sy-color-inverse);color:var(--sy-color-on-inverse);}
  .home-band .home-eyebrow,.home-band .home-number{color:var(--sy-color-label-accent);}
@@ -139,8 +143,9 @@ const image = (slug: string, file?: string) => {
  @media(max-width:1023px){
   .home-section{--pad:var(--sy-space-section-sm);--side:var(--sy-space-gutter-lg);}
   .home-tiles>.home-heading{margin-inline-start:var(--sy-space-gutter-lg);}
-  .home-tile{height:420px;}
-  .home-tile-label{padding:var(--sy-space-lg) var(--sy-space-xl);}
+  .wholesale{grid-template-columns:minmax(0,1fr);}
+  .wholesale-photo{height:300px;}
+  .model-copy{padding:var(--sy-space-lg);}
   .home-benefits{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-xl) var(--sy-space-xl);margin-block-start:var(--sy-space-2xl);}
   .home-category-grid,.home-card-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-grid-y) var(--sy-space-lg);}
   .home-fabric{grid-template-columns:416fr 352fr;}
@@ -152,8 +157,8 @@ const image = (slug: string, file?: string) => {
  @media(max-width:650px){
   .home-section{--side:var(--sy-space-gutter-mobile);}
   .home-tiles>.home-heading{margin-inline-start:var(--sy-space-gutter-mobile);}
-  .home-split-tiles{grid-template-columns:minmax(0,1fr);}
-  .home-tile{height:340px;}
+  .secondary-models{grid-template-columns:minmax(0,1fr);}
+  .wholesale-photo{height:240px;}
   .home-benefits{grid-template-columns:minmax(0,1fr);gap:var(--sy-space-lg);}
   .home-category-grid,.home-card-grid{gap:var(--sy-space-xl) var(--sy-space-md);}
   .home-fabric{grid-template-columns:minmax(0,1fr);}
