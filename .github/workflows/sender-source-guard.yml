@@ -25,7 +25,9 @@ jobs:
           mkdir -p evidence/sender-source-guard
           git rev-parse HEAD > evidence/sender-source-guard/source-sha.txt
           set -o pipefail
-          timeout 120 node --test work/apparel-b2b/fleet-20261104/detail-20261110/sender-g/source-guard.test.cjs 2>&1 | tee evidence/sender-source-guard/raw.log
+          timeout 120 node --test work/apparel-b2b/fleet-20261104/detail-20261110/sender-g/source-guard.test.cjs work/apparel-b2b/fleet-20261104/detail-20261110/sender-g/run-admission.test.cjs 2>&1 | tee evidence/sender-source-guard/raw.log
+      - name: Existing offline attempt regression
+        run: timeout 60 node work/apparel-b2b/fleet-20261104/detail-20261110/sender-g/test-offline.cjs
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
