@@ -56,6 +56,17 @@ for (const locale of ['en', 'zh', 'ar']) for (const width of [1440, 768, 390]) t
   for (const route of ['privacy', 'terms', '404']) {
     await page.goto(`${locale === 'en' ? '' : '/' + locale}/${route === '404' && locale === 'en' ? '404.html' : route + '/'}`);
     await page.evaluate(() => document.fonts.ready);
+    const banner = page.locator('[data-cookie-banner]');
+    if (await banner.isVisible()) await page.locator('[data-cookie-choice=essential]').click();
+    await expect(banner).toBeHidden();
+    await expect(page.locator('h1')).toHaveCSS('font-weight', '400');
+    if (route === '404') {
+      await expect(page.locator('.error-code')).toHaveCSS('font-size', '88px');
+      await expect(page.locator('.recovery-card').first()).toHaveCSS('background-color', 'rgb(239, 231, 214)');
+    } else {
+      await expect(page.locator('h1')).toHaveCSS('font-size', width === 390 ? '36px' : '56px');
+      expect(await page.locator('.service-copy > div > p').first().evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe(Math.min(896, width - (width === 390 ? 48 : 96)));
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `evidence/cp-legal-${route}-${locale}-${width}.png`, fullPage: true });
   }
