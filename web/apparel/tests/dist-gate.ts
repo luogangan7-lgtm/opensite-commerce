@@ -109,7 +109,7 @@ console.log('PASS: compiled protected RFQ 403/204/429 and missing runtime secret
 
 // HF1: removed per-image disclosure sentences must never reach any built locale page.
 const removedImageCaptions = ["AI-generated illustration; actual details are subject to the confirmed sample.", "رسم توضيحي مولّد بالذكاء الاصطناعي؛ التفاصيل الفعلية وفق العينة المعتمدة.", "AI 生成示意图，实际细节以确认样品为准", "Ilustración generada por IA; los detalles reales se ajustarán a la muestra confirmada.", "Illustration générée par IA ; les détails réels dépendent de l’échantillon confirmé.", "KI-generierte Illustration; die tatsächlichen Details richten sich nach dem bestätigten Muster.", "Ilustração gerada por IA; os detalhes reais seguem a amostra confirmada.", "Иллюстрация создана ИИ; фактические детали определяются утверждённым образцом."];
-for (const file of new Bun.Glob('**/*.html').scanSync('web/apparel/dist')) {
- const html = await Bun.file(`web/apparel/dist/${file}`).text();
+for (const file of new Bun.Glob('**/*.html').scanSync(root)) {
+ const html = await Bun.file(join(root, file)).text();
  for (const caption of removedImageCaptions) if (html.includes(caption)) throw Error(`HF1 removed caption in ${file}`);
 }
