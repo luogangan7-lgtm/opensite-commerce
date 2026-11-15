@@ -4,7 +4,7 @@ import accepted from './accepted-c23.json';
 import digital from '../digital-sources.json';
 import details from '../detail-sources.json';
 import products from '../src/data/products.json';
-import {orderedGallery,detailCaption} from '../src/data/gallery';
+import {orderedGallery} from '../src/data/gallery';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
@@ -23,7 +23,7 @@ for(const row of accepted) test(`${row.exactId}: F6-IMG slot and replacement sou
  }
 });
 
-test('C23 exactly 38 W3 replacements and eight AI captions',()=>{expect(accepted.length).toBe(38);expect(new Set(accepted.map(r=>r.src)).size).toBe(38);expect(Object.keys(detailCaption).length).toBe(8);});
+test('C23 exactly 38 W3 replacements',()=>{expect(accepted.length).toBe(38);expect(new Set(accepted.map(r=>r.src)).size).toBe(38);});
 
 // Built output confirms each replacement remains reachable in every localized PDP.
 test('C23 derived counts and eight-locale rendered slots',()=>{

@@ -14,7 +14,6 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
   <div class="hero-content"><p class="eyebrow">{text(1)}</p><h1 data-hero-title>{text(2)}</h1><p class="hero-sub"><span class="wide-sub">{text(5)}</span><span class="small-sub">{text(6)}</span></p><a class="button secondary" href="#home-inquiry">{t.request}<span aria-hidden="true">→</span></a></div>
   <div class="hero-dots" role="group" aria-label={text(1)}>{slides.map((_,i)=><button type="button" data-slide-to={i} aria-label={text(i+2).replaceAll('\n',' ')} aria-pressed={i===0}><span aria-hidden="true">{i===0?'●':'○'}</span></button>)}</div>
   <p class="hero-counter" dir="ltr" aria-live="polite" aria-atomic="true"><span data-slide-counter>1</span> / 3</p>
-  <p class="hero-disclosure">{text(15)}</p>
   <button class="hero-playback" type="button" data-playback>{text(16)}</button>
  </div>
  <dl class="hero-facts">{[7,9,11,13].map(n=><div><dt>{text(n)}</dt><dd dir={n===13?'ltr':undefined}>{text(n+1)}</dd></div>)}</dl>
@@ -79,7 +78,6 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
  .hero-counter,.hero-playback{position:absolute;inset-inline-end:var(--sy-space-gutter-lg);}
  .hero-counter{bottom:var(--sy-space-section);margin:0;font-size:var(--sy-text-eyebrow);}
  .hero-playback{bottom:var(--sy-space-lg);min-height:var(--home-control);min-width:var(--sy-space-section);padding:var(--sy-space-xs) var(--sy-space-md);}
- .hero-disclosure{position:absolute;inset-inline-start:var(--home-gutter);bottom:var(--sy-space-sm);margin:0;font-size:var(--sy-text-eyebrow);}
  .hero-facts{height:var(--home-facts-height);margin:0;padding:var(--sy-space-lg) var(--home-gutter);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);}
  .hero-facts dt{font-size:var(--sy-text-eyebrow);font-weight:var(--sy-weight-label);margin-bottom:var(--sy-space-xs);}
  .hero-facts dd{margin:0;font-size:var(--sy-text-small);}

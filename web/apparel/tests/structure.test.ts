@@ -4,7 +4,7 @@ import accepted from './accepted-structure.json';
 import details from '../detail-sources.json';
 import ledger from '../structure-ledger.json';
 import products from '../src/data/products.json';
-import { orderedGallery, primaryColour, detailCaption } from '../src/data/gallery';
+import { orderedGallery, primaryColour } from '../src/data/gallery';
 import { imagePlan, imageDimensions, type DetailSource } from '../image-plan';
 import { packageDetails } from '../detail-images';
 import { readFileSync } from 'node:fs';
@@ -25,7 +25,7 @@ test('115 independently accepted structures bind primary galleries',()=>{
   expect(image?.src).toBe(source.src); expect(image?.sha256_16).toBe(row.sha256.slice(0,16));
   if(gallery.some(i=>i.role==='fabric')) expect(gallery.indexOf(image!)).toBeLessThan(gallery.findIndex(i=>i.role==='fabric'));
  }
- expect(Object.values(detailCaption)).toHaveLength(8);
+
 });
 test.skipIf(!process.env.APPAREL_SOURCE_DIR)('115 raw hashes and independent reviews package as native square structures', async()=>{
  const root=process.env.APPAREL_SOURCE_DIR!;
@@ -37,7 +37,7 @@ test.skipIf(!process.env.APPAREL_SOURCE_DIR)('115 raw hashes and independent rev
   const html=readFileSync(`web/apparel/dist/zh/products/${row.slug}/index.html`,'utf8');
   const link=html.match(new RegExp(`<a href="${image.src}"[^>]*>`))?.[0];
   expect(link).toContain('data-role="structure"');
-  expect(link).toContain(`data-digital="${detailCaption.zh}"`);
+  expect(link).not.toContain('data-digital=');
   expect(link).toContain('data-fit="contain"');
  }
  const receipts=await packageDetails(rows as DetailSource[],root,'web/apparel/dist');

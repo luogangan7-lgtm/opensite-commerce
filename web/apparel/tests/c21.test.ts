@@ -5,7 +5,7 @@ import digital from '../digital-sources.json';
 import details from '../detail-sources.json';
 import products from '../src/data/products.json';
 import {imageDimensions} from '../image-plan';
-import {orderedGallery,detailCaption} from '../src/data/gallery';
+import {orderedGallery} from '../src/data/gallery';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
@@ -28,7 +28,7 @@ for(const row of accepted) test(`${row.exactId}: F6-IMG slot and replacement sou
  expect(readFileSync(`${process.env.APPAREL_SOURCE_DIR}/${row.acceptance}`,'utf8').split(/\r?\n/)[row.reviewLine-1]).toBe(row.reviewRow);
  }
 });
-test('C21 contains exactly 81 independent accepted slots and eight AI captions',()=>{expect(accepted.length).toBe(81);expect(new Set(accepted.map(r=>r.src)).size).toBe(81);expect(Object.keys(detailCaption).length).toBe(8);});
+test('C21 contains exactly 81 independent accepted slots',()=>{expect(accepted.length).toBe(81);expect(new Set(accepted.map(r=>r.src)).size).toBe(81);});
 test.skipIf(!process.env.APPAREL_SOURCE_DIR)('C21 fabric packaging retains every native pixel dimension',async()=>{
  const {packageDetails}=await import('../detail-images');
  const ledger=(await import('../c21-ledger.json')).default;

@@ -31,5 +31,4 @@ export function pdpMediaPair<T extends GalleryImage>(images: T[]): { whole: T; d
  return { whole, detail };
 }
 /** Compatibility exports for existing gallery callers; visible copy is owned by the dictionaries. */
-export const detailCaption = Object.fromEntries(locales.map(locale => [locale, dictionaries[locale].pdpDetailCaption])) as Record<Locale, string>;
 export const galleryClose = Object.fromEntries(locales.map(locale => [locale, dictionaries[locale].galleryClose])) as Record<Locale, string>;

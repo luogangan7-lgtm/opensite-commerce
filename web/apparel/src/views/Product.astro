@@ -4,8 +4,8 @@ import Shell from '../layouts/Shell.astro';
 import RFQ from '../components/RFQ.astro';
 import { products, type Product } from '../data/catalog';
 import Grid from '../components/Grid.astro';
-import { pdpMediaPair, orderedGallery, primaryColour, galleryColours, isDetail, isGeneratedDetail, detailCaption, galleryClose } from '../data/gallery';
-import { digitalAlt, digitalLabel } from '../data/imagery';
+import { pdpMediaPair, orderedGallery, primaryColour, galleryColours, isDetail, galleryClose } from '../data/gallery';
+import { digitalAlt } from '../data/imagery';
 import { dictionaries, pageLocale, productText, type Key } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 interface Props { product: Product }
@@ -16,22 +16,21 @@ const inquiryUrl = (type: 'quote' | 'sample') => `${getRelativeLocaleUrl(locale,
 const colours = galleryColours(product.images);
 const gallery = orderedGallery(product.images);
 const mediaPair = pdpMediaPair(product.images);
-const alt = (image: typeof gallery[number], index: number) => isGeneratedDetail(image) ? detailCaption[locale] : digitalAlt(image.src, locale) || `${text.name}: ${t.view} ${index + 1}`;
+const alt = (image: typeof gallery[number], index: number) => digitalAlt(image.src, locale) || `${text.name}: ${t.view} ${index + 1}`;
 const lcpMobile = digitalAlt(gallery[0].src, locale) ? gallery[0].src.replace(/\.webp$/, '-640.webp') : undefined;
-const label = (image: typeof gallery[number]) => isGeneratedDetail(image) ? detailCaption[locale] : digitalAlt(image.src, locale) ? digitalLabel(locale) : '';
 // Keep the adopted related identity first, excluding the current PDP.
 const related = products.filter(p => p.category === product.category && p.slug !== product.slug);
 const featuredRelated = related.find(p => p.slug === 'apparel-70171');
 const relatedCards = (featuredRelated ? [featuredRelated, ...related.filter(p => p !== featuredRelated)] : related).slice(0, 4);
 ---
 <Shell title={text.name} lcpImage={gallery[0].src} lcpMobile={lcpMobile}>
-<section class="wrap pdp-section"><a href={getRelativeLocaleUrl(locale, `/collections/${product.category}/`)}>{t[product.category as Key]}</a><div class="pdp split"><div class="gallery"><picture><source data-gallery-mobile media="(max-width: 767px)" srcset={lcpMobile} /><img data-gallery-main role="button" tabindex="0" aria-haspopup="dialog" loading="eager" fetchpriority="high" decoding="async" data-fit={isDetail(gallery[0]) ? 'contain' : undefined} src={gallery[0].src} alt={alt(gallery[0], 0)} width="800" height="1000" /></picture><p class="muted" data-digital-label>{label(gallery[0])}</p><button type="button" data-gallery-zoom aria-label={t.productViews}>{t.productViews}</button><dialog data-gallery-viewer aria-label={alt(gallery[0], 0)}><form method="dialog"><button aria-label={galleryClose[locale]}>×</button></form><p data-viewer-title>{alt(gallery[0], 0)}</p><img src={gallery[0].src} alt={alt(gallery[0], 0)} width="1200" height="1200" /></dialog><nav class="gallery-colours" aria-label={t.productViews}>{colours.map(image => <button type="button" data-gallery-swatch={image.colour} aria-pressed={image.colour === primary ? 'true' : 'false'} aria-label={digitalAlt(image.src, locale) || image.colour}><img src={image.src} alt={digitalAlt(image.src, locale) || image.colour} width="64" height="80" loading="lazy" /></button>)}</nav>{colours.map(colour => <nav class="gallery-thumbs" data-gallery-colour={colour.colour} hidden={colour.colour !== primary} aria-label={t.productViews}>{orderedGallery(product.images, colour.colour, primary).map((image, index) => <a href={image.src} aria-label={alt(image, index)} data-role={image.role} data-colour={image.colour} data-fit={isDetail(image) ? 'contain' : undefined} data-digital={label(image)} aria-current={index === 0 ? 'true' : undefined}><img src={image.src} alt={alt(image, index)} width="80" height="100" loading="lazy" decoding="async" /></a>)}</nav>)}</div><div class="product-info"><p class="muted"><bdi>{product.style_codes.join(' / ')}</bdi></p><div><h1>{text.name}</h1><p>{text.fabric_weight_fit}</p><p>{text.colourway_note}</p></div><table><caption>{t.commercial}</caption><tbody>{['price', 'moq', 'leadTime', 'sampleCost'].map(field => <tr data-commercial><th scope="row">{t[field as Key]}</th><td>{t.quote}</td></tr>)}</tbody></table><div class="actions"><a class="button" data-rfq-intent="quote" href={inquiryUrl('quote')}>{t.request}</a><a class="button secondary" data-rfq-intent="sample" href={inquiryUrl('sample')}>{t.requestSample}</a></div>{product.size_chart.length > 0 && <a href="#size-chart">{t.sizeChart}</a>}<p class="muted">{t.specText}</p></div></div></section>
+<section class="wrap pdp-section"><a href={getRelativeLocaleUrl(locale, `/collections/${product.category}/`)}>{t[product.category as Key]}</a><div class="pdp split"><div class="gallery"><picture><source data-gallery-mobile media="(max-width: 767px)" srcset={lcpMobile} /><img data-gallery-main role="button" tabindex="0" aria-haspopup="dialog" loading="eager" fetchpriority="high" decoding="async" data-fit={isDetail(gallery[0]) ? 'contain' : undefined} src={gallery[0].src} alt={alt(gallery[0], 0)} width="800" height="1000" /></picture><button type="button" data-gallery-zoom aria-label={t.productViews}>{t.productViews}</button><dialog data-gallery-viewer aria-label={alt(gallery[0], 0)}><form method="dialog"><button aria-label={galleryClose[locale]}>×</button></form><p data-viewer-title>{alt(gallery[0], 0)}</p><img src={gallery[0].src} alt={alt(gallery[0], 0)} width="1200" height="1200" /></dialog><nav class="gallery-colours" aria-label={t.productViews}>{colours.map(image => <button type="button" data-gallery-swatch={image.colour} aria-pressed={image.colour === primary ? 'true' : 'false'} aria-label={digitalAlt(image.src, locale) || image.colour}><img src={image.src} alt={digitalAlt(image.src, locale) || image.colour} width="64" height="80" loading="lazy" /></button>)}</nav>{colours.map(colour => <nav class="gallery-thumbs" data-gallery-colour={colour.colour} hidden={colour.colour !== primary} aria-label={t.productViews}>{orderedGallery(product.images, colour.colour, primary).map((image, index) => <a href={image.src} aria-label={alt(image, index)} data-role={image.role} data-colour={image.colour} data-fit={isDetail(image) ? 'contain' : undefined} aria-current={index === 0 ? 'true' : undefined}><img src={image.src} alt={alt(image, index)} width="80" height="100" loading="lazy" decoding="async" /></a>)}</nav>)}</div><div class="product-info"><p class="muted"><bdi>{product.style_codes.join(' / ')}</bdi></p><div><h1>{text.name}</h1><p>{text.fabric_weight_fit}</p><p>{text.colourway_note}</p></div><table><caption>{t.commercial}</caption><tbody>{['price', 'moq', 'leadTime', 'sampleCost'].map(field => <tr data-commercial><th scope="row">{t[field as Key]}</th><td>{t.quote}</td></tr>)}</tbody></table><div class="actions"><a class="button" data-rfq-intent="quote" href={inquiryUrl('quote')}>{t.request}</a><a class="button secondary" data-rfq-intent="sample" href={inquiryUrl('sample')}>{t.requestSample}</a></div>{product.size_chart.length > 0 && <a href="#size-chart">{t.sizeChart}</a>}<p class="muted">{t.specText}</p></div></div></section>
 {product.size_chart.length > 0 && <section class="wrap" id="size-chart"><h2>{t.sizeChart}</h2><p>{t.sizeText}</p>{product.size_chart.map(src => <img class="size-chart" src={src} alt={`${t.sizeChart}: ${product.style_codes.join(', ')}`} width="1" height="1" loading="lazy" decoding="async" />)}</section>}
 <section class="wrap" aria-label={t.specText}>
   <div class="pdp-media" data-pdp-media>
     <div class="pdp-media-pair">
       <img data-pdp-whole src={mediaPair.whole.src} alt={digitalAlt(mediaPair.whole.src, locale) || text.name} width="800" height="1000" loading="lazy" decoding="async" />
-      <figure class="pdp-detail-card"><img data-pdp-detail src={mediaPair.detail.src} alt={t.pdpDetailCaption} width="1200" height="1200" loading="lazy" decoding="async" /><figcaption class="muted">{t.pdpDetailCaption}</figcaption></figure>
+      <figure class="pdp-detail-card"><img data-pdp-detail src={mediaPair.detail.src} alt={alt(mediaPair.detail, gallery.indexOf(mediaPair.detail))} width="1200" height="1200" loading="lazy" decoding="async" /></figure>
     </div>
   </div>
 </section>
@@ -72,8 +71,6 @@ const relatedCards = (featuredRelated ? [featuredRelated, ...related.filter(p =>
     if (!main) return; event.preventDefault(); main.closest('picture')?.querySelector('source')?.removeAttribute('srcset'); main.src = link.getAttribute('href')!;
     const thumbnail = link.querySelector('img')!;
     main.alt = thumbnail.alt;
-    const label = document.querySelector('[data-digital-label]');
-    if (label) label.textContent = link.dataset.digital || '';
     main.dataset.fit = link.dataset.fit || '';
     document.querySelectorAll('.gallery-thumbs a').forEach(item => item.removeAttribute('aria-current'));
     link.setAttribute('aria-current', 'true');
@@ -87,7 +84,6 @@ const relatedCards = (featuredRelated ? [featuredRelated, ...related.filter(p =>
   .pdp-media img { width: 100%; object-fit: contain; border-radius: var(--sy-radius-card); }
   [data-pdp-whole] { aspect-ratio: 4 / 5; }
   [data-pdp-detail] { aspect-ratio: 1; }
-  .pdp-media figcaption { margin-block-start: var(--sy-space-sm); font-size: var(--sy-text-small); }
   .gallery-colours button { background: var(--sy-color-canvas); border-color: var(--sy-color-border); border-radius: var(--sy-radius-control); }
   .gallery-colours img, .gallery-thumbs img { object-fit: contain; }
   .gallery-thumbs [data-fit="contain"] img { aspect-ratio: 1; }

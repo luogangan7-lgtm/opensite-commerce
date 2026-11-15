@@ -1,3 +1,4 @@
+import { digitalLabel } from '../src/data/imagery';
 /** Output allow-list and text gates; CI only; any unlisted product route or image reference fails closed. */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -106,3 +107,20 @@ for (let i = 0; i < 4; i++) if ((await submit()).status !== 204) throw Error('Co
 if ((await submit()).status !== 429 || protectedWrites !== 4) throw Error('Compiled rate limit');
 if ((await submit({ ...protectedEnv, TURNSTILE_SECRET_KEY: '' })).status !== 503) throw Error('Compiled production missing runtime secret');
 console.log('PASS: compiled protected RFQ 403/204/429 and missing runtime secret 503; no storage on rejection.');
+
+// HF1: removed per-image disclosure sentences must never reach any built locale page.
+const removedImageCaptions = ["AI-generated illustration; actual details are subject to the confirmed sample.", "رسم توضيحي مولّد بالذكاء الاصطناعي؛ التفاصيل الفعلية وفق العينة المعتمدة.", "AI 生成示意图，实际细节以确认样品为准", "Ilustración generada por IA; los detalles reales se ajustarán a la muestra confirmada.", "Illustration générée par IA ; les détails réels dépendent de l’échantillon confirmé.", "KI-generierte Illustration; die tatsächlichen Details richten sich nach dem bestätigten Muster.", "Ilustração gerada por IA; os detalhes reais seguem a amostra confirmada.", "Иллюстрация создана ИИ; фактические детали определяются утверждённым образцом."];
+for (const file of new Bun.Glob('**/*.html').scanSync(root)) {
+ const html = await Bun.file(join(root, file)).text();
+ for (const caption of removedImageCaptions) if (html.includes(caption)) throw Error(`HF1 removed caption in ${file}`);
+}
+
+// Per-image labels are prohibited as visible text; the one site footer disclosure remains.
+for (const file of new Bun.Glob('**/*.html').scanSync(root)) {
+ const html = await Bun.file(join(root, file)).text();
+ const visible = html.replace(/<footer\b[\s\S]*?<\/footer>/gi, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, ' ').replace(/&#(?:39|x27);|&apos;/gi, "'").replace(/&amp;/g, '&');
+ for (const locale of locales) {
+  const t = dictionaries[locale];
+  for (const label of [t['home.hero.15'], digitalLabel(locale), t.illustrativeNotice]) if (visible.includes(label)) throw Error(`HF1 removed image label in ${file}: ${label}`);
+ }
+}

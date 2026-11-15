@@ -7,7 +7,7 @@ import HomeHero from '../components/HomeHero.astro';
 import HomeMedia from '../components/HomeMedia.astro';
 import RFQ from '../components/RFQ.astro';
 import { products } from '../data/catalog';
-import { digitalAlt, digitalLabel } from '../data/imagery';
+import { digitalAlt } from '../data/imagery';
 import { dictionaries, pageLocale, type Key } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
@@ -48,7 +48,7 @@ const image = (slug: string, file?: string) => {
 <section class="home-section home-products"><div class="home-heading"><p class="home-eyebrow">{c('products', 0)}</p><h2>{c('products', 1)}</h2></div>
 <ul class="home-card-grid">{cards.map(([slug, title, code, note]) => {
   const img = image(slug);
-  return <li><a href={href(`/products/${slug}/`)}><img src={img.src} alt={digitalAlt(img.src, locale) || c('products', title)} width="600" height="720" loading="lazy" decoding="async" />{digitalAlt(img.src, locale) && <span class="home-disclosure">{digitalLabel(locale)}</span>}<strong>{c('products', title)}</strong><span class="home-code"><bdi>{c('products', code)}</bdi></span></a>{note && <p class="home-dye">{c('products', note)}</p>}</li>;
+  return <li><a href={href(`/products/${slug}/`)}><img src={img.src} alt={digitalAlt(img.src, locale) || c('products', title)} width="600" height="720" loading="lazy" decoding="async" /><strong>{c('products', title)}</strong><span class="home-code"><bdi>{c('products', code)}</bdi></span></a>{note && <p class="home-dye">{c('products', note)}</p>}</li>;
 })}</ul>
 <div class="home-promo"><h3>{c('products', 10)}</h3><p>{c('products', 11)}</p></div></section>
 <section class="home-section home-terms"><div class="home-terms-copy"><p class="home-badge">{c('terms', 0)}</p><h2>{c('terms', 1)}</h2><p class="home-lead">{c('terms', 2)}</p><div class="home-terms-media"><HomeMedia id="terms-one" alt="" /><HomeMedia id="terms-two" alt="" /></div></div>

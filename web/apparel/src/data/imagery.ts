@@ -25,5 +25,5 @@ export function digitalAlt(src: string, locale: Locale): string | undefined {
   if (!image) return undefined;
   const t = vocabulary[locale], color = t.colors['kwcgobtnpvruhe'.indexOf(image.color)], garment = t.garments[['tee','sweatshirt','hoodie','set','jacket'].indexOf(image.garment)], view = t.views[['front','turn','back'].indexOf(image.view)];
   if (!color || !garment || !view) throw Error(`Invalid digital image description: ${src}`);
-  return `${t.label}: ${color}; ${garment}; ${view}`;
+  return `${color}; ${garment}; ${view}`;
 }
