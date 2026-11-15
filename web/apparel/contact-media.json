@@ -1,0 +1,38 @@
+[
+  {
+    "id": "pattern",
+    "source": "hd/_site/illustrative_home_process_pattern.png",
+    "sha256": "b85fbd8fca6e3072c12d834ead70ddef41864e9fc87fe8bc555073133687d217",
+    "src": "/img/contact/pattern.webp",
+    "width": 1536,
+    "height": 1024,
+    "authority": "Frozen Figma Contact 69:2131 imageHash 6c6606c273cf703f8cd63d49d1783577b86d1f30"
+  },
+  {
+    "id": "terms-one",
+    "source": "figma-evidence/v13/upload-jpg/out-p5__illus-quote-1.jpg",
+    "sha256": "ae382651412e3bfac65ac63d2fc5b9202df2740ad4bbd27bb8aa42dd2a510a92",
+    "src": "/img/contact/terms-one.webp",
+    "width": 1448,
+    "height": 1086,
+    "authority": "Frozen Figma Contact 69:2131 imageHash 29f17fb5daf033f5ee6e270a9da129df102978a4"
+  },
+  {
+    "id": "terms-two",
+    "source": "figma-evidence/v13/upload-jpg/out-p5__illus-quote-2.jpg",
+    "sha256": "5f8ef7bd5072cdf906019c7c9c6d796e72c246e77afd5d4df5092e3d0d33cf0f",
+    "src": "/img/contact/terms-two.webp",
+    "width": 1448,
+    "height": 1086,
+    "authority": "Frozen Figma Contact 69:2131 imageHash 43c8b88290430702c8d55dca0b8fea2ddf3b9ecc"
+  },
+  {
+    "id": "faq",
+    "source": "figma-evidence/v13/upload-jpg/out-p5__illus-faq.jpg",
+    "sha256": "1a3eacb05e6f596a9b3415eb1099142e739d200de3abeec55499175f0221f8eb",
+    "src": "/img/contact/faq.webp",
+    "width": 1672,
+    "height": 941,
+    "authority": "Frozen Figma Contact 69:2131 imageHash 6025094ef499aecb4acc6c3698200b743e5150c4"
+  }
+]

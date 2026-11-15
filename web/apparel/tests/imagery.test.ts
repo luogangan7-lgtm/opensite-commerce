@@ -90,13 +90,13 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
   const { tmpdir } = await import('node:os'), { join } = await import('node:path');
   const dir = mkdtempSync(join(tmpdir(), 'apparel-r4b-filtered-'));
   const slots: Record<string, Record<string, string>> = {};
-  for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.') && !key.startsWith('alt.home.') && !key.startsWith('alt.collection.'))) {
+  for (const key of Object.keys(dictionaries.en).filter(key => key.startsWith('alt.') && !key.startsWith('alt.home.') && !key.startsWith('alt.collection.') && !key.startsWith('alt.contact.'))) {
     const [page, slot] = key.slice(4).split('.');
     (slots[page] ||= {})[slot] = `illustrative_${page}_${slot}.png`;
   }
   const filenames = Object.values(slots).flatMap(Object.values);
   // A copied synthetic JSONL fixture exercises the exact review parser and public HTML gate.
-  const fixtureJSONL = filenames.map(name => JSON.stringify({ slug: '_site', role: name.slice(0, -4), path: `/fixture/hd/_site/${name}`, sha256: 'a'.repeat(64), w: 1536, h: 1024, pass: name !== slots.contact.banner })).join('\n');
+  const fixtureJSONL = filenames.map(name => JSON.stringify({ slug: '_site', role: name.slice(0, -4), path: `/fixture/hd/_site/${name}`, sha256: 'a'.repeat(64), w: 1536, h: 1024, pass: name !== slots.about.hero })).join('\n');
   const review = fixtureJSONL.split('\n').map(line => JSON.parse(line));
   const input = { slots, review, provenance: Object.fromEntries(filenames.map(name => [name, { rights: 'ai-generated-illustrative' }])), published: [] };
   const gate = () => Bun.spawnSync(['bun', 'web/apparel/tests/slots-gate.ts'], { env: { ...process.env, APPAREL_DIST: dir } });
@@ -114,16 +114,16 @@ test('the real HTML gate accepts a filtered fixture and a later passing review w
     writeFileSync(pdpFile,pdpOriginal.replace(/(<img\b[^>]*?)data-pdp-detail/, '$1data-missing-detail'));
     expect(gate().exitCode).not.toBe(0);
     writeFileSync(pdpFile,pdpOriginal);
-    expect(readFileSync(join(dir, 'contact/index.html'), 'utf8')).not.toContain('data-slot="contact/banner"');
+    expect(readFileSync(join(dir, 'about/index.html'), 'utf8')).not.toContain('data-slot="about/hero"');
     const file = join(dir, 'about/index.html'), original = readFileSync(file, 'utf8');
-    writeFileSync(file, original.replace(/<picture\b[^>]*data-slot="about\/hero"[^>]*>[\s\S]*?<\/picture>/, ''));
+    writeFileSync(file, original.replace(/<picture\b[^>]*data-slot="about\/founder"[^>]*>[\s\S]*?<\/picture>/, ''));
     expect(gate().exitCode).not.toBe(0);
     writeFileSync(file, original);
-    review.find(row => row.role === 'illustrative_contact_banner')!.pass = true;
+    review.find(row => row.role === 'illustrative_about_hero')!.pass = true;
     writeFixture();
     expect(gate().exitCode).toBe(0);
-    expect(readFileSync(join(dir, 'contact/index.html'), 'utf8')).toContain('data-slot="contact/banner"');
-    console.log('PASS: real gate 25 passing slots, missing-slot RED, fixture review flip restores 26');
+    expect(readFileSync(join(dir, 'about/index.html'), 'utf8')).toContain('data-slot="about/hero"');
+    console.log('PASS: real gate 24 passing slots, missing-slot RED, fixture review flip restores 25');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

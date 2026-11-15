@@ -14,7 +14,7 @@ export const inventory = {
   about: ['hero', 'founder', 'facility_inspection', 'facility_production', 'facility_warehouse'],
   oem: ['hero', 'fabric_swatches', 'trims'],
   pdp: ['craft_fleece', 'craft_stack', 'craft_stitching'],
-  contact: ['banner'],
+  contact: [],
 };
 const routes: Record<string, string[]> = { home: [''], collection: ['collections', 'collections/crew-fleece'], about: ['about'], oem: ['about'], pdp: ['products/crew-fleece-8900-32'], contact: ['contact'] };
 // Raw CI artifacts retain every template so a later passing review needs only repackaging.

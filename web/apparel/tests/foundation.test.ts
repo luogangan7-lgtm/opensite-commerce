@@ -15,3 +15,10 @@ test('prefill accepts only catalog products and contract enums', () => {
   expect(parseRfqPrefill(new URLSearchParams('product=x&product=y&type=sample&type=evil&subject=full-range&subject=evil'))).toEqual({});
   expect(parseRfqPrefill(new URLSearchParams())).toEqual({});
 });
+test('prefill accepts only one catalog colour belonging to the selected product', () => {
+  const p = products.find(p => p.images.some(i => i.colour))!;
+  const colour = p.images.find(i => i.colour)!.colour;
+  expect(parseRfqPrefill(new URLSearchParams({product:p.slug,colour})).colour).toBe(colour);
+  expect(parseRfqPrefill(new URLSearchParams({product:p.slug,colour:'<script>'})).colour).toBeUndefined();
+  expect(parseRfqPrefill(new URLSearchParams(`product=${p.slug}&colour=${colour}&colour=${colour}`)).colour).toBeUndefined();
+});

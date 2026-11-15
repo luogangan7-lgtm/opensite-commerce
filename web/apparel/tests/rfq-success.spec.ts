@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) {
-  for (const width of [390, 768, 1440]) {
+  for (const width of [390, 768, 1280]) {
     test(`Sent confirmation and return ${locale} ${width}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       let submits = 0;
@@ -13,7 +13,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) 
       });
       const prefix = locale === 'en' ? '' : `/${locale}`;
       await page.goto(`${prefix}/contact/`);
-      await page.locator('[name="name"]').fill('CI');
+      await page.locator('[name="first_name"]').fill('CI'); await page.locator('[name="last_name"]').fill('Buyer'); await page.locator('[name="quantity_note"]').fill('100 pieces');
       await page.locator('[name="company"]').fill('Example');
       await page.locator('[name="email"]').fill('ci@example.invalid');
       await page.locator('[name="message"]').fill('Synthetic C2 request');
@@ -25,7 +25,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) 
       // Require the buyer-visible content; section border can round beyond the scroll pixel.
       await expect(confirmation.getByRole('heading')).toBeInViewport({ ratio: 1 });
       await expect(confirmation.locator('p')).toBeInViewport({ ratio: 1 });
-      await expect(confirmation).toContainText(JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`, import.meta.url), 'utf8')).success);
+      await expect(confirmation).toContainText(JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`, import.meta.url), 'utf8')).rfqSuccess);
       await expect(page.locator('html')).toHaveAttribute('dir', locale === 'ar' ? 'rtl' : 'ltr');
       const back = confirmation.getByRole('link');
       await expect(back).toBeInViewport({ ratio: 1 });
