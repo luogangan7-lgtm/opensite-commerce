@@ -23,3 +23,12 @@ test('no media binaries are committed under Home paths', () => {
  expect(existsSync(join(root, 'public/img/home'))).toBe(false);
  expect(readdirSync(root).some(name => /\.(png|jpe?g|webp|raw)$/.test(name))).toBe(false);
 });
+
+test('fabric master matches the owner-picked Figma image at native 3:2 resolution', () => {
+ const fabric = media.find(row => row.id === 'fabric')!;
+ expect(fabric.width).toBeGreaterThanOrEqual(1024);
+ expect(fabric.width / fabric.height).toBe(3 / 2);
+ expect(fabric.sha256).toBe('fcd1a560e9783c1660adff9d21d879e9aaf0f9569ec40b05db5dbba107a11b7c');
+ expect(fabric.authority).toContain('bd87eac7130384b0fdb2848d1afd2fbbe68e4a7b');
+ expect(fabric.src).toBe('/img/home/fabric.webp');
+});

@@ -3,19 +3,11 @@ import digital from '../digital-sources.json';
 import frozen from '../design/collection-frozen.json';
 import { createHash } from 'node:crypto';
 import products from '../src/data/products.json';
-import { assertSlotReferences } from '../image-plan';
+import { assertSlotReferences, slotInventory } from '../image-plan';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
-export const inventory = {
-  // Frozen Home and Collection use SHA-bound manifests; neither publishes review slots.
-  home: [],
-  collection: [],
-  about: ['hero', 'founder', 'facility_inspection', 'facility_production', 'facility_warehouse'],
-  oem: ['hero', 'fabric_swatches', 'trims'],
-  pdp: ['craft_fleece', 'craft_stack', 'craft_stitching'],
-  contact: [],
-};
+export const inventory = slotInventory;
 const routes: Record<string, string[]> = { home: [''], collection: ['collections', 'collections/crew-fleece'], about: ['about'], oem: ['about'], pdp: ['products/crew-fleece-8900-32'], contact: ['contact'] };
 // Raw CI artifacts retain every template so a later passing review needs only repackaging.
 // Packaged output instead uses the complete review decision inventory, never a filename exception.
@@ -36,9 +28,8 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   const collection = readFileSync(join(root, locale === 'en' ? '' : locale, 'collections/index.html'), 'utf8');
   for (const asset of frozen.assets) if (!collection.includes(`src="${asset.src}"`)) errors.push(`Collection missing frozen image: ${locale}/${asset.id}`);
   const dictionary = JSON.parse(readFileSync(`web/apparel/src/i18n/${locale}.json`, 'utf8'));
-  // Legacy PDP slot reviews stay in the packaging inventory; FD1 retires their page placement.
+  // Active placements are shared with deployment; FD1 uses product-bound media.
   for (const [page, slots] of Object.entries(inventory)) for (const route of routes[page]) {
-    if (page === 'pdp') continue;
     const html = readFileSync(join(root, locale === 'en' ? '' : locale, route, 'index.html'), 'utf8');
     try { assertSlotReferences(html, slots.filter(slot => passing.includes(`${page}/${slot}`)).map(slot => ({ id: `${page}/${slot}` })), page); } catch (error) { errors.push(`${locale}/${route}: ${error}`); }
     for (const slot of slots.filter(slot => passing.includes(`${page}/${slot}`))) {

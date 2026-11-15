@@ -50,6 +50,7 @@ for (const locale of ['en','ar','zh']) for (const width of [390,768,1280]) test(
   for(let i=0;i<await sections.count();i++) await sections.nth(i).screenshot({path:`${path}/${locale}-${width}-section-${i}.png`});
  }
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await expect(page.locator('[data-home-media="fabric"] img')).toHaveCSS('object-fit', 'cover');
  await expect(page.locator('[data-home-category]')).toHaveCount(4);
  await expect(page.locator('[data-home-category] img').nth(3)).toHaveAttribute('src',/hoodie-set-k01-0256-tz2800-10\/digital-model-03/);
  if(width===390) expect(await page.locator('[data-home-categories]').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(2);
