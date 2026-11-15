@@ -60,6 +60,7 @@ for (const locale of ['en', 'zh', 'ar']) for (const width of [1440, 768, 390]) t
     if (await banner.isVisible()) await page.locator('[data-cookie-choice=essential]').click();
     await expect(banner).toBeHidden();
     await expect(page.locator('h1')).toHaveCSS('font-weight', '400');
+    await expect(page.locator('.quote-float')).toHaveCount(0);
     if (route === '404') {
       await expect(page.locator('.error-code')).toHaveCSS('font-size', '88px');
       await expect(page.locator('.recovery-card').first()).toHaveCSS('background-color', 'rgb(239, 231, 214)');
