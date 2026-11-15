@@ -5,6 +5,7 @@ const hero = '[data-home-carousel]';
 test('carousel timing, hover/focus pause, persistent pause and keyboard', async ({page}) => {
  test.setTimeout(60000);
  await page.clock.install(); await page.goto('/');
+ await page.locator('[data-cookie-choice=essential]').click();
  const carousel=page.locator(hero), dots=carousel.locator('[data-slide-to]');
  await expect(dots).toHaveCount(3);
  await expect(carousel).toHaveAttribute('data-active','0');
