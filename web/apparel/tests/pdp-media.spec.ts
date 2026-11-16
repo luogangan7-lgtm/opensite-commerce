@@ -106,3 +106,25 @@ for(const locale of ['en','ar','zh']) test(`structured size cells ${locale}`, as
   const floating=page.locator('.quote-float');await expect(floating).toHaveCSS('position','static');
  }
 });
+
+// Extend the shared in-flow RFQ invariant to the brand story at every review width.
+for (const locale of ['en', 'zh', 'ar']) for (const width of [1440, 1024, 900, 768, 390]) {
+ test(`shared RFQ dock does not overlap About copy ${locale} ${width}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.goto(`${locale === 'en' ? '' : '/' + locale}/about-us/`);
+  await page.evaluate(() => document.fonts.ready);
+  const quote = page.locator('.quote-float');
+  await expect(quote).toHaveCSS('position', 'static');
+  const q = await quote.boundingBox(), main = await page.locator('main').boundingBox();
+  expect(q!.y).toBeGreaterThanOrEqual(main!.y + main!.height);
+  const intersecting = await page.locator('main p,main h1,main h2,main h3,main address').evaluateAll((nodes, box) => nodes.filter(n => {
+   const r = n.getBoundingClientRect();
+   return r.left < box.x + box.width && r.right > box.x && r.top < box.y + box.height && r.bottom > box.y;
+  }).map(n => n.textContent), q!);
+  expect(intersecting).toEqual([]);
+  await quote.scrollIntoViewIfNeeded();
+  await expect(quote).toBeVisible();
+  await quote.click();
+  await expect(page).toHaveURL(new RegExp(`${locale === 'en' ? '' : '/' + locale}/contact/$`));
+ });
+}

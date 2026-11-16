@@ -72,7 +72,7 @@ picture img { width: 100%; }
 .language-switcher nav { position: absolute; inset-inline-end: 0; inset-block-start: 100%; background: var(--sy-color-canvas); border: 1px solid var(--sy-color-border); padding: var(--sy-space-grid-x); min-width: 10rem; display: grid; gap: .5rem; z-index: 3; }
 .language-switcher a { min-height: 36px; }
 .language-switcher [aria-current] { color: var(--sy-color-accent); text-decoration: underline; }
-.quote-float { position: fixed; inset-inline-end: var(--sy-space-grid-x); inset-block-end: var(--sy-space-grid-x); z-index: 2; max-width: calc(100% - 2 * var(--sy-space-grid-x)); }
+.quote-float { position: static; z-index: 2; max-width: 100%; }
 .category-links { display: flex; flex-wrap: wrap; gap: var(--sy-space-grid-x); margin-block: var(--sy-space-grid-y); }
 .product-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sy-space-grid-y) var(--sy-space-grid-x); }
 .tile { text-decoration: none; min-width: 0; }

@@ -1,0 +1,65 @@
+[
+  {
+    "id": "about-tees",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/CP-ABOUT/assets/about-tees.png",
+    "sha256": "55ea67a5e93b11a57c3a28a7054991e9da5ea4821dc51ff2d7999b077c274090",
+    "src": "/img/about/tees.webp",
+    "authority": "Approved Figma D-ABOUT2 1207:35 imageHash d44899028b182c5e9973424b7ad5fb78547e745e",
+    "width": 1122,
+    "height": 1402
+  },
+  {
+    "id": "about-graphic",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/CP-ABOUT/assets/about-graphic.png",
+    "sha256": "f1183d074259dce76ff45d9827f6a77df31d622b2622000fcbc56867147a62bf",
+    "src": "/img/about/graphic.webp",
+    "authority": "Approved Figma D-ABOUT2 1207:39 imageHash c63d1dd09a42031daafb4606b8b898d7e1e531e1",
+    "width": 1200,
+    "height": 1500
+  },
+  {
+    "id": "about-hoodies",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/CP-ABOUT/assets/about-hoodies.png",
+    "sha256": "1f7a31f66ce9975714a5ac1c1f2679095f48ec9938cecd25c741b9ec9e6f6756",
+    "src": "/img/about/hoodies.webp",
+    "authority": "Approved Figma D-ABOUT2 1207:43 imageHash 17c7a65e7953c8fa3b144f8bcc38477152b42403",
+    "width": 1122,
+    "height": 1402
+  },
+  {
+    "id": "about-sets",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/CP-ABOUT/assets/about-sets.png",
+    "sha256": "b4ad5c9e7bd70dfe4fd02ceeb92ab58ced6ccbe8cb8d47ffd8e844fa067c450e",
+    "src": "/img/about/sets.webp",
+    "authority": "Approved Figma D-ABOUT2 1207:47 imageHash 271ab860dac28ff9e79c79d30fbd8dde22608fdf",
+    "width": 1122,
+    "height": 1402
+  },
+  {
+    "id": "about-visit",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave7/CP-ABOUT/assets/about-visit.png",
+    "sha256": "554c725bed2e74aa901b3da4b679e5fa62fc551b643cbf04826745e66cc5a9d7",
+    "src": "/img/about/visit.webp",
+    "authority": "Approved Figma D-ABOUT2 1207:102 imageHash 583d8c59e624773ef204e3e7fa08b2daea11aed5",
+    "width": 1536,
+    "height": 1024
+  },
+  {
+    "id": "collections",
+    "source": "figma-evidence/v13/upload-jpg/out-w1__apparel-70171.jpg",
+    "sha256": "d9416f37d715216a4efb88a6616282fa2fd2c45c1195454d4e3253598f15f309",
+    "src": "/img/about/collections.webp",
+    "authority": "Frozen Figma Home 30:560 imageHash fd8c4da9097ceac45868ed2dcc792071b0982fe0",
+    "width": 1122,
+    "height": 1402
+  },
+  {
+    "id": "fabric",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave6/FAB/fabric-collar-a.png",
+    "sha256": "fcd1a560e9783c1660adff9d21d879e9aaf0f9569ec40b05db5dbba107a11b7c",
+    "src": "/img/about/fabric.webp",
+    "authority": "Figma Home scene_home_fabric imageHash bd87eac7130384b0fdb2848d1afd2fbbe68e4a7b; owner pick 2026-11-15",
+    "width": 1536,
+    "height": 1024
+  }
+]
