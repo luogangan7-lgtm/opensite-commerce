@@ -49,7 +49,7 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280,1440]) {
   await page.locator('[data-shop-more]').click();
   await expect(page.locator('[data-shop-card]:visible')).toHaveCount(48);
   if(width<=1024) await page.locator('[data-shop-filter-open]').click();
-  await page.locator('[data-shop-facet="colour"]').selectOption('black');
+  await page.locator('input[data-shop-facet="colour"][value="black"]').check();
   if(width<=1024) await page.locator('[data-shop-filter-dialog] form button').click();
   await page.locator('[data-shop-sort]').selectOption('code');
   await expect(page).toHaveURL(/colour=black.*sort=code/);
@@ -79,3 +79,32 @@ test('without JS the complete catalog is visible',async({browser,baseURL})=>{
  const context=await browser.newContext({javaScriptEnabled:false,baseURL});const page=await context.newPage();
  await page.goto('/collections/');await expect(page.locator('[data-shop-card]:visible')).toHaveCount(products.length);await context.close();
 });
+
+for(const locale of ['en','ar','zh']) for(const width of [390,1440]) {
+ test(`approved filter controls ${locale} ${width}`,async({page})=>{
+  await page.setViewportSize({width,height:900});
+  await page.goto(`${locale==='en'?'':'/'+locale}/collections/`);
+  if(width===390) await page.locator('[data-shop-filter-open]').click();
+  const black=page.locator('input[data-shop-facet="colour"][value="black"]');
+  await expect(black).toHaveCount(1);
+  const rows=page.locator('.shop-option:visible');
+  for(const g of await rows.evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {h:r.height,pad:parseFloat(s.paddingInlineStart),radius:parseFloat(s.borderRadius)};}))){expect(g.h).toBeGreaterThanOrEqual(44);expect(g.pad).toBeGreaterThanOrEqual(12);expect(g.radius).toBe(12);}
+  const row=black.locator('..'),dot=row.locator('.shop-swatch'),text=row.locator('.shop-option-text');
+  const d=(await dot.boundingBox())!,t=(await text.boundingBox())!;
+  expect(d.width).toBe(20);expect(d.height).toBe(20);
+  expect(locale==='ar'?d.x>t.x:d.x<t.x).toBe(true);
+  await black.check();
+  const another=page.locator('input[data-shop-facet="colour"]:not([value="black"])').first();
+  await another.check();
+  await expect(black).toBeChecked();await expect(another).toBeChecked();
+  const selected=new URL(page.url()).searchParams.getAll('colour');expect(selected).toHaveLength(2);
+  if(width===390) await page.locator('[data-shop-filter-dialog] form button').click();
+  await expect(page.locator('[data-shop-filter-count]')).toHaveText('2');
+  await page.reload();
+  if(width===390) await page.locator('[data-shop-filter-open]').click();
+  await expect(black).toBeChecked();await expect(another).toBeChecked();
+  const tabs=await page.locator('.shop-tabs a').allTextContents(),cats=await page.locator('[data-shop-category-label]').allTextContents();
+  expect(new Set(cats)).toEqual(new Set(tabs.slice(1)));expect(cats).toHaveLength(6);
+  if(width===390){await page.locator('[data-shop-filter-dialog] form button').click();await page.evaluate(()=>scrollTo(0,800));const toolbar=(await page.locator('.shop-toolbar').boundingBox())!;expect(toolbar.y).toBeGreaterThanOrEqual(-1);expect(toolbar.y).toBeLessThan(10);}
+ });
+}

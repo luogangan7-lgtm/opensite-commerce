@@ -29,9 +29,9 @@ export function selectStyles(items: Product[], query: URLSearchParams): Product[
   });
   return query.get('sort') === 'code' ? result.sort((a,b) => a.style_codes.join('/').localeCompare(b.style_codes.join('/'), 'en', { numeric: true })) : result;
 }
-export function setShopQuery(query: URLSearchParams, key: ShopFacet | 'sort', value: string): URLSearchParams {
+export function setShopQuery(query: URLSearchParams, key: ShopFacet | 'sort', value: string | string[]): URLSearchParams {
   const next = new URLSearchParams(query); next.delete(key);
-  if (value && !(key === 'sort' && value === 'featured')) next.set(key, value);
+  for (const item of Array.isArray(value) ? value : [value]) if (item && !(key === 'sort' && item === 'featured')) next.append(key, item);
   return next;
 }
 export function cardViews(p: Product) {

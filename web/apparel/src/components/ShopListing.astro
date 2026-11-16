@@ -1,6 +1,6 @@
 ---
 /** Store listing owns facets, URL state, pagination and accessible front/back controls.
- * Depends on static catalog and owner MOQ facts; no client requests or inferred facts.
+ * Depends on static catalog and owner MOQ facts; consumed by collections routes; no client requests or inferred facts.
  */
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { products, categories } from '../data/catalog';
@@ -15,8 +15,14 @@ const catalog = featuredStyles(products);
 const items = category ? catalog.filter(p => p.category === category) : catalog;
 const choices: Record<string,string[]> = Object.fromEntries(shopFacets.map(key => [key, [...new Set(items.flatMap(p => shopFacts(p)[key]))].sort()]));
 const label = (key: string) => t[`cp-shop/${key}` as Key];
-const categoryKeys:Record<string,Key>={apparel:'cp-shop/figma-0026','cotton430-hoodie':'cp-shop/figma-0027','crew-fleece':'cp-shop/figma-0028','hoodie-set':'cp-shop/figma-0029','zip-ups-jackets':'cp-shop/figma-0030'};
+const categoryKeys:Record<string,Key>={apparel:'cp-shop/figma-0033','cotton430-hoodie':'cp-shop/figma-0034','crew-fleece':'cp-shop/figma-0035','hoodie-set':'cp-shop/figma-0036','zip-ups-jackets':'cp-shop/figma-0037'};
+// Both navigation and checkbox options use the catalog category source and reviewed copy.
+choices.category = Object.keys(categories);
 const categoryLabel=(value:string)=>t[categoryKeys[value] || value as Key];
+const colourPaint = (value:string) => {
+ const paints:Record<string,string> = {black:'#1a1a1a',cream:'#e6dfcc',brown:'#6b4026',green:'#315840',white:'#ffffff',red:'#a52a2a',charcoal:'#444444',navy:'#26374a',pink:'#d9a5ad'};
+ return paints[value] || (/green|olive|sage/.test(value)?'#647661':/purple|plum/.test(value)?'#756477':/grey|greige/.test(value)?'#98948b':/beige|sand|camel/.test(value)?'#b6a184':paints.cream);
+};
 const colourLabel=(value:string)=>{const image=products.flatMap(p=>p.images).find(i=>i.role==='front'&&i.colour===value);return image ? digitalAlt(image.src,locale)?.split(';')[0] || value : value;};
 ---
 <div class="shop" data-shop data-products={JSON.stringify(items)} data-count-template={label('count')}>
@@ -26,12 +32,16 @@ const colourLabel=(value:string)=>{const image=products.flatMap(p=>p.images).fin
   {Object.keys(categories).map(key => <a href={getRelativeLocaleUrl(locale, `/collections/${key}/`)} aria-current={category === key ? 'page' : undefined}>{categoryLabel(key)}</a>)}
  </nav>
  <div class="shop-layout">
- <dialog class="shop-filter-dialog" data-shop-filter-dialog><form method="dialog"><button aria-label={t.menuClose}>×</button></form></dialog><details class="shop-filters" open><summary>{label('filters')}</summary>
- <div class="shop-facet-list">{shopFacets.map(key => <label>{label(key)}<select class="chip" data-shop-facet={key} aria-label={label(key)}><option value="">{label('any')}</option>{choices[key].map((v: string) => <option value={v}>{key === 'category' ? categoryLabel(v) : key === 'fleece' ? (v === 'yes' ? label('fleece') : t['cp6.filter-unlined']) : key==='colour' ? colourLabel(v) : key==='fit'&&v==='oversized' ? t['cp-shop/figma-0042'] : key==='fabric'&&v==='cotton' ? t['cp-shop/figma-0044'] : key==='fabric'&&v==='polyester' ? t['cp-shop/figma-0045'].split('/').at(-1)?.trim() : v}</option>)}</select></label>)}
- <button type="button" data-shop-clear>{t['cp6.copy/clear-filters']}</button><p>{t['cp-shop/figma-0050']}</p></div>
+ <dialog class="shop-filter-dialog" data-shop-filter-dialog aria-label={label('filters')}><form method="dialog" class="shop-dialog-heading"><h2>{label('filters')}</h2><button aria-label={t.menuClose}>{t.menuClose}</button></form></dialog><details class="shop-filters" open><summary>{label('filters')}</summary>
+ <div class="shop-facet-list">{shopFacets.map(key => <fieldset><legend>{label(key)}</legend><div class="shop-options">{choices[key].map((v:string) => <label class:list={['shop-option',{'shop-colour-option':key==='colour'}]}>
+ <input type="checkbox" data-shop-facet={key} value={v} />
+ {key==='colour' && <span class="shop-swatch" style={`--shop-swatch:${colourPaint(v)}`} aria-hidden="true" />}
+ <span class="shop-option-text" data-shop-category-label={key==='category' ? '' : undefined}>{key === 'category' ? categoryLabel(v) : key === 'fleece' ? (v === 'yes' ? label('fleece') : t['cp6.filter-unlined']) : key==='colour' ? colourLabel(v) : key==='fit'&&v==='oversized' ? t['cp-shop/figma-0042'] : key==='fabric'&&v==='cotton' ? t['cp-shop/figma-0044'] : key==='fabric'&&v==='polyester' ? t['cp-shop/figma-0045'].split('/').at(-1)?.trim() : v}</span>
+ </label>)}</div></fieldset>)}
+ <p>{t['cp-shop/figma-0050']}</p><button type="button" data-shop-clear>{t['cp6.copy/clear-filters']}</button></div>
  </details>
  <div class="shop-results">
- <div class="shop-toolbar"><p data-shop-count role="status" aria-live="polite">{label('count').replace('{shown}',String(items.length)).replace('{total}',String(items.length))}</p><button type="button" class="shop-filter-open" data-shop-filter-open hidden>{label('filters')}</button><label><select data-shop-sort aria-label={label('sort')}><option value="featured">{label('featured')}</option><option value="code">{label('code')}</option></select></label></div>
+ <div class="shop-toolbar"><p data-shop-count role="status" aria-live="polite">{label('count').replace('{shown}',String(items.length)).replace('{total}',String(items.length))}</p><div class="shop-toolbar-controls"><button type="button" class="shop-filter-open" data-shop-filter-open hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 10h8M8 15h4" /></svg><span>{label('filters')}</span><span class="shop-filter-count" data-shop-filter-count hidden>0</span></button><label class="shop-sort"><span>{label('sort')}</span><select data-shop-sort aria-label={label('sort')}><option value="featured">{label('featured')}</option><option value="code">{label('code')}</option></select><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5" /></svg></label></div></div>
  <div class="shop-grid">{items.map(p => {
  const { front, back } = cardViews(p), name = t[shopNameKeys[p.style_codes[0]] as Key] || productText[locale][p.slug].name;
  const colours = p.images.filter(i => i.role === 'front' && i.colour);
@@ -57,7 +67,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
  const grid = root.querySelector<HTMLElement>('.shop-grid')!;
  const tiles = new Map([...root.querySelectorAll<HTMLElement>('[data-shop-card]')].map(el => [el.dataset.shopCard!, el]));
  const more = root.querySelector<HTMLButtonElement>('[data-shop-more]')!;
- const facets = [...root.querySelectorAll<HTMLSelectElement>('[data-shop-facet]')];
+ const facets = [...root.querySelectorAll<HTMLInputElement>('[data-shop-facet]')];
  const filterOpen = root.querySelector<HTMLButtonElement>('[data-shop-filter-open]')!;
  const dialog = root.querySelector<HTMLDialogElement>('[data-shop-filter-dialog]')!;
  const filters = root.querySelector<HTMLDetailsElement>('.shop-filters')!;
@@ -73,17 +83,19 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
   const q = new URLSearchParams(location.search), selected = selectStyles(items,q);
   for (const el of tiles.values()) el.hidden = true;
   selected.forEach((p,index) => { const el = tiles.get(p.slug)!; grid.append(el); el.hidden = index >= limit; });
-  for (const el of facets) el.value = q.get(el.dataset.shopFacet!) || '';
+  for (const el of facets) el.checked = q.getAll(el.dataset.shopFacet!).includes(el.value);
+  const count = shopFacets.reduce((n,key)=>n+q.getAll(key).length,0), badge=root.querySelector<HTMLElement>('[data-shop-filter-count]')!;
+  badge.textContent=String(count); badge.hidden=count===0;
   sort.value = q.get('sort') === 'code' ? 'code' : 'featured';
   root.querySelector<HTMLElement>('[data-shop-count]')!.textContent = root.dataset.countTemplate!.replace('{shown}',String(Math.min(limit,selected.length))).replace('{total}',String(selected.length));
   root.querySelector<HTMLElement>('[data-shop-empty]')!.hidden = selected.length !== 0;
   more.hidden = selected.length <= limit;
  }
- function update(key: ShopFacet | 'sort', value: string) {
+ function update(key: ShopFacet | 'sort', value: string | string[]) {
   const url = new URL(location.href); url.search = setShopQuery(url.searchParams,key,value).toString();
   history.pushState(null,'',url); limit = pageSize; render();
  }
- for (const el of facets) el.addEventListener('change', () => update(el.dataset.shopFacet as ShopFacet,el.value));
+ for (const el of facets) el.addEventListener('change', () => update(el.dataset.shopFacet as ShopFacet,facets.filter(input=>input.dataset.shopFacet===el.dataset.shopFacet&&input.checked).map(input=>input.value)));
  sort.addEventListener('change', () => update('sort',sort.value));
  more.addEventListener('click', () => { limit += pageSize; render(); });
  root.querySelector('[data-shop-clear]')!.addEventListener('click', () => {
@@ -102,17 +114,39 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 .shop-title h1{font-size:var(--sy-text-h2);margin-block:var(--sy-space-sm)}
 .shop-tabs{display:flex;gap:var(--sy-space-md);overflow-x:auto;margin-block-end:var(--sy-space-xl);border-block-end:var(--sy-space-hair) solid var(--sy-color-hairline)}
 .shop-tabs a{display:inline-flex;align-items:center;min-height:var(--control-size-md);white-space:nowrap;flex-shrink:0;font-size:var(--sy-text-small);padding:var(--sy-space-sm) var(--sy-space-md);text-decoration:none;border-radius:var(--sy-radius-pill)}
-.shop-tabs [aria-current]{background:var(--sy-color-surface);color:var(--sy-color-ink);box-shadow:inset 0 calc(-1 * var(--sy-space-hair)) var(--sy-color-ink)}
+.shop-tabs [aria-current]{background:var(--sy-color-surface-alt);color:var(--sy-color-ink);box-shadow:inset 0 0 0 var(--sy-space-hair) var(--sy-color-border)}
 .shop-layout{display:grid;grid-template-columns:calc(9 * var(--sy-space-grid-x)) minmax(0,1fr);gap:var(--sy-space-xl)}
 .shop-filter-open{display:none!important}.shop-filter-dialog{width:min(calc(100% - 2 * var(--sy-space-gutter-mobile)),var(--sy-layout-mobile));max-height:90dvh;padding:var(--sy-space-lg);border:var(--sy-space-hair) solid var(--sy-color-border);border-radius:var(--sy-radius-card);background:var(--sy-color-surface);color:var(--sy-color-ink)}.shop-filter-dialog::backdrop{background:var(--sy-color-overlay)}.shop-filter-dialog .shop-filters{display:block}.shop-filters{align-self:start;border:0;padding:0}
 .shop-filters summary{min-height:var(--control-size-md);cursor:pointer}
 .shop-facet-list{display:grid;gap:var(--sy-space-lg)}
-.shop-facet-list label,.shop-toolbar label{display:grid;gap:var(--sy-space-xs)}
-.shop select{width:100%;min-height:var(--control-size-md);padding:var(--sy-space-xs);border:var(--sy-space-hair) solid var(--sy-color-border);border-radius:var(--sy-radius-control);color:var(--sy-color-ink);background:var(--sy-color-surface);font:inherit}
+.shop-facet-list fieldset{min-width:0;margin:0;padding:0;border:0}
+.shop-facet-list legend{padding:0;margin-block-end:var(--sy-space-xs);font-size:var(--sy-text-small)}
+.shop-options{display:grid;gap:var(--sy-space-2xs)}
+.shop-option{display:flex;align-items:center;gap:var(--sy-space-sm);min-height:var(--control-size-md);padding:var(--sy-space-2xs) var(--sy-space-sm);border:var(--sy-space-hair) solid var(--sy-color-hairline);border-radius:var(--sy-radius-input);background:var(--sy-color-surface);font-size:var(--sy-text-small);cursor:pointer}
+.shop-option:has(:checked){background:var(--sy-color-surface-alt)}
+.shop-option input{appearance:none;flex:none;width:calc(var(--sy-space-sm) + var(--sy-space-xs));height:calc(var(--sy-space-sm) + var(--sy-space-xs));margin:0;border:var(--sy-space-hair) solid var(--sy-color-border);border-radius:calc(var(--sy-space-2xs) + var(--sy-space-hair));background:var(--sy-color-surface)}
+.shop-option input:checked{background:var(--sy-color-ink)}
+.shop-option input:checked::after{content:'';display:block;width:100%;height:100%;background:var(--sy-color-surface);clip-path:polygon(20% 48%,40% 68%,80% 25%,90% 35%,40% 85%,10% 58%)}
+.shop-option:focus-within{outline:calc(2 * var(--sy-space-hair)) solid var(--sy-color-ink);outline-offset:var(--sy-space-2xs)}
+.shop-option-text{flex:1;min-width:0;overflow-wrap:anywhere}
+.shop-colour-option{position:relative}
+.shop-colour-option input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.shop-swatch{flex:none;width:calc(var(--sy-space-sm) + var(--sy-space-xs));height:calc(var(--sy-space-sm) + var(--sy-space-xs));border-radius:var(--sy-radius-pill);background:var(--shop-swatch)}
+.shop-colour-option:has(:checked) .shop-swatch{outline:calc(2 * var(--sy-space-hair)) solid var(--sy-color-ink);outline-offset:0}
 .shop button{border-width:var(--sy-space-hair);border-radius:var(--sy-radius-control);background:var(--sy-color-surface);border-color:var(--sy-color-border);color:var(--sy-color-ink);padding:var(--sy-space-sm) var(--sy-space-md);min-height:var(--control-size-md)}
 .shop button:hover{background:var(--sy-color-placeholder)}
-.shop-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--sy-space-md);margin-block-end:var(--sy-space-md)}
-.shop-toolbar>p{margin:0;font-size:var(--sy-text-small);flex:1;min-width:0}.shop-toolbar label{display:flex;align-items:center;width:calc(6 * var(--sy-space-xl) + var(--sy-space-xs))}
+.shop-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--sy-space-sm);margin-block-end:var(--sy-space-xl);background:var(--sy-color-canvas)}
+.shop-toolbar>p{margin:0;font-size:var(--sy-text-small);flex:1;min-width:0}
+.shop-toolbar-controls{display:flex;align-items:center;gap:var(--sy-space-xs)}
+.shop-toolbar svg{flex:none;width:var(--sy-space-md);height:var(--sy-space-md);fill:none;stroke:currentColor;stroke-width:1.5}
+.shop-sort{display:flex;align-items:center;justify-content:center;gap:var(--sy-space-xs);min-height:var(--control-size-md);padding-inline:var(--sy-space-sm);border:var(--sy-space-hair) solid var(--sy-color-border);border-radius:var(--sy-radius-input);background:var(--sy-color-surface);font-size:var(--sy-text-small)}
+.shop-sort select{appearance:none;width:auto;min-width:0;max-width:100%;border:0;padding:0;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.shop-sort svg{pointer-events:none}
+.shop-filter-count{display:inline-flex;align-items:center;justify-content:center;min-width:calc(var(--sy-space-sm) + var(--sy-space-xs));height:calc(var(--sy-space-sm) + var(--sy-space-xs));border-radius:var(--sy-radius-pill);background:var(--sy-color-ink);color:var(--sy-color-surface);font-size:var(--sy-text-small)}
+.shop-filter-count[hidden]{display:none}
+.shop-dialog-heading{display:flex;align-items:center;justify-content:space-between;gap:var(--sy-space-sm)}
+.shop-dialog-heading h2{font-size:var(--sy-text-h4);margin:0}
+.shop-dialog-heading button{max-width:50%}
 .shop-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-grid-y) var(--sy-space-grid-x)}
 .shop-card{display:flex;flex-direction:column;align-self:stretch;min-width:0;background:var(--sy-color-surface);border-radius:var(--sy-radius-card);box-shadow:var(--sy-shadow-card);overflow:hidden;padding-block-end:var(--sy-space-sm)}
 .shop-card[hidden]{display:none}
@@ -136,5 +170,5 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 .shop-terms{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sy-space-lg)}
 @media(hover:hover) and (pointer:fine){.shop-photo:hover .shop-back{opacity:1}}
 @media(max-width:1024px){.shop-b2b{padding:var(--sy-space-gutter-md);margin-inline:calc(-1 * var(--sy-space-gutter-md))}.shop-tabs{padding-inline:var(--sy-space-md);mask-image:linear-gradient(to right,transparent,var(--sy-color-ink) var(--sy-space-md),var(--sy-color-ink) calc(100% - var(--sy-space-md)),transparent);mask-mode:alpha;scrollbar-width:thin;scroll-padding-inline:var(--sy-space-md)}.shop-filter-open:not([hidden]){display:inline-flex!important}.shop[data-enhanced="true"] .shop-layout>.shop-filters{display:none}.shop-filter-dialog .shop-facet-list{grid-template-columns:1fr}.shop{width:calc(100% - 2 * var(--sy-space-gutter-md))}.shop-layout{grid-template-columns:minmax(0,1fr)}.shop-facet-list{grid-template-columns:repeat(3,minmax(0,1fr))}.shop-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:600px){.shop{width:calc(100% - 2 * var(--sy-space-gutter-mobile))}.shop-grid{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:var(--sy-space-xs)}.shop-facet-list{grid-template-columns:repeat(2,minmax(0,1fr))}.shop-toolbar{align-items:center;gap:var(--sy-space-xs)}.shop-toolbar label{width:calc(4 * var(--sy-space-xl));flex-shrink:0}.shop-filter-open{font-size:var(--sy-text-small)}.shop-b2b{padding:var(--sy-space-gutter-mobile);margin-inline:calc(-1 * var(--sy-space-gutter-mobile))}.shop-terms{display:grid}}
+@media(max-width:600px){.shop{width:calc(100% - 2 * var(--sy-space-gutter-mobile))}.shop-grid{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:var(--sy-space-xs)}.shop-facet-list{grid-template-columns:1fr}.shop-toolbar{position:sticky;inset-block-start:0;z-index:2;display:grid;gap:var(--sy-space-sm);padding-block:var(--sy-space-sm)}.shop-toolbar-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.shop-sort{border-radius:var(--sy-radius-control)}.shop-filter-open{gap:var(--sy-space-xs);padding-inline:var(--sy-space-sm)!important}.shop-sort select{width:100%}.shop-filter-open{font-size:var(--sy-text-small)}.shop-b2b{padding:var(--sy-space-gutter-mobile);margin-inline:calc(-1 * var(--sy-space-gutter-mobile))}.shop-terms{display:grid}}
 </style>
