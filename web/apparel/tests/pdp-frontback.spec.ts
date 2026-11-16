@@ -13,6 +13,7 @@ for(const locale of ['en','zh','ar'])for(const width of [1440,768,390])test(`fro
  await expect(main).toHaveAttribute('src',image('front'));await expect(back).toHaveAttribute('src',image('back'));
  for(const img of [main,back]){const box=(await img.boundingBox())!;expect(Math.abs(box.width/box.height/.8-1)).toBeLessThanOrEqual(.02);await expect(img).toHaveCSS('object-position','50% 0px')}
  if(width>=768){const a=(await main.boundingBox())!,b=(await back.boundingBox())!;expect(locale==='ar'?a.x>b.x:a.x<b.x).toBe(true)}
+ await page.locator('.gallery-thumbs:not([hidden]) a[data-role=back]').click();await expect(main).toHaveAttribute('src',image('front'));await expect(back).toHaveAttribute('src',image('back'));
  const tabs=page.locator('[data-gallery-view]');await tabs.nth(1).click();await expect(main).toHaveAttribute('src',image('turn'));await expect(page.locator('[data-gallery-slide=back]')).toBeHidden();
  await tabs.nth(2).click();await expect(main).toHaveAttribute('src',image('structure'));
  await tabs.first().focus();await page.keyboard.press(locale==='ar'?'ArrowLeft':'ArrowRight');await expect(tabs.nth(1)).toBeFocused();await expect(tabs.nth(1)).toHaveAttribute('aria-selected','true');
