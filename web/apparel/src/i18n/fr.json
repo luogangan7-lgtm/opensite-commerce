@@ -590,5 +590,20 @@
   "cp-svc/capabilities/984": "Texture d’impression en relief.",
   "cp-svc/capabilities/990": "Effets par élimination du colorant.",
   "cp-svc/capabilities/998": "Formes de tissu cousues.",
-  "cp-svc/capabilities/1002": "Étiquettes volantes et emballages."
+  "cp-svc/capabilities/1002": "Étiquettes volantes et emballages.",
+  "cp-shop/all": "Tous les modèles",
+  "cp-shop/filters": "Filtres",
+  "cp-shop/category": "Catégorie",
+  "cp-shop/colour": "Couleur",
+  "cp-shop/fit": "Coupe",
+  "cp-shop/fabric": "Tissu",
+  "cp-shop/fleece": "Doublure polaire",
+  "cp-shop/sort": "Trier",
+  "cp-shop/featured": "Sélection",
+  "cp-shop/code": "Code modèle",
+  "cp-shop/more": "Voir plus",
+  "cp-shop/count": "{shown} modèles affichés sur {total}",
+  "cp-shop/swap": "Devant / dos",
+  "cp-shop/any": "Tous",
+  "cp-shop/custom": "Personnalisation dès {moq} pièces"
 }

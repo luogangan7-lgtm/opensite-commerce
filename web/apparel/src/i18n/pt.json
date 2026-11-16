@@ -590,5 +590,20 @@
   "cp-svc/capabilities/984": "Textura de estampa em relevo.",
   "cp-svc/capabilities/990": "Efeitos por remoção do corante.",
   "cp-svc/capabilities/998": "Formas de tecido costuradas.",
-  "cp-svc/capabilities/1002": "Etiquetas suspensas e embalagem."
+  "cp-svc/capabilities/1002": "Etiquetas suspensas e embalagem.",
+  "cp-shop/all": "Todos os modelos",
+  "cp-shop/filters": "Filtros",
+  "cp-shop/category": "Categoria",
+  "cp-shop/colour": "Cor",
+  "cp-shop/fit": "Corte",
+  "cp-shop/fabric": "Tecido",
+  "cp-shop/fleece": "Forro polar",
+  "cp-shop/sort": "Ordenar",
+  "cp-shop/featured": "Destaques",
+  "cp-shop/code": "Código do modelo",
+  "cp-shop/more": "Carregar mais",
+  "cp-shop/count": "A mostrar {shown} de {total} modelos",
+  "cp-shop/swap": "Frente / costas",
+  "cp-shop/any": "Todos",
+  "cp-shop/custom": "Personalização a partir de {moq} peças"
 }

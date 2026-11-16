@@ -590,5 +590,20 @@
   "cp-svc/capabilities/984": "ملمس طباعة بارز.",
   "cp-svc/capabilities/990": "تأثيرات طباعة بإزالة الصبغة.",
   "cp-svc/capabilities/998": "أشكال قماش مخيطة.",
-  "cp-svc/capabilities/1002": "بطاقات تعليق وتغليف."
+  "cp-svc/capabilities/1002": "بطاقات تعليق وتغليف.",
+  "cp-shop/all": "جميع التصاميم",
+  "cp-shop/filters": "الفلاتر",
+  "cp-shop/category": "الفئة",
+  "cp-shop/colour": "اللون",
+  "cp-shop/fit": "القَصّة",
+  "cp-shop/fabric": "القماش",
+  "cp-shop/fleece": "مبطن بالفليس",
+  "cp-shop/sort": "الترتيب",
+  "cp-shop/featured": "مختارات",
+  "cp-shop/code": "رمز التصميم",
+  "cp-shop/more": "عرض المزيد",
+  "cp-shop/count": "عرض {shown} من {total} تصميماً",
+  "cp-shop/swap": "الأمام / الخلف",
+  "cp-shop/any": "الكل",
+  "cp-shop/custom": "تخصيص ابتداءً من {moq} قطعة"
 }

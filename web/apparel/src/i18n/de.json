@@ -590,5 +590,20 @@
   "cp-svc/capabilities/984": "Erhabene Druckstruktur.",
   "cp-svc/capabilities/990": "Druckeffekte durch Farbentzug.",
   "cp-svc/capabilities/998": "Aufgenähte Stoffformen.",
-  "cp-svc/capabilities/1002": "Anhängeetiketten und Verpackung."
+  "cp-svc/capabilities/1002": "Anhängeetiketten und Verpackung.",
+  "cp-shop/all": "Alle Modelle",
+  "cp-shop/filters": "Filter",
+  "cp-shop/category": "Kategorie",
+  "cp-shop/colour": "Farbe",
+  "cp-shop/fit": "Passform",
+  "cp-shop/fabric": "Stoff",
+  "cp-shop/fleece": "Fleece-Futter",
+  "cp-shop/sort": "Sortieren",
+  "cp-shop/featured": "Empfohlen",
+  "cp-shop/code": "Modellcode",
+  "cp-shop/more": "Mehr laden",
+  "cp-shop/count": "{shown} von {total} Modellen angezeigt",
+  "cp-shop/swap": "Vorderseite / Rückseite",
+  "cp-shop/any": "Alle",
+  "cp-shop/custom": "Individualisierung ab {moq} Stück"
 }

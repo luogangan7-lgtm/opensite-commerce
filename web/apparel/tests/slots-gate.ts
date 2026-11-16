@@ -26,7 +26,21 @@ for (const asset of [...frozen.assets, ...frozen.catalog]) for (const file of as
 
 for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   const collection = readFileSync(join(root, locale === 'en' ? '' : locale, 'collections/index.html'), 'utf8');
-  for (const asset of frozen.assets) if (!collection.includes(`src="${asset.src}"`)) errors.push(`Collection missing frozen image: ${locale}/${asset.id}`);
+  // CP-SHOP replaces the editorial layout; all existing frozen derivative SHA checks above remain.
+  // Verify every static card and same-colour back against catalog roles on every category route.
+  for (const category of ['', ...new Set(products.map(p => p.category))]) {
+    const html = category ? readFileSync(join(root, locale === 'en' ? '' : locale, 'collections', category, 'index.html'), 'utf8') : collection;
+    const expected = products.filter(p => !category || p.category === category);
+    const cards = [...html.matchAll(/<article\b[^>]*data-shop-card="([^"]+)"[^>]*>[\s\S]*?<\/article>/g)];
+    if (cards.length !== expected.length) errors.push(`${locale}/${category}: static listing count`);
+    for (const p of expected) {
+      const card = cards.find(c => c[1] === p.slug)?.[0] || '';
+      const front = p.images.find(i => i.role === 'front')!;
+      const back = p.images.find(i => i.role === 'back' && i.colour === front.colour);
+      const backTag = [...card.matchAll(/<img\b[^>]*>/g)].find(tag => tag[0].includes('data-role="back"'))?.[0] || '';
+      if (!card.includes(`src="${front.src}"`) || !back || !backTag.includes(`src="${back.src}"`) || !backTag.includes('width="600" height="750"')) errors.push(`${locale}/${category}/${p.slug}: front/back role or geometry`);
+    }
+  }
   const dictionary = JSON.parse(readFileSync(`web/apparel/src/i18n/${locale}.json`, 'utf8'));
   // Active placements are shared with deployment; FD1 uses product-bound media.
   for (const [page, slots] of Object.entries(inventory)) for (const route of routes[page]) {

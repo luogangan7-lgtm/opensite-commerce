@@ -590,5 +590,20 @@
   "cp-svc/capabilities/984": "Объёмная текстура печати.",
   "cp-svc/capabilities/990": "Эффекты печати с вытравкой красителя.",
   "cp-svc/capabilities/998": "Пришитые тканевые элементы.",
-  "cp-svc/capabilities/1002": "Навесные ярлыки и упаковка."
+  "cp-svc/capabilities/1002": "Навесные ярлыки и упаковка.",
+  "cp-shop/all": "Все модели",
+  "cp-shop/filters": "Фильтры",
+  "cp-shop/category": "Категория",
+  "cp-shop/colour": "Цвет",
+  "cp-shop/fit": "Крой",
+  "cp-shop/fabric": "Ткань",
+  "cp-shop/fleece": "Флисовая подкладка",
+  "cp-shop/sort": "Сортировка",
+  "cp-shop/featured": "Рекомендуемые",
+  "cp-shop/code": "Артикул",
+  "cp-shop/more": "Показать ещё",
+  "cp-shop/count": "Показано {shown} из {total} моделей",
+  "cp-shop/swap": "Спереди / сзади",
+  "cp-shop/any": "Все",
+  "cp-shop/custom": "Индивидуальный заказ от {moq} шт."
 }

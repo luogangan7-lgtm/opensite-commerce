@@ -590,5 +590,20 @@
   "cp-svc/capabilities/984": "Raised print texture.",
   "cp-svc/capabilities/990": "Dye-removal print effects.",
   "cp-svc/capabilities/998": "Stitched fabric shapes.",
-  "cp-svc/capabilities/1002": "Hang tags and packaging."
+  "cp-svc/capabilities/1002": "Hang tags and packaging.",
+  "cp-shop/all": "All styles",
+  "cp-shop/filters": "Filters",
+  "cp-shop/category": "Category",
+  "cp-shop/colour": "Colour",
+  "cp-shop/fit": "Fit",
+  "cp-shop/fabric": "Fabric",
+  "cp-shop/fleece": "Fleece-lined",
+  "cp-shop/sort": "Sort",
+  "cp-shop/featured": "Featured",
+  "cp-shop/code": "Style code",
+  "cp-shop/more": "Load more",
+  "cp-shop/count": "Showing {shown} of {total} styles",
+  "cp-shop/swap": "Front / back",
+  "cp-shop/any": "All",
+  "cp-shop/custom": "Custom from {moq} pcs"
 }

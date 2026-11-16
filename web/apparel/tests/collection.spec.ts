@@ -1,39 +1,58 @@
-/** Frozen Collection responsive and URL-filter acceptance; runs against static build. */
-import { test, expect } from '@playwright/test';
-if(process.env.CP6_BROWSER_EXECUTABLE) test.use({launchOptions:{executablePath:process.env.CP6_BROWSER_EXECUTABLE,args:['--disable-features=CDPScreenshotNewSurface']}});
-for (const width of [390,768,1280,1440]) for (const locale of ['en','ar','zh']) {
- test(`${locale} collection ${width}`, async ({page})=>{
+/** Owner-approved store listing: static fallback, URL facets, ordering, pagination, RTL and CLS. */
+import {test,expect} from '@playwright/test';
+import {products} from '../src/data/catalog';
+import {selectStyles,cardViews} from '../src/data/shop';
+for(const locale of ['en','ar','zh']) for(const width of [390,768,1280,1440]) {
+ test(`${locale} store listing ${width}`,async({page})=>{
   await page.setViewportSize({width,height:900});
+  await page.addInitScript(()=>{
+   (window as any).shopCLS=0;
+   new PerformanceObserver(list=>{for(const entry of list.getEntries()) if(!(entry as any).hadRecentInput)(window as any).shopCLS+=(entry as any).value;}).observe({type:'layout-shift',buffered:true});
+  });
   const prefix=locale==='en'?'':`/${locale}`;
-  for(const route of ['collections','collections/zip-ups-jackets']) {
-   if(process.env.CP6_BEFORE && route.includes('zip-ups')) continue;
-   await page.goto(`${prefix}/${route}/`);
-   if(await page.locator('.cookie-banner button').first().isVisible())await page.locator('.cookie-banner button').first().click();
-   await page.evaluate(async()=>{for(const img of document.images)img.loading='eager';await Promise.all([...document.images].map(i=>i.decode().catch(()=>{})));await document.fonts.ready;});
-   expect(await page.evaluate(()=>document.fonts.status)).toBe('loaded');
-
-   await page.screenshot({path:`${process.env.CP6_EVIDENCE||'evidence/apparel/collection'}/${process.env.CP6_BEFORE?'before':'after'}-${locale}-${width}-${route.replaceAll('/','-')}.png`,fullPage:true,timeout:5000});
-   if(process.env.CP6_BEFORE) continue;
-   if(width===1440 && locale==='en' && route==='collections') {
-    const hero=page.locator('.collection-hero');
-    expect((await hero.boundingBox())!.height).toBe(780);
-    expect((await hero.locator(':scope > div').boundingBox())!.width).toBe(680);
-    await expect(hero.locator('h1')).toHaveCSS('font-size','88px');
-    await expect(hero.locator('h1')).toHaveCSS('line-height','91.52px');
-    await expect(page.locator('.tile bdi')).toHaveText(['59043','58065','70171','70175']);
-   }
-   expect(await page.locator('main img').evaluateAll(imgs=>imgs.every(i=>(i as HTMLImageElement).naturalWidth>0))).toBe(true);
-   await expect(page.locator('html')).toHaveAttribute('dir',locale==='ar'?'rtl':'ltr');
-   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-   await page.locator('[data-facet="weight"][value="heavy"]').click();
-   await expect(page).toHaveURL(/weight=heavy/);
-   await page.reload();
-   await expect(page.locator('[data-facet="weight"][value="heavy"]')).toHaveAttribute('aria-pressed','true');
-   if(route.includes('zip-ups')) {
-    await expect(page.locator('[data-empty]')).toBeVisible();
-    await page.locator('[data-clear]').click();
-    await expect(page.locator('.product-grid > a:visible')).toHaveCount(10);
-   }
+  await page.goto(`${prefix}/collections/`);
+  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(24);
+  await expect(page.locator('html')).toHaveAttribute('dir',locale==='ar'?'rtl':'ltr');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  const rects=await page.locator('[data-shop-card]:visible').evaluateAll(els=>els.slice(0,2).map(e=>e.getBoundingClientRect().x));
+  expect(locale==='ar'?rects[0]>rects[1]:rects[0]<rects[1]).toBe(true);
+  if(width===1440) {
+   const box=await page.locator('.shop-grid').boundingBox();
+   expect(locale==='ar'?box!.x:box!.x+box!.width).toBeCloseTo(locale==='ar'?48:1392,0);
   }
+  const photo=page.locator('.shop-photo').first(), box=await photo.boundingBox();
+  expect(box!.width/box!.height).toBeCloseTo(.8,2);
+  const first=products[0],back=cardViews(first).back!;
+  await expect(photo.locator('[data-role="back"]')).toHaveAttribute('src',back.src);
+  await photo.locator('[data-shop-swap]').click();
+  await expect(photo).toHaveAttribute('data-swapped','true');
+  await page.locator('[data-shop-more]').click();
+  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(48);
+  if(width<=1024) await page.locator('[data-shop-filter-open]').click();
+  await page.locator('[data-shop-facet="colour"]').selectOption('black');
+  if(width<=1024) await page.locator('[data-shop-filter-dialog] form button').click();
+  await page.locator('[data-shop-sort]').selectOption('code');
+  await expect(page).toHaveURL(/colour=black.*sort=code/);
+  await page.reload();
+  const expected=selectStyles(products,new URLSearchParams('colour=black&sort=code')).slice(0,24).map(p=>p.slug);
+  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(expected.length);
+  expect(await page.locator('[data-shop-card]:visible').evaluateAll(els=>els.map(e=>(e as HTMLElement).dataset.shopCard))).toEqual(expected);
+  if(width<=1024) await page.locator('[data-shop-filter-open]').click();
+  await page.locator('[data-shop-clear]').click();
+  if(width<=1024) await page.locator('[data-shop-filter-dialog] form button').click();
+  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(24);
+  await page.goBack();
+  await expect(page.locator('[data-shop-sort]')).toHaveValue('code');
+  if(locale==='en'&&width===1440) {
+   await page.goto('/collections/');
+   await page.evaluate(async()=>{await document.fonts.ready;await Promise.all([...document.images].filter(i=>i.getBoundingClientRect().top<innerHeight).map(i=>i.decode().catch(()=>{})));});
+   expect(await page.evaluate(()=>(window as any).shopCLS)).toBeLessThanOrEqual(.05);
+  }
+  await page.goto(`${prefix}/collections/zip-ups-jackets/`);
+  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(products.filter(p=>p.category==='zip-ups-jackets').length);
  });
 }
+test('without JS the complete catalog is visible',async({browser,baseURL})=>{
+ const context=await browser.newContext({javaScriptEnabled:false,baseURL});const page=await context.newPage();
+ await page.goto('/collections/');await expect(page.locator('[data-shop-card]:visible')).toHaveCount(products.length);await context.close();
+});

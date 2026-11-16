@@ -590,5 +590,20 @@
   "cp-svc/capabilities/984": "凸起的印花质感。",
   "cp-svc/capabilities/990": "通过拔染形成印花效果。",
   "cp-svc/capabilities/998": "缝制的布料造型。",
-  "cp-svc/capabilities/1002": "吊牌与包装。"
+  "cp-svc/capabilities/1002": "吊牌与包装。",
+  "cp-shop/all": "全部款式",
+  "cp-shop/filters": "筛选",
+  "cp-shop/category": "品类",
+  "cp-shop/colour": "颜色",
+  "cp-shop/fit": "版型",
+  "cp-shop/fabric": "面料",
+  "cp-shop/fleece": "加绒",
+  "cp-shop/sort": "排序",
+  "cp-shop/featured": "精选",
+  "cp-shop/code": "款号",
+  "cp-shop/more": "加载更多",
+  "cp-shop/count": "已显示 {shown} / {total} 款",
+  "cp-shop/swap": "正面 / 背面",
+  "cp-shop/any": "全部",
+  "cp-shop/custom": "定制 {moq} 件起"
 }
