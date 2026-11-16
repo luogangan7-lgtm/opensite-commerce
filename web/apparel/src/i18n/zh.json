@@ -517,5 +517,21 @@
   "pdpTopChest": "上衣半胸宽",
   "pdpWaist": "腰围",
   "pdpHip": "臀宽",
-  "pdpPantsLength": "裤长"
+  "pdpPantsLength": "裤长",
+  "cp-svc/capabilities/974": "胶浆或水性油墨。",
+  "cp-svc/capabilities/976": "在服装上呈现数字图案。",
+  "cp-svc/capabilities/978": "通过转印呈现图案。",
+  "cp-svc/capabilities/980": "可反射光线的表面细节。",
+  "cp-svc/capabilities/982": "金属光泽印花点缀。",
+  "cp-svc/capabilities/984": "凸起的印花质感。",
+  "cp-svc/capabilities/986": "龟裂效果的印花质感。",
+  "cp-svc/capabilities/988": "细腻的闪光效果。",
+  "cp-svc/capabilities/990": "通过拔染形成印花效果。",
+  "cp-svc/capabilities/992": "平整的绣线细节。",
+  "cp-svc/capabilities/994": "凸起的刺绣细节。",
+  "cp-svc/capabilities/996": "柔软的毛圈绣线质感。",
+  "cp-svc/capabilities/998": "缝制的布料造型。",
+  "cp-svc/capabilities/1000": "织唛或印唛。",
+  "cp-svc/capabilities/1002": "吊牌与包装。",
+  "cp-svc/capabilities/1004": "成衣色彩处理。"
 }

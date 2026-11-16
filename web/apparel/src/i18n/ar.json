@@ -517,5 +517,21 @@
   "pdpTopChest": "نصف صدر الجزء العلوي",
   "pdpWaist": "الخصر",
   "pdpHip": "الورك",
-  "pdpPantsLength": "طول البنطال"
+  "pdpPantsLength": "طول البنطال",
+  "cp-svc/capabilities/974": "أحبار بلاستيسول أو أحبار مائية.",
+  "cp-svc/capabilities/976": "رسومات رقمية على الملابس.",
+  "cp-svc/capabilities/978": "رسومات تُطبّق بالنقل الحراري.",
+  "cp-svc/capabilities/980": "تفاصيل سطحية تعكس الضوء.",
+  "cp-svc/capabilities/982": "لمسات طباعة معدنية.",
+  "cp-svc/capabilities/984": "ملمس طباعة بارز.",
+  "cp-svc/capabilities/986": "ملمس طباعة بتأثير متشقق.",
+  "cp-svc/capabilities/988": "تشطيب ببريق ناعم.",
+  "cp-svc/capabilities/990": "تأثيرات طباعة بإزالة الصبغة.",
+  "cp-svc/capabilities/992": "تفاصيل تطريز مسطّحة.",
+  "cp-svc/capabilities/994": "تفاصيل تطريز بارزة.",
+  "cp-svc/capabilities/996": "ملمس ناعم من حلقات الخيوط.",
+  "cp-svc/capabilities/998": "أشكال قماش مخيطة.",
+  "cp-svc/capabilities/1000": "ملصقات منسوجة أو مطبوعة.",
+  "cp-svc/capabilities/1002": "بطاقات تعليق وتغليف.",
+  "cp-svc/capabilities/1004": "معالجات لونية للملابس."
 }

@@ -517,5 +517,21 @@
   "pdpTopChest": "Top half-chest",
   "pdpWaist": "Waist",
   "pdpHip": "Hip",
-  "pdpPantsLength": "Pants length"
+  "pdpPantsLength": "Pants length",
+  "cp-svc/capabilities/974": "Plastisol or water-based ink.",
+  "cp-svc/capabilities/976": "Digital artwork on garments.",
+  "cp-svc/capabilities/978": "Transfer-applied artwork.",
+  "cp-svc/capabilities/980": "Light-reflecting surface detail.",
+  "cp-svc/capabilities/982": "Metallic print accents.",
+  "cp-svc/capabilities/984": "Raised print texture.",
+  "cp-svc/capabilities/986": "A fractured print texture.",
+  "cp-svc/capabilities/988": "A fine sparkle finish.",
+  "cp-svc/capabilities/990": "Dye-removal print effects.",
+  "cp-svc/capabilities/992": "Flat stitched thread detail.",
+  "cp-svc/capabilities/994": "Raised embroidered detail.",
+  "cp-svc/capabilities/996": "Soft looped thread texture.",
+  "cp-svc/capabilities/998": "Stitched fabric shapes.",
+  "cp-svc/capabilities/1000": "Woven or printed labels.",
+  "cp-svc/capabilities/1002": "Hang tags and packaging.",
+  "cp-svc/capabilities/1004": "Garment colour treatments."
 }

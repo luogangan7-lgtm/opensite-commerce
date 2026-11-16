@@ -1,0 +1,11 @@
+{
+  "id": "21824142-3db3-4053-93e6-7a03bd61f111",
+  "ok": true,
+  "result": {
+    "result": "{\"labels\":0,\"tiles\":16,\"matrix\":[{\"height\":832.9140625,\"align\":\"normal\"},{\"height\":832.9140625,\"align\":\"normal\"}],\"assurance\":[{\"y\":3467.9453125,\"height\":480},{\"y\":3467.9453125,\"height\":149.984375}]}",
+    "origin": "https://sourcyowear.com/oem-odm/"
+  },
+  "_meta": {
+    "runtimeId": "4ab9d076-27d1-4a20-826d-b4d72c764642"
+  }
+}

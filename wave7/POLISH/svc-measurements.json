@@ -1,0 +1,298 @@
+[
+  {
+    "path": "/oem-odm/",
+    "width": 1440,
+    "labels": 16,
+    "tiles": [
+      {
+        "top": 2700.03125,
+        "label": 3030.03125,
+        "description": 3064.53125
+      },
+      {
+        "top": 2700.03125,
+        "label": 3030.03125,
+        "description": 3064.53125
+      },
+      {
+        "top": 2700.03125,
+        "label": 3030.03125,
+        "description": 3064.53125
+      },
+      {
+        "top": 2700.03125,
+        "label": 3030.03125,
+        "description": 3064.53125
+      },
+      {
+        "top": 3110.2265625,
+        "label": 3440.2265625,
+        "description": 3474.7265625
+      },
+      {
+        "top": 3110.2265625,
+        "label": 3440.2265625,
+        "description": 3474.7265625
+      },
+      {
+        "top": 3110.2265625,
+        "label": 3440.2265625,
+        "description": 3474.7265625
+      },
+      {
+        "top": 3110.2265625,
+        "label": 3440.2265625,
+        "description": 3474.7265625
+      },
+      {
+        "top": 3520.421875,
+        "label": 3850.421875,
+        "description": 3884.921875
+      },
+      {
+        "top": 3520.421875,
+        "label": 3850.421875,
+        "description": 3884.921875
+      },
+      {
+        "top": 3520.421875,
+        "label": 3850.421875,
+        "description": 3884.921875
+      },
+      {
+        "top": 3520.421875,
+        "label": 3850.421875,
+        "description": 3884.921875
+      },
+      {
+        "top": 3930.6171875,
+        "label": 4260.6171875,
+        "description": 4295.1171875
+      },
+      {
+        "top": 3930.6171875,
+        "label": 4260.6171875,
+        "description": 4295.1171875
+      },
+      {
+        "top": 3930.6171875,
+        "label": 4260.6171875,
+        "description": 4295.1171875
+      },
+      {
+        "top": 3930.6171875,
+        "label": 4260.6171875,
+        "description": 4295.1171875
+      }
+    ],
+    "splits": [
+      {
+        "delta": 0,
+        "display": "660px 660px"
+      }
+    ],
+    "matrix": [
+      {
+        "height": 832.9140625,
+        "align": "normal"
+      },
+      {
+        "height": 832.9140625,
+        "align": "center"
+      }
+    ],
+    "overflow": false
+  },
+  {
+    "path": "/oem-odm/",
+    "width": 390,
+    "labels": 16,
+    "tiles": [
+      {
+        "top": 4422.9453125,
+        "label": 4593.9453125,
+        "description": 4628.4453125
+      },
+      {
+        "top": 4422.9453125,
+        "label": 4593.9453125,
+        "description": 4628.4453125
+      },
+      {
+        "top": 4695.8359375,
+        "label": 4866.8359375,
+        "description": 4901.3359375
+      },
+      {
+        "top": 4695.8359375,
+        "label": 4866.8359375,
+        "description": 4901.3359375
+      },
+      {
+        "top": 4968.7265625,
+        "label": 5139.7265625,
+        "description": 5174.2265625
+      },
+      {
+        "top": 4968.7265625,
+        "label": 5139.7265625,
+        "description": 5174.2265625
+      },
+      {
+        "top": 5219.921875,
+        "label": 5390.921875,
+        "description": 5425.421875
+      },
+      {
+        "top": 5219.921875,
+        "label": 5390.921875,
+        "description": 5425.421875
+      },
+      {
+        "top": 5492.8125,
+        "label": 5663.8125,
+        "description": 5698.3125
+      },
+      {
+        "top": 5492.8125,
+        "label": 5663.8125,
+        "description": 5698.3125
+      },
+      {
+        "top": 5765.703125,
+        "label": 5936.703125,
+        "description": 5993.703125
+      },
+      {
+        "top": 5765.703125,
+        "label": 5936.703125,
+        "description": 5993.703125
+      },
+      {
+        "top": 6061.09375,
+        "label": 6232.09375,
+        "description": 6266.59375
+      },
+      {
+        "top": 6061.09375,
+        "label": 6232.09375,
+        "description": 6266.59375
+      },
+      {
+        "top": 6312.2890625,
+        "label": 6483.2890625,
+        "description": 6517.7890625
+      },
+      {
+        "top": 6312.2890625,
+        "label": 6483.2890625,
+        "description": 6517.7890625
+      }
+    ],
+    "splits": [
+      {
+        "delta": 299.890625,
+        "display": "342px"
+      }
+    ],
+    "matrix": [
+      {
+        "height": 886.125,
+        "align": "normal"
+      },
+      {
+        "height": 638.15625,
+        "align": "center"
+      }
+    ],
+    "overflow": false
+  },
+  {
+    "path": "/sampling/",
+    "width": 1440,
+    "labels": 0,
+    "tiles": [],
+    "splits": [
+      {
+        "delta": 0.00390625,
+        "display": "644px 644px"
+      },
+      {
+        "delta": 0.00390625,
+        "display": "644px 644px"
+      },
+      {
+        "delta": 0.00390625,
+        "display": "644px 644px"
+      }
+    ],
+    "matrix": [],
+    "overflow": false
+  },
+  {
+    "path": "/sampling/",
+    "width": 390,
+    "labels": 0,
+    "tiles": [],
+    "splits": [
+      {
+        "delta": 288.74609375,
+        "display": "342px"
+      },
+      {
+        "delta": 302.6953125,
+        "display": "342px"
+      },
+      {
+        "delta": 302.6953125,
+        "display": "342px"
+      }
+    ],
+    "matrix": [],
+    "overflow": false
+  },
+  {
+    "path": "/shipping/",
+    "width": 1440,
+    "labels": 0,
+    "tiles": [],
+    "splits": [
+      {
+        "delta": 0.00390625,
+        "display": "644px 644px"
+      },
+      {
+        "delta": 0.00390625,
+        "display": "644px 644px"
+      },
+      {
+        "delta": 0.00390625,
+        "display": "644px 644px"
+      }
+    ],
+    "matrix": [],
+    "overflow": false
+  },
+  {
+    "path": "/shipping/",
+    "width": 390,
+    "labels": 0,
+    "tiles": [],
+    "splits": [
+      {
+        "delta": 302.6953125,
+        "display": "342px"
+      },
+      {
+        "delta": 302.6953125,
+        "display": "342px"
+      },
+      {
+        "delta": 302.6953125,
+        "display": "342px"
+      }
+    ],
+    "matrix": [],
+    "overflow": false
+  }
+]
