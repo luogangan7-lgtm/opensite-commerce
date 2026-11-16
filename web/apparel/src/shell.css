@@ -10,7 +10,8 @@ header .header-inner > nav > a { display: inline-flex; align-items: center; min-
 .about-navigation { position: relative; padding: 0; border: 0; }
 .about-navigation > summary { display: flex; align-items: center; gap: var(--sy-space-xs); min-height: 44px; list-style: none; font-weight: inherit; }
 .about-navigation > summary::-webkit-details-marker { display: none; }
-.nav-caret { width: var(--sy-space-xs); height: var(--sy-space-xs); border-inline-end: 1px solid currentColor; border-block-end: 1px solid currentColor; transform: rotate(45deg); margin-block-start: calc(-1 * var(--sy-space-2xs)); }
+/* A vertical chevron keeps its down/up direction in both LTR and RTL. */
+.nav-caret { width: var(--sy-space-xs); height: var(--sy-space-xs); border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); margin-block-start: calc(-1 * var(--sy-space-2xs)); }
 .about-navigation[open] .nav-caret { transform: rotate(225deg); margin-block-start: var(--sy-space-2xs); }
 .about-dropdown { position: absolute; inset-inline-start: 0; inset-block-start: 100%; min-width: max-content; padding: var(--sy-space-xs); background: var(--sy-color-canvas); color: var(--sy-color-ink); border: 1px solid var(--sy-color-hairline); border-radius: var(--sy-radius-control); box-shadow: 0 var(--sy-space-xs) var(--sy-space-grid-x) color-mix(in srgb,var(--sy-color-ink) 12%,transparent); z-index: 4; }
 .about-dropdown a { display: flex; align-items: center; min-height: 44px; padding: var(--sy-space-xs) var(--sy-space-md); }
