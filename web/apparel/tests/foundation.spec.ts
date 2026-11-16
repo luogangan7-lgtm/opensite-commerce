@@ -80,7 +80,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   await expect(page.locator('[data-english-fallback]')).toHaveCount(0);
   await expect(page.locator('h1')).toContainText('卫衣');
   await page.goto('/zh/collections/');
-  await expect(page.locator('[data-shop-card] h2').first()).toHaveText(cardTitle('zh', products[0].slug));
+  await expect(page.locator('[data-shop-card] h2').first()).toHaveText(zhProducts[products[0].slug].name);
   for (const locale of ['zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
     for (const route of ['shipping', 'privacy', 'terms']) {
       await page.goto(`/${locale}/${route}/`);
