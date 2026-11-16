@@ -20,8 +20,10 @@ const categoryKeys:Record<string,Key>={apparel:'cp-shop/figma-0033','cotton430-h
 choices.category = Object.keys(categories);
 const categoryLabel=(value:string)=>t[categoryKeys[value] || value as Key];
 const colourPaint = (value:string) => {
- const paints:Record<string,string> = {black:'#1a1a1a',cream:'#e6dfcc',brown:'#6b4026',green:'#315840',white:'#ffffff',red:'#a52a2a',charcoal:'#444444',navy:'#26374a',pink:'#d9a5ad'};
- return paints[value] || (/green|olive|sage/.test(value)?'#647661':/purple|plum/.test(value)?'#756477':/grey|greige/.test(value)?'#98948b':/beige|sand|camel/.test(value)?'#b6a184':paints.cream);
+ // Representative UI swatches; qualifiers describe views, not a different colour.
+ value=value.replace(/\s*\([^)]*\)/g,'').trim();
+ const paints:Record<string,string> = {black:'#1a1a1a',cream:'#e6dfcc',brown:'#6b4026',green:'#315840',white:'#ffffff',red:'#a52a2a',charcoal:'#444444',navy:'#26374a',blue:'#476b8a',pink:'#d9a5ad'};
+ return paints[value] || (/green|olive|sage/.test(value)?'#647661':/purple|plum/.test(value)?'#756477':/grey|greige/.test(value)?'#98948b':/beige|sand|camel/.test(value)?'#b6a184':'#98948b');
 };
 const colourLabel=(value:string)=>{const keys:Record<string,Key>={black:'cp-shop/figma-0067',cream:'cp-shop/figma-0068',brown:'cp-shop/figma-0069',green:'cp-shop/figma-0070'};return keys[value]?t[keys[value]]:value;};
 ---
