@@ -107,7 +107,7 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
  .gallery-thumbs a{display:flex;flex-direction:column;align-items:start;gap:var(--sy-space-2xs);flex:none;border-radius:var(--sy-radius-inner);text-decoration:none;background:transparent;overflow:visible}
  .gallery-thumbs a[aria-current]{outline:none}
  .gallery-thumbs a[aria-current] img{outline:2px solid var(--sy-color-accent);outline-offset:2px}
- .gallery-thumbs img{width:48px;height:60px;object-fit:contain;object-position:top;border-radius:var(--sy-radius-inner)}
+ .gallery-thumbs img{width:48px;height:60px;object-fit:cover;object-position:center top;border-radius:var(--sy-radius-inner)}
  .gallery-thumbs span{display:block;font-size:var(--sy-text-eyebrow)}
  .gallery-slides{min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-md)}
  .gallery-slides figure{min-width:0;margin:0}

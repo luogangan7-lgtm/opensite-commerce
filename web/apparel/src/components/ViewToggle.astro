@@ -17,7 +17,7 @@ const props=Astro.props;
 </div>}
 <style>
  .view-toggle-segmented{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sy-space-xs);width:100%}
- .view-toggle-segmented button{min-width:0;min-height:44px;padding-inline:var(--sy-space-sm);background:transparent;color:var(--sy-color-ink);border:0;border-radius:var(--sy-radius-control)}
+ .view-toggle-segmented button{min-width:0;min-height:44px;padding-inline:var(--sy-space-sm);background:var(--sy-color-surface-alt);color:var(--sy-color-ink);border:0;border-radius:var(--sy-radius-control);font-weight:var(--font-weight-normal)}
  .view-toggle-segmented [aria-selected=true]{background:var(--sy-color-accent);color:var(--sy-color-on-accent)}
  .view-toggle-icon{position:absolute;inset-block-start:var(--sy-space-xs);inset-inline-end:var(--sy-space-xs);width:44px;height:44px;min-width:44px;min-height:44px;padding:var(--sy-space-2xs);border:0;background:transparent;color:var(--sy-color-ink);border-radius:var(--sy-radius-control)}
  .view-toggle-icon span{display:flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;background:var(--sy-color-surface);border-radius:var(--sy-radius-control);box-shadow:var(--sy-shadow-card)}
