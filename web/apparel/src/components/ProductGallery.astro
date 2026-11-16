@@ -25,8 +25,8 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
    </nav>)}
   </div>
   <div id="gallery-panel" role="tabpanel" aria-labelledby="view-pair" tabindex="0" class="gallery-slides" data-gallery-slides aria-roledescription="carousel">
-   <figure data-gallery-slide="front"><picture class="image-card"><img data-gallery-main data-pdp-whole src={initial.src} alt={alt(initial)} width="800" height="1000" loading="eager" fetchpriority="high" role="button" tabindex="0" aria-haspopup="dialog" /></picture><figcaption data-gallery-label>{t.galleryFront}</figcaption></figure>
-   <figure data-gallery-slide="back"><picture class="image-card"><img data-gallery-back src={images.find(i=>i.role==='back')?.src} alt={t.galleryBack} width="800" height="1000" loading="eager" /></picture><figcaption>{t.galleryBack}</figcaption><p data-view-unavailable hidden>{t.galleryUnavailable}</p></figure><p data-primary-unavailable hidden>{t.galleryUnavailable}</p>
+   <figure data-gallery-slide="front"><picture class="image-card"><img data-gallery-main data-pdp-whole src={initial.src} alt={alt(initial)} width="800" height="1000" loading="eager" decoding="async" fetchpriority="high" role="button" tabindex="0" aria-haspopup="dialog" /></picture><figcaption data-gallery-label>{t.galleryFront}</figcaption></figure>
+   <figure data-gallery-slide="back"><picture class="image-card"><img data-gallery-back src={images.find(i=>i.role==='back')?.src} alt={t.galleryBack} width="800" height="1000" loading="eager" decoding="async" /></picture><figcaption>{t.galleryBack}</figcaption><p data-view-unavailable hidden>{t.galleryUnavailable}</p></figure><p data-primary-unavailable hidden>{t.galleryUnavailable}</p>
   </div>
  </div>
  <div class="gallery-actions"><button type="button" data-gallery-prev aria-label={t.galleryPrevious}>‹</button><button type="button" data-gallery-zoom>{t.productViews}</button><button type="button" data-gallery-next aria-label={t.galleryNext}>›</button></div>
