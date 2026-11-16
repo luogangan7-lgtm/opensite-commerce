@@ -20,18 +20,14 @@ const allowed = new Map<string, string>([
  ['web/apparel/public/brand/mono-ink.svg', '3788b686dd9529b0aeabccee6f252f737c8ab1c2369c7645a969660ead611df2'],
 ]);
 function imageFile(path: string, bytes: Uint8Array) {
- const b = Buffer.from(bytes), text = b.subarray(0, 1024).toString('utf8').trimStart();
- return /\.(?:png|jpe?g|webp|avif|gif|ico|bmp|tiff?|heic|heif|jxl|svg)$/i.test(path)
-  || b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
-  || b.subarray(0, 3).equals(Buffer.from([255,216,255]))
-  || /^GIF8[79]a/.test(b.subarray(0, 6).toString('ascii'))
-  || b.subarray(0, 2).toString('ascii') === 'BM'
-  || b.subarray(0, 4).equals(Buffer.from([0,0,1,0]))
-  || b.subarray(0, 4).equals(Buffer.from([73,73,42,0])) || b.subarray(0, 4).equals(Buffer.from([77,77,0,42]))
-  || b.subarray(0, 4).toString('ascii') === 'RIFF' && b.subarray(8, 12).toString('ascii') === 'WEBP'
-  || b.subarray(4, 8).toString('ascii') === 'ftyp' && /avif|avis|heic|heix|mif1/.test(b.subarray(8, 32).toString('ascii'))
-  || b.subarray(0, 2).equals(Buffer.from([255,10])) || b.subarray(4, 8).toString('ascii') === 'JXL '
-  || /^(?:<svg\b|<\?xml\b[\s\S]*?<svg\b)/i.test(text);
+ if (/\.(?:png|jpe?g|webp|avif|gif|ico|bmp|tiff?|heic|heif|jxl|svg|raw|dng|psd)$/i.test(path) || bytes.includes(0)) return true;
+ try {
+  const text = new TextDecoder('utf-8', {fatal:true}).decode(bytes).trimStart();
+  return /^(?:<svg\b|<\?xml\b[\s\S]*?<svg\b)/i.test(text);
+ } catch {
+  // Unknown/renamed binary formats need an explicit SHA exception too.
+  return true;
+ }
 }
 function violations(files: { path: string; bytes: Uint8Array }[]) {
  return files.filter(({path,bytes}) => (imageFile(path,bytes) || allowed.has(path))
@@ -50,4 +46,10 @@ test('media gate rejects new public images and images disguised outside public',
 test('media allow-list rejects changed approved bytes', () => {
  const path = 'web/apparel/public/brand/icon-16.png';
  expect(violations([{path,bytes:Buffer.from('changed')}])).toEqual([path]);
+});
+test('unknown binary formats cannot bypass the policy while UTF-8 source remains valid', () => {
+ const path = 'web/apparel/src/unknown-format.data';
+ expect(violations([{path,bytes:Buffer.from([255,254,128])}])).toEqual([path]);
+ expect(violations([{path,bytes:Buffer.from([65,0,66])}])).toEqual([path]);
+ expect(violations([{path,bytes:Buffer.from('/* 普通 UTF-8 source */')}])).toEqual([]);
 });
