@@ -6,5 +6,112 @@
     }
   ],
   "structuredContent": null,
-  "isError": false
+  "isError": false,
+  "copyCorrections": {
+    "mutation": {
+      "mutatedVariableIds": [
+        "VariableID:1272:9",
+        "VariableID:1272:13",
+        "VariableID:1272:14"
+      ],
+      "changes": [
+        {
+          "id": "VariableID:1272:9",
+          "name": "cp-svc/capabilities/988",
+          "mode": "6:2",
+          "before": "Un acabado de brillo fino.",
+          "after": "Un acabado de destellos finos."
+        },
+        {
+          "id": "VariableID:1272:9",
+          "name": "cp-svc/capabilities/988",
+          "mode": "6:5",
+          "before": "Um acabamento de brilho fino.",
+          "after": "Um acabamento com brilho delicado."
+        },
+        {
+          "id": "VariableID:1272:9",
+          "name": "cp-svc/capabilities/988",
+          "mode": "6:6",
+          "before": "Покрытие с мелким блеском.",
+          "after": "Покрытие с лёгким мерцанием."
+        },
+        {
+          "id": "VariableID:1272:13",
+          "name": "cp-svc/capabilities/996",
+          "mode": "6:5",
+          "before": "Textura macia de fios em laços.",
+          "after": "Textura macia de fios em laçadas."
+        },
+        {
+          "id": "VariableID:1272:14",
+          "name": "cp-svc/capabilities/998",
+          "mode": "6:6",
+          "before": "Пришитые формы из ткани.",
+          "after": "Пришитые тканевые элементы."
+        }
+      ],
+      "zh974": "胶浆或水性油墨。"
+    },
+    "readback": {
+      "variables": [
+        {
+          "id": "VariableID:1272:2",
+          "name": "cp-svc/capabilities/974",
+          "values": {
+            "6:1": "Plastisol or water-based ink.",
+            "6:2": "Tinta plastisol o de base acuosa.",
+            "6:3": "Encre plastisol ou à base d’eau.",
+            "6:4": "Plastisol- oder wasserbasierte Farbe.",
+            "6:5": "Tinta plastisol ou à base de água.",
+            "6:6": "Пластизольные или водные краски.",
+            "6:7": "أحبار بلاستيسول أو أحبار مائية.",
+            "196:0": "胶浆或水性油墨。"
+          }
+        },
+        {
+          "id": "VariableID:1272:9",
+          "name": "cp-svc/capabilities/988",
+          "values": {
+            "6:1": "A fine sparkle finish.",
+            "6:2": "Un acabado de destellos finos.",
+            "6:3": "Une finition finement scintillante.",
+            "6:4": "Fein glitzerndes Finish.",
+            "6:5": "Um acabamento com brilho delicado.",
+            "6:6": "Покрытие с лёгким мерцанием.",
+            "6:7": "تشطيب ببريق ناعم.",
+            "196:0": "细腻的闪光效果。"
+          }
+        },
+        {
+          "id": "VariableID:1272:13",
+          "name": "cp-svc/capabilities/996",
+          "values": {
+            "6:1": "Soft looped thread texture.",
+            "6:2": "Textura suave de hilo en bucles.",
+            "6:3": "Texture douce de fils bouclés.",
+            "6:4": "Weiche Textur aus Fadenschlaufen.",
+            "6:5": "Textura macia de fios em laçadas.",
+            "6:6": "Мягкая текстура нитяных петель.",
+            "6:7": "ملمس ناعم من حلقات الخيوط.",
+            "196:0": "柔软的毛圈绣线质感。"
+          }
+        },
+        {
+          "id": "VariableID:1272:14",
+          "name": "cp-svc/capabilities/998",
+          "values": {
+            "6:1": "Stitched fabric shapes.",
+            "6:2": "Formas de tela cosidas.",
+            "6:3": "Formes de tissu cousues.",
+            "6:4": "Aufgenähte Stoffformen.",
+            "6:5": "Formas de tecido costuradas.",
+            "6:6": "Пришитые тканевые элементы.",
+            "6:7": "أشكال قماش مخيطة.",
+            "196:0": "缝制的布料造型。"
+          }
+        }
+      ]
+    }
+  }
 }
