@@ -80,7 +80,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   await expect(page.locator('[data-english-fallback]')).toHaveCount(0);
   await expect(page.locator('h1')).toContainText('卫衣');
   await page.goto('/zh/collections/');
-  await expect(page.locator('.tile h3').first()).toHaveText(cardTitle('zh', 'apparel-59043'));
+  await expect(page.locator('[data-shop-card] h2').first()).toHaveText(cardTitle('zh', products[0].slug));
   for (const locale of ['zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
     for (const route of ['shipping', 'privacy', 'terms']) {
       await page.goto(`/${locale}/${route}/`);
@@ -103,7 +103,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   await page.locator('.gallery-thumbs:not([hidden]) a[data-role="front"]').click();
   await expect(page.locator('[data-digital-label]')).toHaveCount(0);
   await page.goto('/zh/collections/');
-  await expect(page.locator('.tile img').first()).toHaveAttribute('alt', /正面/);
+  await expect(page.locator('[data-shop-card] .shop-photo img').first()).toHaveAttribute('alt', /正面/);
 });
 
 // §14 per-SKU acceptance; fixed contract identities, existing locale dictionaries and suite.
@@ -121,12 +121,14 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) 
       await page.route('**/api/rfq', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }));
       const category = products.find(product => product.slug === sku)!.category;
       await page.goto(`${prefix}/collections/${category}/`);
-      const card = page.locator('.tile').filter({ has: page.locator('bdi', { hasText: new RegExp(`^${style}$`) }) });
+      const card = page.locator('[data-shop-card]').filter({ has: page.locator('bdi', { hasText: new RegExp(`^${style}$`) }) });
+      while(!await card.isVisible() && await page.locator('[data-shop-more]').isVisible()) await page.locator('[data-shop-more]').click();
       await expect(card).toHaveCount(1);
       const title = cardTitle(locale, sku);
-      await expect(card.locator('h3')).toHaveText(title);
-      await expect(card).toHaveAttribute('href', `${prefix}/products/${sku}/`);
-      await card.click();
+      await expect(card.locator('h2')).toHaveText(title);
+      const entrance=card.locator('h2 a');
+      await expect(entrance).toHaveAttribute('href', `${prefix}/products/${sku}/`);
+      await entrance.click();
       await expect(page).toHaveURL(`${prefix}/products/${sku}/`);
       await expect(page.locator('h1')).toHaveText(title);
       await expect(page.locator('.product-info > .muted bdi')).toHaveText(style);

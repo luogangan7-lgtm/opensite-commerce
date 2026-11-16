@@ -48,7 +48,7 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280,1440]) {
   await expect(page.locator('[data-shop-sort]')).toHaveValue('code');
   if(locale==='en'&&width===1440) {
    await page.goto('/collections/');
-   await page.evaluate(async()=>{await document.fonts.ready;await Promise.all([...document.images].filter(i=>i.getBoundingClientRect().top<innerHeight).map(i=>i.decode().catch(()=>{})));});
+   await page.evaluate(async()=>{await document.fonts.ready;await Promise.all([...document.images].filter(i=>{const r=i.getBoundingClientRect();return r.width>0&&r.height>0&&r.top<innerHeight&&r.bottom>0}).map(i=>i.decode().catch(()=>{})));});
    expect(await page.evaluate(()=>(window as any).shopCLS)).toBeLessThanOrEqual(.05);
   }
   await page.goto(`${prefix}/collections/zip-ups-jackets/`);
