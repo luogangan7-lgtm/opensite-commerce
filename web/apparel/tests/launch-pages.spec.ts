@@ -10,7 +10,8 @@ for (const locale of languages) for (const route of routes) {
     expect(response?.status()).toBe(200);
     await expect(page.locator('html')).toHaveAttribute('lang', locale);
     await expect(page.locator('html')).toHaveAttribute('dir', locale === 'ar' ? 'rtl' : 'ltr');
-    await expect(page.locator('[data-service-page] h2')).toHaveCount(route === 'privacy' ? 5 : route === 'terms' ? 5 : 4);
+    const headings = {privacy:5,terms:5,'oem-odm':6,sampling:5,shipping:5};
+    await expect(page.locator('[data-service-page] h2')).toHaveCount(headings[route as keyof typeof headings]);
     const text = await page.locator('[data-service-page]').innerText();
     expect(text.length).toBeGreaterThan(300);
     expect(text).not.toMatch(/placeholder|coming soon|lorem ipsum|待 owner 批准/i);

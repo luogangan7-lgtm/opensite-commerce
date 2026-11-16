@@ -9,6 +9,7 @@ import Contact from '../views/Contact.astro';
 import Collections from '../views/Collections.astro';
 import Collection from '../views/Collection.astro';
 import ServicePage from '../views/ServicePage.astro';
+import ServiceLanding from '../views/ServiceLanding.astro';
 import NotFound from '../views/NotFound.astro';
 import Product from '../views/Product.astro';
 export function getStaticPaths() {
@@ -25,5 +26,6 @@ const [kind, id] = route.split('/');
 {kind === 'collections' && (id ? <Collection category={id} /> : <Collections />)}
 {kind === 'products' && <Product product={products.find(p => p.slug === id)!} />}
 
-{['oem-odm', 'sampling', 'shipping', 'privacy', 'terms'].includes(kind) && <ServicePage kind={kind as 'oem-odm' | 'sampling' | 'shipping' | 'privacy' | 'terms'} />}
+{['oem-odm', 'sampling', 'shipping'].includes(kind) && <ServiceLanding kind={kind as 'oem-odm' | 'sampling' | 'shipping'} />}
+{['privacy', 'terms'].includes(kind) && <ServicePage kind={kind as 'privacy' | 'terms'} />}
 {kind === '404' && <NotFound />}
