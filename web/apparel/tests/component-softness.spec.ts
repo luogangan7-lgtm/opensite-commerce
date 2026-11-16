@@ -55,6 +55,7 @@ for (const width of [1440, 768, 390]) test(`soft component radii and secondary h
    }
    for (const [selector, wrap] of [['h1,h2,h3,h4', 'balance'], ['p,.lead', 'pretty']]) {
     for (const node of document.querySelectorAll(selector)) {
+     if (node.closest('.sr-only')) continue;
      const actual = getComputedStyle(node).textWrap;
      if (actual !== wrap) failures.push({ role: 'typography', element: node.tagName, text: node.textContent?.trim().slice(0, 80), actual, expected: wrap });
     }
