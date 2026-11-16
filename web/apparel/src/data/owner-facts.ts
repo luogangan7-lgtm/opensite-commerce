@@ -1,8 +1,9 @@
-/** Owner MOQ facts; consumed by PDP and distribution gate. No price/lead-time claims.
+/** Owner MOQ facts; consumed by PDP, About ways and distribution gate. No price/lead-time claims.
  * Authority: docs/apparel-b2b/about-copy.md:22,58 and owner-input.md;
- * root authorization msg_b06d4d9e313e, copy approval msg_8cd0a266743a (2026-11-15).
+ * root authorization msg_b06d4d9e313e, copy approval msg_8cd0a266743a (2026-11-15);
+ * About ways-only extension msg_d3aed81653ee (2026-11-15).
  * Wholesale may mix styles; blank/decorated mix colours/sizes within each style. */
-import type { Locale } from '../i18n';
+import { dictionaries, type Locale } from '../i18n';
 export const ownerMoq = { ready: 100, custom: 1000 } as const;
 export const pdpMoq: Record<Locale, string> = {
   en: `MOQ ${ownerMoq.ready} pcs · mix colours & sizes`,
@@ -14,3 +15,10 @@ export const pdpMoq: Record<Locale, string> = {
   ru: `Минимальный заказ: ${ownerMoq.ready} шт. · можно сочетать цвета и размеры`,
   ar: `الحد الأدنى للطلب ${ownerMoq.ready} قطعة · يمكن مزج الألوان والمقاسات`,
 };
+export const aboutWays = ['01', '02', '03', '04'] as const;
+const grouping: Record<Locale, string> = { en: ',', zh: ',', es: '.', fr: ' ', de: '.', pt: '.', ru: ' ', ar: ',' };
+export function aboutMoqCopy(locale: Locale, way: typeof aboutWays[number]): string {
+  const quantity = way === '04' ? ownerMoq.custom : ownerMoq.ready;
+  const amount = quantity.toLocaleString('en-US').replaceAll(',', grouping[locale]);
+  return dictionaries[locale][`about.ways-body-${way}`].replace('{moq}', amount);
+}

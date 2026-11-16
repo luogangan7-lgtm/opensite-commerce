@@ -1,11 +1,12 @@
 ---
-/** Approved D-ABOUT2 brand story; shared Shell, HomeMedia and dictionaries only.
+/** Approved D-ABOUT2 brand story; shared Shell, HomeMedia, dictionaries and owner MOQ facts.
  * Called by the eight /about-us/ static routes. Factory stays at /about/.
  * Facts follow the approved Figma; images are decorative, SHA-bound existing artwork. */
 import Shell from '../layouts/Shell.astro';
 import HomeMedia from '../components/HomeMedia.astro';
 import { dictionaries, pageLocale, type Key } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
+import { aboutWays, aboutMoqCopy } from '../data/owner-facts';
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 const arrow = locale === 'ar' ? '←' : '→';
 const b = (key: string) => t[`about.${key}` as Key];
@@ -24,7 +25,7 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
   <div class="about-catalog">{catalog.map(([id, category]) => <a href={href(`/collections/${category}/`)}><HomeMedia scope="about" id={`about-${id}`} alt="" /><span>{b(`catalog-${id}`)}</span></a>)}</div>
 </div></section>
 <section class="about-section about-inverse"><div class="about-inner"><p class="about-eyebrow">{b('ways-eyebrow')}</p><h2>{b('ways-title')}</h2>
-  <ol class="about-ways">{['01','02','03','04'].map(n => <li><span class="about-number">{b(`ways-num-${n}`)}</span><h3>{b(`ways-title-${n}`)}</h3><p>{b(`ways-body-${n}`)}</p></li>)}</ol>
+  <ol class="about-ways">{aboutWays.map(n => <li><span class="about-number">{b(`ways-num-${n}`)}</span><h3>{b(`ways-title-${n}`)}</h3><p data-owner-about-way={n}>{aboutMoqCopy(locale, n)}</p></li>)}</ol>
 </div></section>
 <section class="about-section"><div class="about-inner about-brand-row"><div class="about-copy"><p class="about-eyebrow">{b('brand-eyebrow')}</p><h2>{b('brand-title')}</h2><p>{b('brand-body')}</p><p class="about-capabilities">{b('brand-capabilities')}</p></div><div class="about-brand-image"><HomeMedia scope="about" id="fabric" alt="" /></div></div></section>
 <section class="about-section"><div class="about-inner"><p class="about-eyebrow">{b('visit-eyebrow')}</p><h2 class="about-visit-title">{b('visit-title')}</h2><div class="about-visit-row"><div class="about-visit-image"><HomeMedia scope="about" id="about-visit" alt="" /></div><div class="about-copy"><h3 class="about-subtitle">{b('stall-title')}</h3><address>{b('stall-address')}</address><p>{b('stall-visit')}</p><p>{b('stall-role')}</p></div></div></div></section>

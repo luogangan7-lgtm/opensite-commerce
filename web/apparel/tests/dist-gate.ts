@@ -12,7 +12,7 @@ import serviceMedia from '../service-media.json';
 import { digitalDelivery } from '../image-plan';
 import products from '../src/data/products.json';
 import { dictionaries, locales, type Locale } from '../src/i18n';
-import { pdpMoq } from '../src/data/owner-facts';
+import { pdpMoq, aboutWays, aboutMoqCopy } from '../src/data/owner-facts';
 import { imageBase, widths } from '../src/data/imagery';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 const policy = JSON.parse(readFileSync(join(root, 'rfq-policy.json'), 'utf8'));
@@ -58,7 +58,7 @@ for (const file of files(root)) {
     const alternates = [...text.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g)];
     if (alternates.length !== 9 || new Set(alternates.map(row => row[1])).size !== 9 || ![...locales.map(l => l === 'zh' ? 'zh-Hans' : l), 'x-default'].every(lang => alternates.some(row => row[1] === lang))) throw Error('Incomplete hreflang');
     for (const row of text.matchAll(/<tr data-commercial[^>]*>[\s\S]*?<td[^>]*>(.*?)<\/td>/g)) if (row[1] !== dictionaries[locale].quote) throw Error('Localized commercial value');
-    // Owner-authorized MOQ is admitted once in each existing PDP context, nowhere else.
+    // Owner-authorized MOQ is admitted only in the three PDP contexts and four About ways.
     // Replace only validated values with quote text before the unchanged commercial checks.
     let commercialText = text;
     if (parts[0] === 'products') {
@@ -81,6 +81,20 @@ for (const file of files(root)) {
         if (count !== 1) throw Error('Owner MOQ spec count changed');
         commercialText = commercialText.replace(tables[0][0], checked);
       }
+    }
+    if (parts.join('/') === 'about-us/index.html') {
+      const list = /<ol\b[^>]*class="about-ways"[^>]*>[\s\S]*?<\/ol>/g;
+      const lists = [...commercialText.matchAll(list)];
+      if (lists.length !== 1) throw Error('Owner About ways context missing');
+      let checked = lists[0][0];
+      for (const way of aboutWays) {
+        const paragraph = new RegExp(`<p\\b[^>]*data-owner-about-way="${way}"[^>]*>([^<]*)<\\/p>`, 'g');
+        const matches = [...checked.matchAll(paragraph)];
+        const expected = aboutMoqCopy(locale, way).replaceAll('&', '&amp;');
+        if (matches.length !== 1 || matches[0][1] !== expected) throw Error('Owner About MOQ changed');
+        checked = checked.replace(paragraph, `<p>${dictionaries[locale].quote}</p>`);
+      }
+      commercialText = commercialText.replace(lists[0][0], checked);
     }
     const plain = commercialText.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
     if (/(?:price|moq|lead time|sample cost)\s*:?\s*(?:[$€£¥]|\d)|(?:[$€£¥]|\b(?:USD|EUR|GBP|CNY))\s*\d/i.test(plain)) throw Error('Numeric commercial term');
