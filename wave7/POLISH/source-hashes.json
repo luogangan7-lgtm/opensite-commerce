@@ -13,8 +13,9 @@
   "web/apparel/src/views/Collections.astro": "a67ac1aa21752d7aec927840492c4ea94b3b886b4d34c19ce5206e35c8d533f9",
   "web/apparel/src/views/Product.astro": "48e0839f5125c44d66faaf957c041f8c5c3a1cf6ee68da8a3e6c7d8016b39ca4",
   "web/apparel/src/data/owner-facts.ts": "bd4fb60056f822e6a42e26f402bb412c37adbbeb06943315b975fb600e0fca5a",
-  "web/apparel/tests/dist-gate.ts": "4518579f926d8a6ed6f353de3577ccb24081e8ee1b96f27d48a4c7720b8bbc84",
-  "web/apparel/tests/probes.ts": "1dd128808021ac810ecc3a4e8cfb46074214ef97839d02ec79d465e7dbd7523e",
+  "web/apparel/tests/dist-gate.ts": "f5bade6055a5702fd3f2545c157f5c58cef6546cbfa40f45b51f55cdccc71b6b",
+  "web/apparel/tests/probes.ts": "80f2141ad89ed3b7164287026b709c8c8a151edc2babb0aa841e960be34725b9",
   "web/apparel/src/views/ServicePage.astro": "5d6562c7686b71ec4cc05fae141bb5e8fe463d7511e5bc2784ae33d35980978c",
-  "web/apparel/tests/launch-pages.spec.ts": "8c596668eefd177a6e8f1a43ec84ad5dcac0408319c33f16487a44b9c318f49f"
+  "web/apparel/tests/launch-pages.spec.ts": "dbf5aab9a5453938605c03c97d6cb5f5ac05644672a99daa60d5b5358c37756d",
+  "web/apparel/src/content/legal-ui.json": "db355f949da499fc2e9f1dc1cd428dbc1168a03642cc3424e868e18ac3242f06"
 }

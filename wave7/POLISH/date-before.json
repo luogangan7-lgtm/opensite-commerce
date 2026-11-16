@@ -1,0 +1,10 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"variable\":\"VariableID:85:121\",\"name\":\"copy/last-updated-owner-input-date\",\"modes\":[{\"name\":\"EN\",\"modeId\":\"6:1\"},{\"name\":\"ZH\",\"modeId\":\"196:0\"},{\"name\":\"ES\",\"modeId\":\"6:2\"},{\"name\":\"FR\",\"modeId\":\"6:3\"},{\"name\":\"DE\",\"modeId\":\"6:4\"},{\"name\":\"PT\",\"modeId\":\"6:5\"},{\"name\":\"RU\",\"modeId\":\"6:6\"},{\"name\":\"AR\",\"modeId\":\"6:7\"}],\"before\":{\"6:1\":\"Last updated: OWNER-INPUT (date)\",\"6:2\":\"Última actualización: OWNER-INPUT (fecha)\",\"6:3\":\"Dernière mise à jour : OWNER-INPUT (date)\",\"6:4\":\"Zuletzt aktualisiert: OWNER-INPUT (Datum)\",\"6:5\":\"Última atualização: OWNER-INPUT (data)\",\"6:6\":\"Последнее обновление: OWNER-INPUT (дата)\",\"6:7\":\"آخر تحديث: OWNER-INPUT (التاريخ)\",\"196:0\":\"最后更新：OWNER-INPUT（日期）\"}}"
+    }
+  ],
+  "structuredContent": null,
+  "isError": false
+}

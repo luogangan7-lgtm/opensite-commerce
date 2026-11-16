@@ -1,0 +1,11 @@
+RED proven: brand
+RED proven: owner-input
+RED proven: commercial
+RED proven: moq-50
+RED proven: pdp-moq-50
+RED proven: worker-format
+RED proven: direction
+RED proven: hreflang
+PASS: 115 allowed products in eight locales; approved image references; localized commercial terms.
+PASS: compiled Pages dispatch, valid/invalid/honeypot RFQ, private PostgREST insert and contact 200.
+PASS: compiled protected RFQ 403/204/429 and missing runtime secret 503; no storage on rejection.

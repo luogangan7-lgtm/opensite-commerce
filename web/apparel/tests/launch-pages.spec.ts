@@ -3,6 +3,8 @@ import { test, expect } from '@playwright/test';
 import legalCopy from '../src/content/launch-pages.json' with { type: 'json' };
 const languages = ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'];
 const routes = ['oem-odm', 'sampling', 'shipping', 'privacy', 'terms'];
+// Owner-confirmed launch date, independently asserted against rendered localized labels.
+const launchDates: Record<string, string> = { en:'November 15, 2026', zh:'2026年11月15日', es:'15 de noviembre de 2026', fr:'15 novembre 2026', de:'15. November 2026', pt:'15 de novembro de 2026', ru:'15 ноября 2026 г.', ar:'15 نوفمبر 2026' };
 for (const locale of languages) for (const route of routes) {
   test(`launch page ${locale}/${route}`, async ({ page, request }) => {
     const path = `${locale === 'en' ? '' : '/' + locale}/${route}/`;
@@ -26,7 +28,8 @@ for (const locale of languages) for (const route of routes) {
     if (route === 'privacy' || route === 'terms') {
       expect(text).toContain('sales@sourcyowear.com');
       expect(text).toContain('91430105MA7J4C1WX7');
-      await expect(page.locator('.legal-updated')).toContainText('OWNER-INPUT');
+      await expect(page.locator('.legal-updated')).toContainText(launchDates[locale]);
+      expect(text).not.toContain('OWNER-INPUT');
       expect(await page.locator('.service-copy > div > p').allTextContents()).toEqual(legalCopy[locale as keyof typeof legalCopy][route as 'privacy' | 'terms'][2].map(section => section[1]));
       await expect(page.locator('#rfq-form')).toHaveCount(0);
     }

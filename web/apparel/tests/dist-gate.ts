@@ -50,6 +50,7 @@ for (const file of files(root)) {
   for (const srcset of text.matchAll(/(?:imagesrcset|srcset)="([^"]+)"/g)) for (const candidate of srcset[1].split(',')) if (!images.has(candidate.trim().split(/\s+/)[0])) throw Error('Unpublished responsive image');
   if (/tryon-|数字人形象|assets\/tryon/.test(text)) throw Error('Forbidden image provenance');
   if (path.endsWith('.html')) {
+    if (text.includes('OWNER-INPUT')) throw Error(`Unresolved owner input in built HTML: ${path}`);
     const html = text.match(/<html\b[^>]*>/)?.[0] || '';
     if (!html.includes(`lang="${locale}"`) || !html.includes(`dir="${locale === 'ar' ? 'rtl' : 'ltr'}"`)) throw Error('Wrong document locale');
     const alternates = [...text.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g)];

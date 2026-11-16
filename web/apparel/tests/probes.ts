@@ -2,7 +2,7 @@
 import { cpSync, mkdtempSync, rmSync, appendFileSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-for (const [name, mutation] of [['brand', '<p>mgoo</p>'], ['commercial', '<p>MOQ: 100</p>'], ['moq-50', '<p>MOQ 50</p>'], ['pdp-moq-50', ''], ['worker-format', 'Content-Disposition: form-data; name=metadata'], ['direction', ''], ['hreflang', '']] as const) {
+for (const [name, mutation] of [['brand', '<p>mgoo</p>'], ['owner-input', '<p>OWNER-INPUT</p>'], ['commercial', '<p>MOQ: 100</p>'], ['moq-50', '<p>MOQ 50</p>'], ['pdp-moq-50', ''], ['worker-format', 'Content-Disposition: form-data; name=metadata'], ['direction', ''], ['hreflang', '']] as const) {
   const dir = mkdtempSync(join(tmpdir(), 'apparel-probe-'));
   try {
     cpSync('web/apparel/dist', dir, { recursive: true });
