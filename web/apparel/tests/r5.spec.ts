@@ -12,8 +12,9 @@ test('23 independently accepted regenerated slots are served and selectable', as
    const link=page.locator(`.gallery-thumbs:not([hidden]) a[href="${row.src}"]`);
    await expect(link,row.exactId).toHaveCount(1);
    await link.click();
-   await expect(page.locator('[data-gallery-main]')).toHaveAttribute('src',row.src);
-   if(process.env.APPAREL_PACKAGED_IMAGES === '1' || process.env.APPAREL_PREVIEW_URL) await expect.poll(()=>page.locator('[data-gallery-main]').evaluate((i: HTMLImageElement)=>i.complete && i.naturalWidth>0)).toBe(true);
+   const selected=page.locator(await link.getAttribute('data-role')==='back'?'[data-gallery-back]':'[data-gallery-main]');
+   await expect(selected).toHaveAttribute('src',row.src);
+   if(process.env.APPAREL_PACKAGED_IMAGES === '1' || process.env.APPAREL_PREVIEW_URL) await expect.poll(()=>selected.evaluate((i: HTMLImageElement)=>i.complete && i.naturalWidth>0)).toBe(true);
   }
  }
  if(process.env.APPAREL_PACKAGED_IMAGES === '1' || process.env.APPAREL_PREVIEW_URL) {

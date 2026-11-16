@@ -14,8 +14,9 @@ test('78 independently accepted regenerated slots are served and selectable', as
    const link=page.locator(`.gallery-thumbs:not([hidden]) a[href="${row.src}"]`);
    await expect(link,row.exactId).toHaveCount(1);
    await link.click();
-   await expect(page.locator('[data-gallery-main]')).toHaveAttribute('src',row.src);
-   if(process.env.APPAREL_PACKAGED_IMAGES === '1' || process.env.APPAREL_PREVIEW_URL) await expect.poll(()=>page.locator('[data-gallery-main]').evaluate((i: HTMLImageElement)=>i.complete && i.naturalWidth>0)).toBe(true);
+   const selected=page.locator(await link.getAttribute('data-role')==='back'?'[data-gallery-back]':'[data-gallery-main]');
+   await expect(selected).toHaveAttribute('src',row.src);
+   if(process.env.APPAREL_PACKAGED_IMAGES === '1' || process.env.APPAREL_PREVIEW_URL) await expect.poll(()=>selected.evaluate((i: HTMLImageElement)=>i.complete && i.naturalWidth>0)).toBe(true);
   }
  }
  if(process.env.APPAREL_PACKAGED_IMAGES === '1' || process.env.APPAREL_PREVIEW_URL) {
@@ -50,7 +51,8 @@ for (const slug of reboundStyles) test(`C11 model-01 W3 follows catalog colour: 
   const link = page.locator(`.gallery-thumbs:not([hidden]) a[href="${row.src}"]`);
   await expect(link, row.exactId).toHaveAttribute('data-colour', binding.colour);
   await link.click();
-  await expect(page.locator('[data-gallery-main]')).toHaveAttribute('src', row.src);
+  const selected=page.locator(await link.getAttribute('data-role')==='back'?'[data-gallery-back]':'[data-gallery-main]');
+  await expect(selected).toHaveAttribute('src', row.src);
  }
  const other = page.locator('[data-gallery-swatch]').filter({ hasNot: page.locator(`img[src="${binding.src}"]`) }).first();
  await other.click();

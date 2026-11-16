@@ -30,10 +30,10 @@ for (const width of [1440, 768, 390]) {
     const geometry = await rail.evaluate(node => {
       const links = [...node.querySelectorAll('a')];
       const rect = node.getBoundingClientRect();
-      return { rows: new Set(links.map(a => a.offsetTop)).size, height: node.clientHeight, content: node.scrollHeight,
+      return { links:links.length, rows: new Set(links.map(a => a.offsetTop)).size, height: node.clientHeight, content: node.scrollHeight,
         inside: links.every(a => { const r = a.getBoundingClientRect(); return r.top >= rect.top && r.bottom <= rect.bottom; }) };
     });
-    expect(geometry.rows).toBe(1);
+    expect(geometry.rows).toBe(width >= 768 ? geometry.links : 1);
     expect(geometry.inside).toBe(true);
     expect(geometry.content).toBeLessThanOrEqual(geometry.height);
     await expect(page.locator('.moq-line')).toHaveText('MOQ 100 pcs · mix colours & sizes');

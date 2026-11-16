@@ -25,8 +25,8 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
    </nav>)}
   </div>
   <div id="gallery-panel" role="tabpanel" aria-labelledby="view-pair" tabindex="0" class="gallery-slides" data-gallery-slides aria-roledescription="carousel">
-   <figure data-gallery-slide="front"><picture class="image-card"><img data-gallery-main data-pdp-whole src={initial.src} alt={alt(initial)} width="800" height="1000" loading="eager" decoding="async" fetchpriority="high" role="button" tabindex="0" aria-haspopup="dialog" /></picture><figcaption data-gallery-label>{t.galleryFront}</figcaption></figure>
-   <figure data-gallery-slide="back"><picture class="image-card"><img data-gallery-back src={images.find(i=>i.role==='back')?.src} alt={t.galleryBack} width="800" height="1000" loading="eager" decoding="async" /></picture><figcaption>{t.galleryBack}</figcaption><p data-view-unavailable hidden>{t.galleryUnavailable}</p></figure><p data-primary-unavailable hidden>{t.galleryUnavailable}</p>
+   <figure data-gallery-slide="front"><picture class="image-card"><source data-gallery-mobile media="(max-width: 767px)" srcset={initial.src.replace(/\.webp$/, '-640.webp')} /><img data-gallery-main data-pdp-whole src={initial.src} alt={alt(initial)} width="800" height="1000" loading="eager" decoding="async" fetchpriority="high" role="button" tabindex="0" aria-haspopup="dialog" /></picture><figcaption data-gallery-label>{t.galleryFront}</figcaption></figure>
+   <figure data-gallery-slide="back"><picture class="image-card"><source data-gallery-back-mobile media="(max-width: 767px)" srcset={images.find(i=>i.role==='back')?.src.replace(/\.webp$/, '-640.webp')} /><img data-gallery-back src={images.find(i=>i.role==='back')?.src} alt={t.galleryBack} width="800" height="1000" loading="eager" decoding="async" /></picture><figcaption>{t.galleryBack}</figcaption><p data-view-unavailable hidden>{t.galleryUnavailable}</p></figure><p data-primary-unavailable hidden>{t.galleryUnavailable}</p>
   </div>
  </div>
  <div class="gallery-actions"><button type="button" data-gallery-prev aria-label={t.galleryPrevious}>‹</button><button type="button" data-gallery-zoom>{t.productViews}</button><button type="button" data-gallery-next aria-label={t.galleryNext}>›</button></div>
@@ -45,6 +45,7 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
  let view='pair';
  const links=()=>[...root.querySelectorAll<HTMLAnchorElement>('.gallery-thumbs:not([hidden]) a')];
  const choose=(link:HTMLAnchorElement)=>{
+  const mobile=root.querySelector('source[data-gallery-mobile]')!;if(link.dataset.fit==='contain')mobile.removeAttribute('srcset');else mobile.setAttribute('srcset',link.getAttribute('href')!.replace(/\.webp$/,'-640.webp'));
   main.src=link.getAttribute('href')!; main.alt=link.querySelector('img')!.alt; main.dataset.fit=link.dataset.fit||'';
   root.querySelector('[data-gallery-label]')!.textContent=link.querySelector('span')!.textContent;
   root.querySelectorAll('.gallery-thumbs a').forEach(n=>n.removeAttribute('aria-current'));link.setAttribute('aria-current','true');
@@ -74,6 +75,7 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
  const sync=()=>{
   const all=links(), b=all.find(n=>n.dataset.role==='back');
   back.hidden=!b;back.closest('picture')!.hidden=!b;second.querySelector<HTMLElement>('[data-view-unavailable]')!.hidden=!!b;
+  const backMobile=root.querySelector('source[data-gallery-back-mobile]')!;if(b)backMobile.setAttribute('srcset',b.getAttribute('href')!.replace(/\.webp$/,'-640.webp'));else backMobile.removeAttribute('srcset');
   if(b){back.src=b.getAttribute('href')!;back.alt=b.querySelector('img')!.alt}else{back.removeAttribute('src')}
   root.querySelectorAll<HTMLElement>('[data-gallery-tile]').forEach(tile=>{const link=all.find(n=>n.dataset.role===tile.dataset.galleryTile);tile.hidden=!link;const img=tile.querySelector('img')!;if(link){img.src=link.getAttribute('href')!;img.alt=link.querySelector('img')!.alt}else img.removeAttribute('src')});
   document.querySelectorAll<HTMLImageElement>('[data-pdp-detail], [data-pdp-fabric]').forEach(img=>{const role=img.hasAttribute('data-pdp-fabric')?'fabric':'structure';const link=all.find(n=>n.dataset.role===role);img.hidden=!link;if(link){img.src=link.getAttribute('href')!;img.alt=link.querySelector('img')!.alt}else img.removeAttribute('src')});
@@ -112,7 +114,8 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
  .image-card img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:contain;object-position:50% 0;border-radius:var(--sy-radius-image);cursor:zoom-in}
  .image-card img[data-fit=contain]{object-fit:contain}
  figcaption{padding-block-start:var(--sy-space-xs);font-size:var(--sy-text-eyebrow)}
- .gallery-thumbs a[data-role=structure]{margin-block-start:var(--sy-space-md)}
+ @media(min-width:768px){.gallery-thumbs a[data-role=structure]{margin-block-start:var(--sy-space-md)}}
+ @media(max-width:767px){.gallery-thumbs a[data-role=structure]{margin-inline-start:var(--sy-space-md)}}
  .gallery-actions button{background:transparent;color:var(--sy-color-ink);border-color:var(--sy-color-hairline)}
  .gallery-actions{display:flex;justify-content:space-between;gap:var(--sy-space-xs)}
  .gallery-colours{display:flex;gap:var(--sy-space-xs);flex-wrap:wrap}
