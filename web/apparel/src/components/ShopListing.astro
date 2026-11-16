@@ -4,7 +4,7 @@
  */
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { products, categories } from '../data/catalog';
-import { shopFacts, shopFacets, cardViews, featuredStyles, shopNameKeys } from '../data/shop';
+import { shopFacts, shopFacets, cardViews, featuredStyles, shopNameKeys, colourFamilies, colourFamily, colourHex, type Family } from '../data/shop';
 import { shopCustomMoq, shopReadyMoq } from '../data/owner-facts';
 import { digitalAlt } from '../data/imagery';
 import { dictionaries, pageLocale, productText, type Key } from '../i18n';
@@ -18,14 +18,10 @@ const label = (key: string) => t[`cp-shop/${key}` as Key];
 const categoryKeys:Record<string,Key>={apparel:'cp-shop/figma-0033','cotton430-hoodie':'cp-shop/figma-0034','crew-fleece':'cp-shop/figma-0035','hoodie-set':'cp-shop/figma-0036','zip-ups-jackets':'cp-shop/figma-0037'};
 // Both navigation and checkbox options use the catalog category source and reviewed copy.
 choices.category = Object.keys(categories);
+// Colour facets are customer-facing families, ordered by catalog product count (descending).
+choices.colour = colourFamilies.filter(family => items.some(p => shopFacts(p).colour.includes(family)));
 const categoryLabel=(value:string)=>t[categoryKeys[value] || value as Key];
-const colourPaint = (value:string) => {
- // Representative UI swatches; qualifiers describe views, not a different colour.
- value=value.replace(/\s*\([^)]*\)/g,'').trim();
- const paints:Record<string,string> = {black:'#1a1a1a',cream:'#e6dfcc',brown:'#6b4026',green:'#315840',white:'#ffffff',red:'#a52a2a',charcoal:'#444444',navy:'#26374a',blue:'#476b8a',pink:'#d9a5ad'};
- return paints[value] || (/green|olive|sage/.test(value)?'#647661':/purple|plum/.test(value)?'#756477':/grey|greige/.test(value)?'#98948b':/beige|sand|camel/.test(value)?'#b6a184':'#98948b');
-};
-const colourLabel=(value:string)=>{const keys:Record<string,Key>={black:'cp-shop/figma-0067',cream:'cp-shop/figma-0068',brown:'cp-shop/figma-0069',green:'cp-shop/figma-0070'};return keys[value]?t[keys[value]]:value;};
+const colourLabel=(family:string)=>t[`cp-shop/colour-${family}` as Key];
 ---
 <div class="shop" data-shop data-products={JSON.stringify(items)} data-count-template={label('count')}>
  <div class="shop-title"><p>{t['cp-shop/figma-0022']}</p><h1>{category ? categoryLabel(category) : label('all')}</h1><p>{t['cp-shop/figma-0024']}</p></div>
@@ -34,10 +30,10 @@ const colourLabel=(value:string)=>{const keys:Record<string,Key>={black:'cp-shop
   {Object.keys(categories).map(key => <a href={getRelativeLocaleUrl(locale, `/collections/${key}/`)} aria-current={category === key ? 'page' : undefined}>{categoryLabel(key)}</a>)}
  </nav>
  <div class="shop-layout">
- <dialog class="shop-filter-dialog" data-shop-filter-dialog aria-label={label('filters')}><form method="dialog" class="shop-dialog-heading"><h2>{label('filters')}</h2><button aria-label={t.menuClose}>{t.menuClose}</button></form></dialog><details class="shop-filters" open><summary>{label('filters')}</summary>
+ <dialog class="shop-filter-dialog" data-shop-filter-dialog aria-label={label('filters')}><form method="dialog" class="shop-dialog-heading"><h2>{label('filters')}</h2><button aria-label={t.menuClose}>{t.menuClose}</button></form></dialog><details class="shop-filters" open><h2 class="shop-filters-heading">{label('filters')}</h2><summary>{label('filters')}</summary>
  <div class="shop-facet-list">{shopFacets.map(key => <fieldset><legend>{label(key)}</legend><div class="shop-options">{choices[key].map((v:string) => <label class:list={['shop-option',{'shop-colour-option':key==='colour'}]}>
  <input type="checkbox" data-shop-facet={key} value={v} />
- {key==='colour' && <span class="shop-swatch" style={`--shop-swatch:${colourPaint(v)}`} aria-hidden="true" />}
+ {key==='colour' && <span class="shop-swatch" style={`--shop-swatch:${colourHex[v as Family]}`} aria-hidden="true" />}
  <span class="shop-option-text" data-shop-category-label={key==='category' ? '' : undefined}>{key === 'category' ? categoryLabel(v) : key === 'fleece' ? (v === 'yes' ? label('fleece') : t['cp6.filter-unlined']) : key==='colour' ? colourLabel(v) : key==='fit'&&v==='oversized' ? t['cp-shop/figma-0042'] : key==='fabric'&&v==='cotton' ? t['cp-shop/figma-0044'] : key==='fabric'&&v==='polyester' ? t['cp-shop/figma-0045'].split('/').at(-1)?.trim() : v}</span>
  </label>)}</div></fieldset>)}
  <p>{t['cp-shop/figma-0050']}</p><div class="shop-facet-actions"><button type="button" data-shop-clear>{t['cp6.copy/clear-filters']}</button><button type="button" class="shop-all-styles" data-shop-all-styles>{label('all')}</button></div></div>
@@ -46,13 +42,16 @@ const colourLabel=(value:string)=>{const keys:Record<string,Key>={black:'cp-shop
  <div class="shop-toolbar"><p data-shop-count role="status" aria-live="polite">{label('count').replace('{shown}',String(items.length)).replace('{total}',String(items.length))}</p><div class="shop-toolbar-controls"><button type="button" class="shop-filter-open" data-shop-filter-open hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 10h8M8 15h4" /></svg><span>{label('filters')}</span><span class="shop-filter-count" data-shop-filter-count hidden>0</span></button><label class="shop-sort"><span>{label('sort')}</span><select data-shop-sort aria-label={label('sort')}><option value="featured">{locale==='en'?label('featured'):t['cp-shop/figma-0052']}</option><option value="code">{label('code')}</option></select><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5" /></svg></label></div></div>
  <div class="shop-grid">{items.map(p => {
  const { front, back } = cardViews(p), name = t[shopNameKeys[p.style_codes[0]] as Key] || productText[locale][p.slug].name;
- const colours = p.images.filter(i => i.role === 'front' && i.colour);
+ const families = [...new Set(p.images.filter(i => i.role === 'front' && i.colour).map(i => colourFamily[i.colour!]))].slice(0,4) as Family[];
+ const colourCount = new Set(p.images.filter(i => i.role === 'front' && i.colour).map(i => colourFamily[i.colour!])).size;
+ const colourCategory = new Intl.PluralRules(locale).select(colourCount);
+ const colourCountLabel = t[`cp-shop/colours-${colourCategory}` as Key].replace('{n}', String(colourCount));
  const url = getRelativeLocaleUrl(locale, `/products/${p.slug}/`);
  const quote = `${getRelativeLocaleUrl(locale, '/contact/')}?${new URLSearchParams({ product: p.slug, colour: front.colour || '' })}#rfq-form`;
  return <article class="shop-card card" data-shop-card={p.slug}>
   <div class="shop-photo image-card" data-swapped="false"><a href={url} aria-label={name}><img src={front.src} alt={digitalAlt(front.src,locale) || name} width="600" height="750" loading="lazy" decoding="async" />{back && <img class="shop-back" data-role="back" src={back.src} alt={digitalAlt(back.src,locale) || name} width="600" height="750" loading="lazy" decoding="async" />}</a>{back && <div class="shop-view-toggle-slot" data-shop-view-toggle-slot />}</div>
-  <p><bdi>{p.style_codes.join(' / ')}</bdi></p><h2><a href={url}>{name}</a></h2>
-  <p class="shop-colours" aria-label={p.colourway_note}>{colours.slice(0,4).map(i => <img src={i.src} alt={digitalAlt(i.src,locale) || i.colour} width="16" height="16" loading="lazy" />)}<span>({colours.length})</span></p>
+  <h2><a href={url}>{name}</a></h2><p class="shop-style">{t.pdpStyle} <bdi>{p.style_codes.join(' / ')}</bdi></p>
+  <p class="shop-colours">{families.map(family => <span class="shop-dot" style={`--shop-swatch:${colourHex[family]}`} aria-hidden="true" />)}<span>{colourCountLabel}</span></p>
   <p class="shop-moq">{shopReadyMoq(locale)}</p><a class="shop-quote" href={quote}>{t.request}</a>
  </article>;
  })}</div>
@@ -125,6 +124,8 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 .shop-layout{display:grid;grid-template-columns:calc(9 * var(--sy-space-grid-x)) minmax(0,1fr);gap:var(--sy-space-xl)}
 .shop-filter-open{display:none!important}.shop-filter-dialog{width:min(100%,var(--sy-layout-mobile));max-width:100%;max-height:90dvh;padding:var(--sy-space-lg);border:var(--sy-space-hair) solid var(--sy-color-border);border-radius:var(--sy-radius-card);background:var(--sy-color-canvas);color:var(--sy-color-ink)}.shop-filter-dialog::backdrop{background:var(--sy-color-overlay)}.shop-filter-dialog .shop-filters{display:block}.shop-filter-dialog .shop-filters>summary{display:none}.shop-filters{align-self:start;border:0;padding:0}
 .shop-filters summary{min-height:var(--control-size-md);cursor:pointer}
+.shop-filters-heading{display:none}
+@media(min-width:768px){.shop-layout>.shop-filters>.shop-filters-heading{display:block;font-family:var(--sy-font-body);font-size:var(--sy-text-small);font-weight:var(--sy-weight-body);margin:0 0 var(--sy-space-xs)}.shop-layout>.shop-filters>summary{display:none}}
 .shop-facet-list{display:grid;gap:var(--sy-space-lg)}
 .shop-facet-list fieldset{min-width:0;margin:0;padding:0;border:0}
 .shop-facet-list legend{padding:0;margin-block-end:var(--sy-space-xs);font-size:var(--sy-text-small)}
@@ -171,7 +172,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 .shop-card>h2,.shop-card>p{padding-inline:var(--sy-space-xs)}
 .shop-card p{margin-block:var(--sy-space-xs);font-size:var(--sy-text-small)}
 .shop-colours{display:flex;align-items:center;gap:var(--sy-space-xs)}
-.shop-colours img{width:var(--sy-space-md);height:var(--sy-space-md);border-radius:var(--sy-radius-pill);object-fit:cover}
+.shop-dot{flex:none;width:var(--sy-space-md);height:var(--sy-space-md);border-radius:var(--sy-radius-pill);background:var(--shop-swatch)}
 .shop-quote{font-size:var(--sy-text-small);margin-block-start:auto;display:inline-flex;align-items:center;min-height:var(--control-size-md);text-underline-offset:var(--sy-space-xs);border-radius:var(--sy-radius-pill);padding-inline:var(--sy-space-md)}
 [data-shop-more]{display:flex;margin:var(--sy-space-xl) auto}
 [data-shop-more][hidden]{display:none}
