@@ -28,7 +28,7 @@ header nav { display: flex; flex-wrap: wrap; gap: var(--sy-space-grid-x); margin
 header nav a { text-decoration: none; }
 .button, button { display: inline-flex; align-items: center; justify-content: center; gap: var(--sy-space-xs); min-height: 46px; padding: .75rem var(--sy-space-grid-x); border: var(--sy-space-hair) solid var(--sy-color-accent); border-radius: var(--sy-radius-control); background: var(--sy-color-accent); color: var(--sy-color-on-accent); text-decoration: none; cursor: pointer; font-weight: var(--sy-weight-label); }
 .button:hover, button:hover { background: var(--sy-color-accent-hover); color: var(--sy-color-on-accent); }
-.secondary { background: var(--sy-color-accent); color: var(--sy-color-on-accent); border-color: var(--sy-color-accent); }
+.secondary, .secondary:hover, .secondary:focus-visible, .secondary:active { background: transparent; color: var(--sy-color-ink); border-color: var(--sy-color-ink); }
 button:disabled { opacity: .6; cursor: wait; }
 .actions { display: flex; flex-wrap: wrap; gap: var(--sy-space-grid-x); margin-block: var(--sy-space-grid-x); }
 .lead { font-size: var(--sy-text-lead); max-width: 52ch; }
@@ -92,7 +92,7 @@ picture img { width: 100%; }
 .gallery img { width: 100%; }
 .gallery > picture > img { aspect-ratio: 4 / 5; object-fit: cover; }
 .gallery-thumbs { display: flex; gap: .75rem; overflow-x: auto; padding: .5rem; margin-block-start: .75rem; }
-.gallery-thumbs a { flex: 0 0 64px; }
+.gallery-thumbs a { flex: 0 0 64px; border-radius: var(--sy-radius-image); }
 .gallery-thumbs [aria-current] { outline: 2px solid var(--sy-color-accent); outline-offset: 2px; }
 .gallery-thumbs img { aspect-ratio: 4 / 5; object-fit: cover; }
 table { width: 100%; border-collapse: collapse; margin-block: var(--sy-space-grid-y); }
@@ -192,3 +192,6 @@ footer { padding-block-end: var(--sy-space-section-sm); }
   --sy-text-tile: var(--sy-text-tile-mobile);
  }
 }
+
+/* Bounded information surfaces share the card token; full-bleed page sections retain their own geometry. */
+.moq-line, .home-promo, .collection-promo, .capability-panel, .brief-panel, .capabilities-strip, .recovery-card, .form-status, .pdp-detail-card { border-radius: var(--sy-radius-card); }

@@ -1,0 +1,77 @@
+/** SOFT-ROLL component contract against served pages, run by apparel CI.
+ * Uses real templates and computed styles; full-bleed hero images are outside these component classes. */
+import { test, expect } from '@playwright/test';
+
+const classes = {
+ button: '.button, button',
+ card: '.card, .tile, .home-card-grid a, .home-model, .home-form, .rfq, .cookie-banner, .success-card, .recovery-card, .pdp-detail-card',
+ 'image-card': '.image-card, .gallery > picture, .wholesale-photo',
+ thumb: '.gallery-thumbs a, .gallery-colours button',
+ 'info-box': '.info-box, .moq-line, .home-promo, .collection-promo, .capability-panel, .brief-panel, .capabilities-strip, .form-status',
+ input: 'input:not([type=hidden]), textarea',
+ tab: '[role=tab], .tab, .category-links a',
+ chip: '.chip, .facet, .home-badge',
+};
+const routes = ['/', '/collections/', '/collections/hoodie-set/', '/products/hoodie-set-k02/', '/oem-odm/', '/about-us/', '/about/', '/contact/', '/privacy/', '/404.html', '/zh/', '/ar/about-us/'];
+
+for (const width of [1440, 768, 390]) test(`soft component radii and secondary hierarchy ${width}`, async ({ page }, testInfo) => {
+ test.setTimeout(120000);
+ await page.setViewportSize({ width, height: 900 });
+ const totals = Object.fromEntries(Object.keys(classes).map(key => [key, 0]));
+ const evidence: unknown[] = [];
+ for (const route of routes) {
+  await page.goto(route);
+  await page.evaluate(() => document.fonts.ready);
+  const banner = page.locator('[data-cookie-banner]');
+  if (await banner.isVisible()) await page.locator('[data-cookie-choice=essential]').click();
+  const result = await page.evaluate(selectors => {
+   const corners = ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius'] as const;
+   const counts: Record<string, number> = {}, failures: unknown[] = [];
+   for (const [role, selector] of Object.entries(selectors)) {
+    const nodes = [...document.querySelectorAll(selector)];
+    counts[role] = nodes.length;
+    for (const node of nodes) {
+     const s = getComputedStyle(node), radii = corners.map(k => s[k]);
+     if (radii.some(r => !(parseFloat(r) > 0))) failures.push({ role, element: node.tagName + '.' + node.className, radii });
+    }
+   }
+   for (const node of document.querySelectorAll('.secondary')) {
+    const s = getComputedStyle(node);
+    if (s.backgroundColor !== 'rgba(0, 0, 0, 0)' || s.backgroundImage !== 'none') failures.push({ role: 'secondary', text: node.textContent?.trim(), background: s.backgroundColor, image: s.backgroundImage });
+   }
+   return { counts, failures };
+  }, classes);
+  evidence.push({ route, ...result });
+  for (const [role, count] of Object.entries(result.counts)) totals[role] += count;
+  expect.soft(result.failures, `${route}: component corners and transparent secondary fills`).toEqual([]);
+  for (const secondary of await page.locator('.secondary').all()) {
+   if (!await secondary.isVisible()) continue;
+   await secondary.hover();
+   await expect.soft(secondary, `${route}: secondary hover stays transparent`).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+   await secondary.focus();
+   await expect.soft(secondary, `${route}: secondary focus stays transparent`).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  }
+  if (route === '/') {
+   const photo = page.locator('.wholesale-photo'), grid = page.locator('.home-category-grid');
+   const box = (await photo.boundingBox())!, alignment = (await grid.boundingBox())!;
+   expect.soft(box.x, 'wholesale photo follows the content grid').toBeCloseTo(alignment.x, 0);
+   expect.soft(box.x).toBeGreaterThan(0);
+   for (const property of ['border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius']) {
+    await expect.soft(photo).toHaveCSS(property, '20px');
+    await expect.soft(photo.locator('img')).toHaveCSS(property, '20px');
+   }
+  }
+  if (route.includes('/products/')) {
+   const thumb = page.locator('.gallery-thumbs:not([hidden]) a').first();
+   await thumb.click();
+   await expect(thumb).toHaveAttribute('aria-current', 'true');
+   await expect.soft(thumb).toHaveCSS('outline-style', 'solid');
+   for (const property of ['border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius']) {
+    await expect.soft(thumb).toHaveCSS(property, '16px');
+    await expect.soft(page.locator('.moq-line')).toHaveCSS(property, '20px');
+   }
+  }
+ }
+ for (const [role, count] of Object.entries(totals)) expect(count, `${role} has real template coverage`).toBeGreaterThan(0);
+ await testInfo.attach(`component-styles-${width}`, { body: JSON.stringify({ totals, pages: evidence }, null, 2), contentType: 'application/json' });
+});

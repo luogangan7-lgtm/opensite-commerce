@@ -81,7 +81,8 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
  .hero-sub{font-size:var(--sy-text-lead);margin:0 0 var(--sy-space-lg);}
 
  .secondary,.hero-playback{background:transparent;color:inherit;border:var(--sy-space-hair) solid currentColor;border-radius:var(--sy-radius-control);gap:var(--sy-space-md);font-size:var(--sy-text-small);font-weight:var(--sy-weight-label);}
- .secondary:hover,.hero-playback:hover{background:var(--sy-color-ink);}
+ .secondary:hover,.secondary:focus-visible,.secondary:active{background:transparent;color:inherit;border-color:currentColor;}
+ .hero-playback:hover{background:var(--sy-color-ink);}
  .hero-dots{position:absolute;inset-inline-end:var(--sy-space-md);top:calc(50% - var(--home-control) * 1.5);display:grid;}
  .hero-dots button{min-height:var(--home-control);width:var(--home-control);padding:0;background:transparent;color:inherit;border:var(--sy-space-0);border-radius:var(--sy-radius-pill);}
  .hero-dots span{font-size:var(--sy-text-h4);}
