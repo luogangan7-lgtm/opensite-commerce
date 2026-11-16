@@ -12,6 +12,8 @@ const { kind } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 const c = (n: number) => t[`cp-svc/copy/${n}` as Key];
 const cap = (n: number) => t[`cp-svc/capabilities/${n}` as Key];
+// Balance can still leave one final word; keep the ampersand pair together without changing dictionary copy (#650).
+const capHeading = (n: number) => cap(n).replace(/& /g, '&\u00a0');
 const oem = kind === 'oem-odm', sample = kind === 'sampling';
 const title = c(oem ? 815 : sample ? 852 : 870);
 const href = getRelativeLocaleUrl(locale, '/contact/') + (sample ? '?type=sample' : '') + '#rfq-form';
@@ -25,12 +27,12 @@ const photographs = ['catalog-hoodie', 'catalog-green', 'catalog-crew'];
 <section class="intro"><div class="svc-wrap"><p class="eyebrow">{c(oem ? 814 : sample ? 851 : 869)}</p><h1>{title}</h1><p class="lead">{c(oem ? 816 : sample ? 853 : 871)}</p>{oem && <a class="button" href={href}>{t.shellRequest} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a>}</div></section>
 {oem ? <>
 <section><div class="svc-wrap"><p class="eyebrow">{c(817)}</p><h2>{c(818)}</h2><div class="three">{[819,822,825].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{c(n+2)}</p></article>)}</div></div></section>
-<section><div class="svc-wrap matrix"><div class="capability-panel"><p class="eyebrow">{cap(950)}</p><h2>{cap(951)}</h2>{groups.map(n => <article data-capability-group={n}><h3>{cap(n)}</h3><p class="lines">{cap(n+1)}</p></article>)}</div><div class="brief-panel inverse"><p class="eyebrow">{cap(960)}</p><h2>{cap(961)}</h2>{[962,964,966,968].map(n => <article><h3>{cap(n)}</h3><p>{cap(n+1)}</p></article>)}</div></div></section>
+<section><div class="svc-wrap matrix"><div class="capability-panel"><p class="eyebrow">{cap(950)}</p><h2>{cap(951)}</h2>{groups.map(n => <article data-capability-group={n}><h3>{capHeading(n)}</h3><p class="lines">{cap(n+1)}</p></article>)}</div><div class="brief-panel inverse"><p class="eyebrow">{cap(960)}</p><h2>{cap(961)}</h2>{[962,964,966,968].map(n => <article><h3>{capHeading(n)}</h3><p>{cap(n+1)}</p></article>)}</div></div></section>
 <section class="inverse"><div class="svc-wrap"><p class="eyebrow">{c(832)}</p><h2>{c(833)}</h2><div class="three workflow">{[834,837,840].map((n,i) => <article><ServiceMedia id={photographs[i]} alt="" /><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{c(n+2)}</p></article>)}</div></div></section>
 <section><div class="svc-wrap split assurance"><ServiceMedia id="catalog-green" alt="" /><div><h3>{c(843)}</h3><p>{c(844)}</p><p>{c(845)}</p></div></div></section>
 <section><div class="svc-wrap"><p class="eyebrow">{cap(970)}</p><h2>{cap(971)}</h2><p>{cap(972)}</p><div class="techniques" data-techniques>{media.filter(image => image.kind === 'technique').map(image => <figure data-technique={image.id}><ServiceMedia id={image.id} alt={t[image.altKey as Key]} /><h3 class="technique-label" data-technique-label>{t[image.altKey as Key]}</h3><p class="technique-description" data-technique-description>{cap(Number(image.altKey.split('/').pop()) + 1)}</p></figure>)}</div></div></section>
 </> : <>
-{sample && <section class="capabilities-strip"><div class="svc-wrap"><p class="eyebrow">{cap(1005)}</p><h3>{cap(1006)}</h3><div class="four">{groups.map((n,i) => <article data-capability-group={n}><h3>{cap(i===3 ? 1010 : n)}</h3><p>{cap(i===3 ? 1011 : 1007+i)}</p></article>)}</div></div></section>}
+{sample && <section class="capabilities-strip"><div class="svc-wrap"><p class="eyebrow">{cap(1005)}</p><h3>{cap(1006)}</h3><div class="four">{groups.map((n,i) => <article data-capability-group={n}><h3>{capHeading(i===3 ? 1010 : n)}</h3><p>{cap(i===3 ? 1011 : 1007+i)}</p></article>)}</div></div></section>}
 {phases.map(([kicker,number,heading,body], i) => <section class:list={{inverse:i===1,phase:true}}><div class="svc-wrap"><p class="eyebrow phase-kicker">{c(kicker)}</p><div class:list={{split:true,reverse:i===1}}><div class="phase-copy"><p class="step-number">{c(number)}</p><h2>{c(heading)}</h2><p class="lead">{c(body)}</p></div><ServiceMedia id={photographs[i]} alt="" /></div></div></section>)}
 {sample ? <section><div class="svc-wrap"><p class="eyebrow">{c(865)}</p><h2>{c(866)}</h2><p class="lead">{c(867)}</p></div></section> : <section><div class="svc-wrap"><p class="eyebrow">{c(881)}</p><h2>{c(882)}</h2><div class="three">{[883,886,889].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{n===889 ? <a href="mailto:sales@sourcyowear.com"><bdi>{c(n+2)}</bdi></a> : c(n+2)}</p></article>)}</div></div></section>}
 </>}

@@ -13,11 +13,13 @@ input::placeholder, textarea::placeholder { color: var(--sy-color-muted); opacit
 body { overflow-wrap: break-word; }
 [hidden] { display: none !important; }
 img { border-radius: var(--sy-radius-image); display: block; max-width: 100%; height: auto; background: var(--sy-color-placeholder); }
-h1, h2, h3 { font-family: var(--sy-font-heading); font-weight: var(--sy-weight-heading); line-height: 1.15; text-wrap: balance; overflow-wrap: anywhere; }
+h1, h2, h3 { font-family: var(--sy-font-heading); font-weight: var(--sy-weight-heading); line-height: 1.15; overflow-wrap: anywhere; }
+h1, h2, h3, h4 { text-wrap: balance; }
 h1 { font-size: var(--sy-text-h1); margin-block: var(--sy-space-grid-x); }
 h2 { font-size: var(--sy-text-h2); margin-block: 0 var(--sy-space-grid-x); }
 h3 { font-weight: var(--sy-weight-title); font-size: var(--sy-text-h4); }
 p { max-width: 70ch; }
+p, .lead { text-wrap: pretty; }
 .wrap { width: min(100% - 2 * var(--sy-space-gutter-lg), var(--sy-layout-max)); margin-inline: auto; }
 section { padding-block: var(--sy-space-section); border-block-end: var(--sy-space-hair) solid var(--sy-color-hairline); }
 header { border-block-end: var(--sy-space-hair) solid var(--sy-color-hairline); background: var(--sy-color-canvas); position: relative; z-index: 2; }
