@@ -50,9 +50,9 @@ const colourLabel=(family:string)=>t[`cp-shop/colour-${family}` as Key];
  const quote = `${getRelativeLocaleUrl(locale, '/contact/')}?${new URLSearchParams({ product: p.slug, colour: front.colour || '' })}#rfq-form`;
  return <article class="shop-card card" data-shop-card={p.slug}>
   <div class="shop-photo image-card" data-swapped="false"><a href={url} aria-label={name}><img src={front.src} alt={digitalAlt(front.src,locale) || name} width="600" height="750" loading="lazy" decoding="async" />{back && <img class="shop-back" data-role="back" src={back.src} alt={digitalAlt(back.src,locale) || name} width="600" height="750" loading="lazy" decoding="async" />}</a>{back && <div class="shop-view-toggle-slot" data-shop-view-toggle-slot />}</div>
-  <h2><a href={url}>{name}</a></h2><p class="shop-style">{t.pdpStyle} <bdi>{p.style_codes.join(' / ')}</bdi></p>
+  <div class="shop-card-body"><h2><a href={url}>{name}</a></h2><p class="shop-style">{t.pdpStyle} <bdi>{p.style_codes.join(' / ')}</bdi></p>
   <p class="shop-colours">{families.map(family => <span class="shop-dot" style={`--shop-swatch:${colourHex[family]}`} aria-hidden="true" />)}<span>{colourCountLabel}</span></p>
-  <p class="shop-moq">{shopReadyMoq(locale)}</p><a class="shop-quote" href={quote}>{t.request}</a>
+  <p class="shop-moq">{shopReadyMoq(locale)}</p><a class="shop-quote" href={quote}>{t.request}</a></div>
  </article>;
  })}</div>
  <div data-shop-empty hidden><h2>{t['cp6.copy/no-styles-match-these-filters']}</h2><p>{t['cp6.copy/try-removing-a-filter-or-request-a-style-tha']}</p></div>
@@ -139,7 +139,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 .shop-option-text{flex:1;min-width:0;overflow-wrap:anywhere}
 .shop-colour-option{position:relative}
 .shop-colour-option input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
-.shop-swatch{flex:none;width:calc(var(--sy-space-sm) + var(--sy-space-xs));height:calc(var(--sy-space-sm) + var(--sy-space-xs));border-radius:var(--sy-radius-pill);background:var(--shop-swatch)}
+.shop-swatch{flex:none;width:calc(var(--sy-space-sm) + var(--sy-space-xs));height:calc(var(--sy-space-sm) + var(--sy-space-xs));border-radius:var(--sy-radius-pill);background:var(--shop-swatch);box-shadow:inset 0 0 0 var(--sy-space-hair) var(--sy-color-border)}
 .shop-colour-option:has(:checked) .shop-swatch{outline:calc(2 * var(--sy-space-hair)) solid var(--sy-color-ink);outline-offset:0}
 .shop button{border-width:var(--sy-space-hair);border-radius:var(--sy-radius-control);background:var(--sy-color-surface);border-color:var(--sy-color-border);color:var(--sy-color-ink);padding:var(--sy-space-sm) var(--sy-space-md);min-height:var(--control-size-md);font-weight:var(--sy-weight-body)}
 .shop button:hover{background:var(--sy-color-placeholder)}
@@ -149,6 +149,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 .shop-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--sy-space-sm);margin-block-end:var(--sy-space-xl);background:var(--sy-color-canvas)}
 .shop-toolbar>p{margin:0;font-size:var(--sy-text-small);flex:1;min-width:0}
 .shop-toolbar-controls{display:flex;align-items:center;gap:var(--sy-space-xs)}
+.shop-filter-open>span,.shop-sort>span{white-space:nowrap}
 .shop-toolbar svg{flex:none;width:var(--sy-space-md);height:var(--sy-space-md);fill:none;stroke:currentColor;stroke-width:1.5}
 .shop-sort{width:calc(6 * var(--sy-space-xl) + 2 * var(--sy-space-lg));display:flex;align-items:center;justify-content:center;gap:var(--sy-space-xs);min-height:var(--control-size-md);padding-inline:var(--sy-space-sm);border:var(--sy-space-hair) solid var(--sy-color-border);border-radius:var(--sy-radius-input);background:var(--sy-color-surface);font-size:var(--sy-text-small)}
 .shop-sort select{appearance:none;width:auto;min-width:0;max-width:100%;border:0;padding:0;background:transparent;color:inherit;font:inherit;cursor:pointer}
@@ -169,10 +170,11 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 .shop-view-toggle-slot{position:absolute;inset-block-start:var(--sy-space-xs);inset-inline-end:var(--sy-space-xs);width:var(--control-size-md);height:var(--control-size-md)}
 .shop-card h2{font-family:var(--sy-font-body);font-size:var(--sy-text-small);font-weight:var(--sy-weight-body);margin:0}
 .shop-card h2 a{text-decoration:none}
-.shop-card>h2,.shop-card>p{padding-inline:var(--sy-space-xs)}
+.shop-card-body{display:flex;flex-direction:column;flex:1;min-height:0;padding-block-start:var(--sy-space-sm)}
+.shop-card-body h2,.shop-card-body p{padding-inline:var(--sy-space-xs)}
 .shop-card p{margin-block:var(--sy-space-xs);font-size:var(--sy-text-small)}
 .shop-colours{display:flex;align-items:center;gap:var(--sy-space-xs)}
-.shop-dot{flex:none;width:var(--sy-space-md);height:var(--sy-space-md);border-radius:var(--sy-radius-pill);background:var(--shop-swatch)}
+.shop-dot{flex:none;width:var(--sy-space-md);height:var(--sy-space-md);border-radius:var(--sy-radius-pill);background:var(--shop-swatch);box-shadow:inset 0 0 0 var(--sy-space-hair) var(--sy-color-border)}
 .shop-quote{font-size:var(--sy-text-small);margin-block-start:auto;display:inline-flex;align-items:center;min-height:var(--control-size-md);text-underline-offset:var(--sy-space-xs);border-radius:var(--sy-radius-pill);padding-inline:var(--sy-space-md)}
 [data-shop-more]{display:flex;margin:var(--sy-space-xl) auto}
 [data-shop-more][hidden]{display:none}
