@@ -20,3 +20,14 @@ for (const [route, body, heading, weight] of [
  });
  expect(actual).toEqual({body,heading,weight,loaded:[true,true]});
 });
+
+// FIX-E37: AR button labels follow the native shared 120% style.
+for (const route of ['/ar/', '/ar/collections/']) test(`Arabic button leading ${route}`, async ({page}) => {
+ await page.goto(route);
+ const ratios = await page.locator('.button').evaluateAll(nodes => nodes.map(node => {
+  const style = getComputedStyle(node);
+  return parseFloat(style.lineHeight) / parseFloat(style.fontSize);
+ }));
+ expect(ratios.length).toBeGreaterThan(0);
+ for (const ratio of ratios) expect(ratio).toBeCloseTo(1.2, 4);
+});
