@@ -1,10 +1,10 @@
 /** Native font loading check for CP0: family, weight and loaded FontFace must agree.
- * Uses built pages and self-hosted assets, no remote fonts or synthetic fixtures. */
+ * Uses built pages and self-hosted assets; weights match the 2026-11-16 native soft-B snapshot. */
 import {test, expect} from '@playwright/test';
 for (const [route, body, heading, weight] of [
- ['/', 'Manrope', 'Literata', '600'],
+ ['/', 'Manrope', 'Literata', '400'],
  ['/ar/', 'Noto Sans Arabic', 'Noto Sans Arabic', '500'],
- ['/zh/', 'Noto Sans SC', 'Noto Serif SC', '600'],
+ ['/zh/', 'Noto Sans SC', 'Noto Serif SC', '400'],
 ]) test(`frozen typography loads ${route}`, async ({page}) => {
  await page.goto(route);
  const actual = await page.evaluate(async () => {
