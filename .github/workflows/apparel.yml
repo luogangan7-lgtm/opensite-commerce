@@ -53,6 +53,8 @@ jobs:
         with:
           bun-version: '1.3.12'
       - run: bun install --frozen-lockfile
+      - name: Committed media SHA allow-list gate
+        run: bun test web/apparel/tests/committed-media.test.ts
       - name: tokens:check
         run: bun packages/design-tokens/generate.ts --check
       - name: RFQ validation and private PostgREST contract
