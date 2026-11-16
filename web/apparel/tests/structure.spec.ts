@@ -4,7 +4,13 @@ for (const slug of ['crew-fleece-8900-31','apparel-59043','pullover-hoodie-69008
  await page.goto(`/zh/products/${slug}/`);
  const link=page.locator('.gallery-thumbs:not([hidden]) a[data-role="structure"]');
  await expect(link).toHaveCount(1);
- await link.click();
+ if (page.viewportSize()!.width < 768) {
+  const detailsTab=page.locator('[data-gallery-view="details"]').first();
+  await expect(detailsTab).toBeVisible();
+  await detailsTab.click();
+ } else {
+  await link.click();
+ }
  const main=page.locator('[data-gallery-main]');
  await expect(main).toHaveAttribute('src',`/img/${slug}/structure.webp`);
  await expect(main).toHaveCSS('object-fit','contain');
