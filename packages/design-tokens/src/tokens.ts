@@ -64,6 +64,7 @@ export const tokens = {
   "layout-prose": "60rem",
   "layout-sidebar": "18rem",
   "line-height-body": "1.5",
+  "line-height-button": "1.6",
   "line-height-heading": "1.2",
   "radius-full": "9999rem",
   "radius-lg": "0.75rem",
