@@ -1,5 +1,7 @@
 /** CP-ABOUT production-build journey; independent locale/fact expectations and real image geometry. */
 import { test, expect } from '@playwright/test';
+import { createHash } from 'node:crypto';
+import media from '../about-media.json' with { type: 'json' };
 
 for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) {
   const prefix = locale === 'en' ? '' : `/${locale}`;
@@ -36,7 +38,6 @@ for (const width of [1440,768,390]) {
     await expect(image).toHaveCSS('object-fit', 'cover');
     // Top-aligned cover preserves source row 0 at every breakpoint; the SHA-bound
     // approved portrait includes the headroom verified in the Figma before/after.
-    expect(await image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
     const edges = await page.locator('.about-intro-row').evaluate(row => {
       const title = row.querySelector('h2')!.getBoundingClientRect();
       const link = row.querySelector('a')!.getBoundingClientRect();
@@ -44,6 +45,29 @@ for (const width of [1440,768,390]) {
     });
     expect(Math.abs(edges.title - edges.link)).toBeLessThanOrEqual(1);
     expect(edges.overflow).toBeLessThanOrEqual(1);
+  });
+  // Like imagery.spec.ts, actual image bytes require a packaged artifact, never the raw CI build.
+  test(`packaged About portrait decodes and retains SHA-bound headroom at ${width}`, async ({ page, request }) => {
+    test.skip(!process.env.APPAREL_PREVIEW_URL && process.env.APPAREL_PACKAGED_DIST !== '1', 'Requires packaged preview or local CI-artifact packaging acceptance');
+    const response = await request.get('/deploy-manifest.json');
+    expect(response.status()).toBe(200);
+    const manifest = await response.json();
+    expect(manifest.sha).toBe(process.env.APPAREL_PACKAGED_SHA || process.env.GITHUB_SHA);
+    const portrait = media.find(image => image.id === 'collections')!;
+    expect(manifest.aboutMedia.find((image: {id:string}) => image.id === portrait.id).sha256).toBe(portrait.sha256);
+    await page.setViewportSize({width,height:1000});
+    await page.goto('/about-us/');
+    const image = page.locator('[data-about-intro-image] img');
+    await image.scrollIntoViewIfNeeded();
+    await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+    await expect(image).toHaveCSS('object-position', '50% 0%');
+    await expect(image).toHaveCSS('object-fit', 'cover');
+    const src = await image.evaluate((img: HTMLImageElement) => new URL(img.currentSrc).pathname);
+    const delivered = manifest.files.find((file: {url:string}) => file.url === src);
+    expect(delivered.sourceSha256).toBe(portrait.sha256);
+    const bytes = await request.get(src);
+    expect(bytes.status()).toBe(200);
+    expect(createHash('sha256').update(await bytes.body()).digest('hex')).toBe(delivered.sha256);
   });
 }
 

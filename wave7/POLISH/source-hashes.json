@@ -23,5 +23,5 @@
   "web/apparel/service-media.json": "10e74e3768a9a3982fc8e9bdb0a8db53b1827abefbe3a810a5204a7398d7ea15",
   "web/apparel/src/components/ServiceMedia.astro": "74d88d77c501719c1622e0a52c9c52dbae81c0bf1d5d911366b7d4202f6faf4e",
   "web/apparel/src/views/AboutUs.astro": "1bc94f0145cac69029d227bdd6ee8d6cbdb470db7875609f2082fdf39e7e9f2b",
-  "web/apparel/tests/about-us.test.ts": "f963862d255c8422ac7ff685fce0522d5ad9350d63db0910b64f9c44d79cd984"
+  "web/apparel/tests/about-us.test.ts": "3874d30c4334a81e00f868f875fc7eb9c5f0ec24212c156b6bbc561041091534"
 }

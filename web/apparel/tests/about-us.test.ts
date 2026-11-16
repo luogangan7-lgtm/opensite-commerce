@@ -5,6 +5,20 @@ import { cluster, sitemap } from '../seo/contract';
 import { publishedPaths } from '../seo/published';
 import { dictionaries, locales } from '../src/i18n';
 import { aboutWays, aboutMoqCopy } from '../src/data/owner-facts';
+import { digitalDelivery } from '../image-plan';
+import media from '../about-media.json';
+
+test('About media are seven SHA-bound masters with only packaged 1024/640 delivery paths', () => {
+  expect(media).toHaveLength(7);
+  expect(new Set(media.map(image => image.src)).size).toBe(7);
+  for (const image of media) {
+    expect(image.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(image.source.startsWith('/') || image.source.split('/').includes('..')).toBe(false);
+    expect(image.src).toStartWith('/img/about/');
+    expect(digitalDelivery(image).map(file => file.width)).toEqual([1024, 640]);
+    expect(digitalDelivery(image).every(file => file.sourceSha256 === image.sha256)).toBe(true);
+  }
+});
 
 test('approved brand story has eight reciprocal SEO routes and sitemap entries', () => {
   expect(publishedPaths).toContain('/about-us/');
