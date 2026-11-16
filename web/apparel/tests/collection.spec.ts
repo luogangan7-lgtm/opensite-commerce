@@ -69,6 +69,8 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280,1440]) {
    expect(await page.evaluate(()=>(window as any).shopCLS)).toBeLessThanOrEqual(.05);
   }
   await page.locator(`.shop-tabs a[href="${prefix}/collections/zip-ups-jackets/"]`).click();
+  // A tab is a full navigation; wait for the new document's styles before measuring geometry.
+  await page.waitForLoadState('load');
   for(const target of await page.locator('.shop-tabs a, .shop-quote').evaluateAll(els=>els.slice(0,12).map(e=>{const r=e.getBoundingClientRect();return {h:r.height,w:r.width};})))expect(target.h).toBeGreaterThanOrEqual(43.5);
   const tab=await page.locator('.shop-tabs [aria-current]').boundingBox(),rail=await page.locator('.shop-tabs').boundingBox();
   expect(tab!.x).toBeGreaterThanOrEqual(rail!.x);expect(tab!.x+tab!.width).toBeLessThanOrEqual(rail!.x+rail!.width+1);
