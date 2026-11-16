@@ -29,6 +29,7 @@ header nav { display: flex; flex-wrap: wrap; gap: var(--sy-space-grid-x); margin
 .header-inner > nav { flex: 1; justify-content: center; }
 header nav a { text-decoration: none; }
 .button, button { display: inline-flex; align-items: center; justify-content: center; gap: var(--sy-space-xs); min-height: 46px; padding: .75rem var(--sy-space-grid-x); border: var(--sy-space-hair) solid var(--sy-color-accent); border-radius: var(--sy-radius-control); background: var(--sy-color-accent); color: var(--sy-color-on-accent); text-decoration: none; cursor: pointer; font-weight: var(--sy-weight-label); }
+:root:lang(ar) .button, :root:lang(ar) button { line-height: var(--line-height-button); }
 .button:hover, button:hover { background: var(--sy-color-accent-hover); color: var(--sy-color-on-accent); }
 .secondary, .secondary:hover, .secondary:focus-visible, .secondary:active { background: transparent; color: var(--sy-color-ink); border-color: var(--sy-color-ink); }
 button:disabled { opacity: .6; cursor: wait; }
