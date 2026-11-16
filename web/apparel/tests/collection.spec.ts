@@ -102,6 +102,10 @@ for(const locale of ['en','ar','zh']) for(const width of [390,1440]) {
   await another.check();
   await expect(black).toBeChecked();await expect(another).toBeChecked();
   const selected=new URL(page.url()).searchParams.getAll('colour');expect(selected).toHaveLength(2);
+  const allStyles=page.locator('[data-shop-all-styles]');
+  await expect(allStyles).toBeVisible();
+  const allGeom=await allStyles.evaluate(el=>{const s=getComputedStyle(el),r=el.getBoundingClientRect();return {h:r.height,radius:parseFloat(s.borderRadius),bg:s.backgroundColor};});
+  expect(allGeom.h).toBeGreaterThanOrEqual(44);expect(allGeom.radius).toBeGreaterThanOrEqual(999);expect(allGeom.bg).not.toBe('rgba(0, 0, 0, 0)');
   if(width===390) await page.locator('[data-shop-filter-dialog] form button').click();
   await expect(page.locator('[data-shop-filter-count]')).toHaveText('2');
   await page.reload();

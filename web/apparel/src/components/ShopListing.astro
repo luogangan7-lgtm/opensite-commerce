@@ -40,7 +40,7 @@ const colourLabel=(value:string)=>{const keys:Record<string,Key>={black:'cp-shop
  {key==='colour' && <span class="shop-swatch" style={`--shop-swatch:${colourPaint(v)}`} aria-hidden="true" />}
  <span class="shop-option-text" data-shop-category-label={key==='category' ? '' : undefined}>{key === 'category' ? categoryLabel(v) : key === 'fleece' ? (v === 'yes' ? label('fleece') : t['cp6.filter-unlined']) : key==='colour' ? colourLabel(v) : key==='fit'&&v==='oversized' ? t['cp-shop/figma-0042'] : key==='fabric'&&v==='cotton' ? t['cp-shop/figma-0044'] : key==='fabric'&&v==='polyester' ? t['cp-shop/figma-0045'].split('/').at(-1)?.trim() : v}</span>
  </label>)}</div></fieldset>)}
- <p>{t['cp-shop/figma-0050']}</p><button type="button" data-shop-clear>{t['cp6.copy/clear-filters']}</button></div>
+ <p>{t['cp-shop/figma-0050']}</p><div class="shop-facet-actions"><button type="button" data-shop-clear>{t['cp6.copy/clear-filters']}</button><button type="button" class="shop-all-styles" data-shop-all-styles>{label('all')}</button></div></div>
  </details>
  <div class="shop-results">
  <div class="shop-toolbar"><p data-shop-count role="status" aria-live="polite">{label('count').replace('{shown}',String(items.length)).replace('{total}',String(items.length))}</p><div class="shop-toolbar-controls"><button type="button" class="shop-filter-open" data-shop-filter-open hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 10h8M8 15h4" /></svg><span>{label('filters')}</span><span class="shop-filter-count" data-shop-filter-count hidden>0</span></button><label class="shop-sort"><span>{label('sort')}</span><select data-shop-sort aria-label={label('sort')}><option value="featured">{locale==='en'?label('featured'):t['cp-shop/figma-0052']}</option><option value="code">{label('code')}</option></select><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5" /></svg></label></div></div>
@@ -104,6 +104,11 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
   const url = new URL(location.href); for (const key of [...shopFacets,'sort']) url.searchParams.delete(key);
   history.pushState(null,'',url); limit = pageSize; render();
  });
+ root.querySelector('[data-shop-all-styles]')!.addEventListener('click', () => {
+  const url = new URL(location.href); for (const key of [...shopFacets,'sort']) url.searchParams.delete(key);
+  if (dialog.open) dialog.close();
+  history.pushState(null,'',url); limit = pageSize; render();
+ });
  for (const button of root.querySelectorAll<HTMLButtonElement>('[data-shop-swap]')) button.addEventListener('click', () => {
   const next = button.getAttribute('aria-pressed') !== 'true'; button.setAttribute('aria-pressed',String(next)); button.closest<HTMLElement>('.shop-photo')!.dataset.swapped = String(next);
  });
@@ -137,6 +142,9 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 .shop-colour-option:has(:checked) .shop-swatch{outline:calc(2 * var(--sy-space-hair)) solid var(--sy-color-ink);outline-offset:0}
 .shop button{border-width:var(--sy-space-hair);border-radius:var(--sy-radius-control);background:var(--sy-color-surface);border-color:var(--sy-color-border);color:var(--sy-color-ink);padding:var(--sy-space-sm) var(--sy-space-md);min-height:var(--control-size-md);font-weight:var(--sy-weight-body)}
 .shop button:hover{background:var(--sy-color-placeholder)}
+.shop-facet-actions{display:flex;align-items:center;gap:var(--sy-space-xs)}
+.shop .shop-all-styles{flex:1;background:var(--sy-color-accent);color:var(--sy-color-on-accent);border-color:var(--sy-color-accent)}
+.shop .shop-all-styles:hover{background:var(--sy-color-ink);border-color:var(--sy-color-ink)}
 .shop-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--sy-space-sm);margin-block-end:var(--sy-space-xl);background:var(--sy-color-canvas)}
 .shop-toolbar>p{margin:0;font-size:var(--sy-text-small);flex:1;min-width:0}
 .shop-toolbar-controls{display:flex;align-items:center;gap:var(--sy-space-xs)}
