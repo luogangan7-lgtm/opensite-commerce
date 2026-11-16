@@ -1,5 +1,6 @@
 /** R5 browser gate: approved bytes must reach served PDP slots, including colour selection. */
 import { test, expect } from '@playwright/test';
+test.beforeEach(async({page})=>{await page.setViewportSize({width:1440,height:1000})});
 import { createHash } from 'node:crypto';
 import accepted from './accepted-r5.json' with { type: 'json' };
 

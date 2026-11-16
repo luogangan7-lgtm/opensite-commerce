@@ -1,7 +1,7 @@
 ---
 /** PDP consumes static product facts plus committed translations; MOQ uses owner facts; other commercial fields use quote text. */
 import Shell from '../layouts/Shell.astro';
-import { pdpMoq } from '../data/owner-facts';
+import { pdpMoq, pdpMoqValue } from '../data/owner-facts';
 import RFQ from '../components/RFQ.astro';
 import ProductGallery from '../components/ProductGallery.astro';
 import { productSizeChart, visibleChartSizes } from '../data/size-charts';
@@ -21,7 +21,7 @@ const mediaPair = pdpMediaPair(product.images);
 const fabric = product.images.find(image => image.role === 'fabric' && image.colour === primary);
 const chart = productSizeChart(product.slug);
 const measurements: Record<string, Key> = { length:'pdpLength', chest:'pdpChest', shoulder:'pdpShoulder', sleeve:'pdpSleeve', sleeve_width:'pdpSleeveWidth', rib_height:'pdpRib', sleeve_opening:'pdpSleeveOpening', hem:'pdpHem', weight_jin:'pdpWeight', top_length:'pdpTopLength', top_chest:'pdpTopChest', top_shoulder:'pdpShoulder', top_sleeve:'pdpSleeve', pants_waist:'pdpWaist', pants_hip:'pdpHip', pants_length:'pdpPantsLength' };
-const quickSpecs = [[t.pdpStyle, product.style_codes.join(' / ') || text.name], [t.pdpCategory, t[product.category as Key]], [t.pdpFabric, text.fabric_weight_fit], [t.moq, pdpMoq[locale]], ...(chart ? [[t.pdpSize, visibleChartSizes(chart).map(({size}) => size).join(' · ')]] : [])];
+const quickSpecs = [[t.pdpStyle, product.style_codes.join(' / ') || text.name], [t.pdpCategory, t[product.category as Key]], [t.pdpFabric, text.fabric_weight_fit], [t.moq, pdpMoqValue[locale]], ...(chart ? [[t.pdpSize, visibleChartSizes(chart).map(({size}) => size).join(' · ')]] : [])];
 const fullSpecs = [...quickSpecs, [t.productViews, text.colourway_note], ...['price','leadTime','sampleCost'].map(field => [t[field as Key], t.quote])];
 const alt = (image: typeof gallery[number], index: number) => digitalAlt(image.src, locale) || `${text.name}: ${t.view} ${index + 1}`;
 const lcpMobile = digitalAlt(gallery[0].src, locale) ? gallery[0].src.replace(/\.webp$/, '-640.webp') : undefined;

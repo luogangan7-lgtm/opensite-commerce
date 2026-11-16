@@ -602,5 +602,6 @@
   "galleryPrevious": "Предыдущий ракурс",
   "galleryNext": "Следующий ракурс",
   "galleryShowBack": "Показать вид сзади",
-  "galleryShowFront": "Показать вид спереди"
+  "galleryShowFront": "Показать вид спереди",
+  "galleryColour": "Цвет"
 }

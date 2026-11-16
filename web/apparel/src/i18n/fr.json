@@ -602,5 +602,6 @@
   "galleryPrevious": "Vue précédente",
   "galleryNext": "Vue suivante",
   "galleryShowBack": "Afficher le dos",
-  "galleryShowFront": "Afficher le devant"
+  "galleryShowFront": "Afficher le devant",
+  "galleryColour": "Couleur"
 }

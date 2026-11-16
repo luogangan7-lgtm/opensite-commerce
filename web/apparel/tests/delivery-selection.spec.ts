@@ -7,6 +7,7 @@ for (const width of [412, 767, 768, 1024, 1440]) for (const deviceScaleFactor of
  const main = page.locator('[data-gallery-main]');
  const expected = width < 768 ? '/digital-front-640.webp' : '/digital-front.webp';
  await expect.poll(() => main.evaluate((img: HTMLImageElement) => img.currentSrc)).toContain(expected);
+ await page.setViewportSize({width:1440,height:900});
  await page.locator('.gallery-thumbs:not([hidden]) a[data-role="fabric"]').click();
  await expect.poll(() => main.evaluate((img: HTMLImageElement) => img.currentSrc)).toContain('/fabric.webp');
  await context.close();

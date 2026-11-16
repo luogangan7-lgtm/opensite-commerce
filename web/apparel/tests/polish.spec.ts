@@ -24,8 +24,7 @@ for (const width of [1440, 768, 390]) {
     const image = page.locator('[data-gallery-main]');
     const box = (await image.boundingBox())!;
     expect(Math.abs(box.width / box.height / 0.8 - 1)).toBeLessThanOrEqual(0.02);
-    const zoom = (await page.locator('[data-gallery-zoom]').boundingBox())!;
-    expect(zoom.y).toBeGreaterThanOrEqual(box.y + box.height);
+    await expect(page.locator('.gallery-actions, [data-gallery-prev], [data-gallery-next], [data-gallery-zoom]')).toHaveCount(0);
     const rail = page.locator('.gallery-thumbs:not([hidden])');
     const geometry = await rail.evaluate(node => {
       const links = [...node.querySelectorAll('a')];
@@ -33,7 +32,7 @@ for (const width of [1440, 768, 390]) {
       return { links:links.length, rows: new Set(links.map(a => a.offsetTop)).size, height: node.clientHeight, content: node.scrollHeight,
         inside: links.every(a => { const r = a.getBoundingClientRect(); return r.top >= rect.top && r.bottom <= rect.bottom; }) };
     });
-    expect(geometry.rows).toBe(width >= 768 ? geometry.links : 1);
+    if(width>=768)expect(geometry.rows).toBe(geometry.links);else await expect(page.locator('.grouped-rail')).toBeHidden();
     expect(geometry.inside).toBe(true);
     expect(geometry.content).toBeLessThanOrEqual(geometry.height);
     await expect(page.locator('.moq-line')).toHaveText('MOQ 100 pcs · mix colours & sizes');

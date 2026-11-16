@@ -45,7 +45,7 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280]) test(`F
  await expect(page.locator('[data-gallery-viewer]')).toBeVisible();
  expect(await page.locator('[data-gallery-viewer] img').evaluate((i:HTMLImageElement)=>i.src)).toBe(await page.locator('[data-gallery-main]').evaluate((i:HTMLImageElement)=>i.src));
  await page.keyboard.press('Escape');
- await page.locator('.gallery-thumbs:not([hidden]) a[data-role="structure"]').click();
+ await page.locator('[data-gallery-view=details]').click();
  await page.locator('[data-gallery-main]').click();
  expect(await page.locator('[data-gallery-viewer] img').evaluate((i:HTMLImageElement)=>i.src)).toBe(await detail.evaluate((i:HTMLImageElement)=>i.src));
  await page.keyboard.press('Escape');

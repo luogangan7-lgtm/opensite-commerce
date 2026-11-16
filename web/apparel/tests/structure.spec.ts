@@ -12,7 +12,7 @@ for (const slug of ['crew-fleece-8900-31','apparel-59043','pullover-hoodie-69008
  const box=await main.boundingBox(); expect(box!.width/box!.height).toBeCloseTo(4/5,2);
  await expect(page.locator('[data-digital-label]')).toHaveCount(0);
  await expect(main).toHaveAttribute('alt', /.+/);
- await page.locator('[data-gallery-zoom]').click();
+ await main.click();
  await expect(page.locator('dialog')).toBeVisible();
  await expect(page.locator('dialog')).toHaveAttribute('aria-label', await main.getAttribute('alt') || '');
  await expect(page.locator('dialog img')).toHaveCSS('object-fit','contain');
