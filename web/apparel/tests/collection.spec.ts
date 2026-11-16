@@ -88,6 +88,8 @@ for(const locale of ['en','ar','zh']) for(const width of [390,1440]) {
   const black=page.locator('input[data-shop-facet="colour"][value="black"]');
   await expect(black).toHaveCount(1);
   const rows=page.locator('.shop-option:visible');
+  for(const r of await page.locator('.shop-option:not(.shop-colour-option) input').evaluateAll(els=>els.map(x=>({w:x.getBoundingClientRect().width,h:x.getBoundingClientRect().height})))){expect(r.w).toBe(20);expect(r.h).toBe(20);}
+
   for(const g of await rows.evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {h:r.height,pad:parseFloat(s.paddingInlineStart),radius:parseFloat(s.borderRadius)};}))){expect(g.h).toBeGreaterThanOrEqual(44);expect(g.pad).toBeGreaterThanOrEqual(12);expect(g.radius).toBe(12);}
   const row=black.locator('..'),dot=row.locator('.shop-swatch'),text=row.locator('.shop-option-text');
   const d=(await dot.boundingBox())!,t=(await text.boundingBox())!;
@@ -105,6 +107,6 @@ for(const locale of ['en','ar','zh']) for(const width of [390,1440]) {
   await expect(black).toBeChecked();await expect(another).toBeChecked();
   const tabs=await page.locator('.shop-tabs a').allTextContents(),cats=await page.locator('[data-shop-category-label]').allTextContents();
   expect(new Set(cats)).toEqual(new Set(tabs.slice(1)));expect(cats).toHaveLength(6);
-  if(width===390){await page.locator('[data-shop-filter-dialog] form button').click();await page.evaluate(()=>scrollTo(0,800));const toolbar=(await page.locator('.shop-toolbar').boundingBox())!;expect(toolbar.y).toBeGreaterThanOrEqual(-1);expect(toolbar.y).toBeLessThan(10);}
+  if(width===390){await page.locator('[data-shop-filter-dialog] form button').click();await page.evaluate(()=>scrollTo(0,800));const ys=await page.locator('.shop-tabs a').evaluateAll(els=>els.map(x=>Math.round(x.getBoundingClientRect().y)));expect(new Set(ys).size).toBe(1);const toolbar=(await page.locator('.shop-toolbar').boundingBox())!;expect(toolbar.y).toBeGreaterThanOrEqual(-1);expect(toolbar.y).toBeLessThan(10);}
  });
 }
