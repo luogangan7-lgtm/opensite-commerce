@@ -144,6 +144,9 @@ test('h5 filter and sort pill labels stay single-line at 390 in all locales',asy
    const m=await label.evaluate(el=>{const s=getComputedStyle(el);return {h:el.getBoundingClientRect().height,lh:parseFloat(s.lineHeight)||parseFloat(s.fontSize)*1.2};});
    expect(m.h, `${locale} ${selector}: height ${m.h} vs line-height ${m.lh}`).toBeLessThanOrEqual(m.lh*1.6+0.5);
   }
+  const filterPill=(await page.locator('[data-shop-filter-open]').boundingBox())!, sortPill=(await page.locator('.shop-sort').boundingBox())!;
+  expect(Math.abs(filterPill.height-sortPill.height), `${locale}: Filter ${filterPill.height} vs Sort ${sortPill.height}`).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(filterPill.y-sortPill.y), `${locale}: Filter top ${filterPill.y} vs Sort top ${sortPill.y}`).toBeLessThanOrEqual(0.5);
  }
 });
 
