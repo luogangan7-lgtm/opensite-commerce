@@ -74,7 +74,7 @@ const image = (slug: string, file?: string) => {
  /* HOME-BM 30:600 and 1136:119877: wholesale primary, two secondary models. */
  .home-tiles{padding-inline:0;}
  .home-tiles>.home-heading{margin-inline-start:var(--sy-space-section);padding-inline-end:var(--sy-space-section);}
- .home-tiles>.home-models{max-width:calc(var(--sy-layout-desktop) - var(--sy-space-section) * 2);width:calc(100% - var(--side) * 2);margin-block-start:var(--sy-space-2xl);}
+ .home-tiles>.home-models{display:grid;gap:var(--sy-space-grid-x);max-width:calc(var(--sy-layout-desktop) - var(--sy-space-section) * 2);width:calc(100% - var(--side) * 2);margin-block-start:var(--sy-space-2xl);}
  .home-model{min-width:0;background:var(--sy-color-surface-alt);border-radius:var(--sy-radius-card);}
  .wholesale{display:grid;grid-template-columns:40% minmax(0,1fr);background:var(--sy-color-surface-alt);color:var(--sy-color-ink);}
  .wholesale-photo{height:400px;border-radius:var(--sy-radius-card);overflow:hidden;}
@@ -86,7 +86,7 @@ const image = (slug: string, file?: string) => {
  .wholesale p{color:var(--sy-color-muted);}
  .model-copy .button{background:var(--sy-color-accent);color:var(--sy-color-on-accent);white-space:normal;}
  .secondary-models .model-copy{padding-inline:var(--side);}
- .secondary-models{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
+ .secondary-models{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-grid-x);}
  /* Soft-B layered surface */
  .home-band{background:var(--sy-color-surface-alt);color:var(--sy-color-ink);}
  .home-band .home-eyebrow,.home-band .home-number{color:var(--sy-color-ink);}
@@ -159,6 +159,7 @@ const image = (slug: string, file?: string) => {
  }
  @media(max-width:650px){
   .home-section{--side:var(--sy-space-gutter-mobile);}
+  .home-tiles>.home-models,.secondary-models{gap:var(--sy-space-md);}
   .home-tiles>.home-heading{margin-inline-start:var(--sy-space-gutter-mobile);}
   .secondary-models{grid-template-columns:minmax(0,1fr);}
   .wholesale-photo{height:240px;}

@@ -60,6 +60,23 @@ for (const width of [1440, 768, 390]) test(`soft component radii and secondary h
     await expect.soft(photo).toHaveCSS(property, '20px');
     await expect.soft(photo.locator('img')).toHaveCSS(property, '20px');
    }
+   const cards = await page.locator('.home-models .home-model').evaluateAll(els => els.map(el => {
+    const r = el.getBoundingClientRect();
+    return { model: (el as HTMLElement).dataset.homeModel, x: r.x, y: r.y, width: r.width, height: r.height };
+   }));
+   expect(cards).toHaveLength(3);
+   const gaps = [];
+   for (let i = 0; i < cards.length; i++) for (let j = i + 1; j < cards.length; j++) {
+    const a = cards[i], b = cards[j];
+    const gap = Math.max(b.x - a.x - a.width, a.x - b.x - b.width, b.y - a.y - a.height, a.y - b.y - b.height);
+    gaps.push({ pair: [a.model, b.model], gap });
+    expect.soft(gap, `${a.model} / ${b.model}: separate rounded cards`).toBeGreaterThanOrEqual(16);
+   }
+   if (width >= 768) {
+    expect.soft(cards[0].width).toBeGreaterThan(cards[1].width);
+    expect.soft(cards[1].y).toBeCloseTo(cards[2].y, 0);
+   }
+   await testInfo.attach(`home-card-gaps-${width}`, { body: JSON.stringify({ cards, gaps }, null, 2), contentType: 'application/json' });
   }
   if (route.includes('/products/')) {
    const thumb = page.locator('.gallery-thumbs:not([hidden]) a').first();
