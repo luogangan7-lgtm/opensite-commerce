@@ -1,0 +1,11 @@
+{
+  "id": "a27f8e87-ef27-4719-915a-dc46c06cf4d9",
+  "ok": true,
+  "result": {
+    "result": "{\"gap\":\"normal\",\"position\":\"50% 50%\",\"heading\":96,\"secondary\":48,\"center\":\"normal\",\"sections\":[{\"class\":\"home-section home-tiles\",\"pad\":\"96px\"},{\"class\":\"home-section home-categories\",\"pad\":\"96px\"},{\"class\":\"home-section home-products\",\"pad\":\"96px\"},{\"class\":\"home-section home-band\",\"pad\":\"96px\"},{\"class\":\"home-section home-process sand\",\"pad\":\"96px\"},{\"class\":\"home-section home-fabric\",\"pad\":\"0px\"},{\"class\":\"home-section home-terms\",\"pad\":\"96px\"},{\"class\":\"home-section home-closing\",\"pad\":\"96px\"}]}",
+    "origin": "https://sourcyowear.com/"
+  },
+  "_meta": {
+    "runtimeId": "4ab9d076-27d1-4a20-826d-b4d72c764642"
+  }
+}

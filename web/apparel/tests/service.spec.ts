@@ -23,6 +23,33 @@ for(const locale of locales) for(const kind of ['oem-odm','sampling','shipping']
    }
   }
   if(kind==='oem-odm') await expect(view.locator('.opening')).toHaveCSS('padding-top',width>900?'48px':'24px');
+  if(kind==='oem-odm') {
+   const tiles=view.locator('[data-techniques] figure');
+   await expect(tiles).toHaveCount(16);
+   for(const tile of await tiles.all()) {
+    await expect(tile.locator('[data-technique-label]')).toBeVisible();
+    await expect(tile.locator('[data-technique-label]')).not.toHaveText('');
+    await expect(tile.locator('[data-technique-description]')).toBeVisible();
+    await expect(tile.locator('[data-technique-description]')).not.toHaveText('');
+   }
+   await page.evaluate(()=>document.fonts.ready);
+   const rows=await tiles.evaluateAll(nodes=>{
+    const groups=new Map<number,{labels:number[];descriptions:number[]}>();
+    for(const n of nodes){const key=Math.round(n.getBoundingClientRect().top),row=groups.get(key)||{labels:[],descriptions:[]};row.labels.push(n.querySelector('h3')!.getBoundingClientRect().top);row.descriptions.push(n.querySelector('p')!.getBoundingClientRect().top);groups.set(key,row);}
+    return [...groups.values()];
+   });
+   for(const row of rows) for(const positions of [row.labels,row.descriptions]) expect(Math.max(...positions)-Math.min(...positions)).toBeLessThan(1);
+  }
+  if(width>900) {
+   for(const split of await view.locator('.split').all()) {
+    const delta=await split.evaluate(n=>{const a=n.querySelector(':scope > div')!.getBoundingClientRect(),b=n.querySelector('picture')!.getBoundingClientRect();return Math.abs(a.top+a.height/2-b.top-b.height/2);});
+    expect(delta).toBeLessThan(1);
+   }
+   if(kind==='oem-odm') {
+    const delta=await view.locator('.brief-panel').evaluate(n=>{const p=n.getBoundingClientRect(),a=n.firstElementChild!.getBoundingClientRect(),b=n.lastElementChild!.getBoundingClientRect();return Math.abs((a.top-p.top)-(p.bottom-b.bottom));});
+    expect(delta).toBeLessThan(1);
+   }
+  }
   if(kind==='oem-odm'&&width===1440) {
    const heights=await view.locator('.matrix > div').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().height));
    expect(heights[0]).toBeCloseTo(heights[1],0);

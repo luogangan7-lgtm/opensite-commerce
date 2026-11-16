@@ -1,0 +1,5 @@
+  ✘  1 web/apparel/tests/service.spec.ts:7:83 › en oem-odm approved service contract (5.5s)
+    Error: expect(locator).toHaveCount(expected) failed
+    Expected: 16
+    Received: 0
+  1 failed

@@ -1,0 +1,362 @@
+[
+  {
+    "id": "1164:7094",
+    "name": "D-LEGAL PRIV D",
+    "width": 1440,
+    "alignment": "CENTER",
+    "x": 340,
+    "widthColumn": 760,
+    "right": 1100,
+    "center": 720,
+    "dateSlot": [
+      {
+        "id": "1164:7100",
+        "text": "Last updated: OWNER-INPUT (date)"
+      },
+      {
+        "id": "1164:7107",
+        "text": "We use your details only to reply to your request with MOQ, price and lead time, and to run the quote and sample process. Legal basis: OWNER-INPUT (for example, steps at your request before a contract, or legitimate interest)."
+      }
+    ]
+  },
+  {
+    "id": "1164:7345",
+    "name": "D-LEGAL PRIV T",
+    "width": 768,
+    "alignment": "CENTER",
+    "x": 48,
+    "widthColumn": 672,
+    "right": 720,
+    "center": 384,
+    "dateSlot": [
+      {
+        "id": "1164:7351",
+        "text": "Last updated: OWNER-INPUT (date)"
+      },
+      {
+        "id": "1164:7358",
+        "text": "We use your details only to reply to your request with MOQ, price and lead time, and to run the quote and sample process. Legal basis: OWNER-INPUT (for example, steps at your request before a contract, or legitimate interest)."
+      }
+    ]
+  },
+  {
+    "id": "1164:7574",
+    "name": "D-LEGAL PRIV M",
+    "width": 390,
+    "alignment": "CENTER",
+    "x": 24,
+    "widthColumn": 342,
+    "right": 366,
+    "center": 195,
+    "dateSlot": [
+      {
+        "id": "1164:7580",
+        "text": "Last updated: OWNER-INPUT (date)"
+      },
+      {
+        "id": "1164:7587",
+        "text": "We use your details only to reply to your request with MOQ, price and lead time, and to run the quote and sample process. Legal basis: OWNER-INPUT (for example, steps at your request before a contract, or legitimate interest)."
+      }
+    ]
+  },
+  {
+    "id": "1164:7782",
+    "name": "D-LEGAL PRIV AR D",
+    "width": 1440,
+    "alignment": "CENTER",
+    "x": 340,
+    "widthColumn": 760,
+    "right": 1100,
+    "center": 720,
+    "dateSlot": [
+      {
+        "id": "1164:7788",
+        "text": "آخر تحديث: OWNER-INPUT (التاريخ)"
+      },
+      {
+        "id": "1164:7795",
+        "text": "We use your details only to reply to your request with MOQ, price and lead time, and to run the quote and sample process. Legal basis: OWNER-INPUT (for example, steps at your request before a contract, or legitimate interest)."
+      }
+    ]
+  },
+  {
+    "id": "1164:8033",
+    "name": "D-LEGAL PRIV AR T",
+    "width": 768,
+    "alignment": "CENTER",
+    "x": 48,
+    "widthColumn": 672,
+    "right": 720,
+    "center": 384,
+    "dateSlot": [
+      {
+        "id": "1164:8039",
+        "text": "آخر تحديث: OWNER-INPUT (التاريخ)"
+      },
+      {
+        "id": "1164:8046",
+        "text": "We use your details only to reply to your request with MOQ, price and lead time, and to run the quote and sample process. Legal basis: OWNER-INPUT (for example, steps at your request before a contract, or legitimate interest)."
+      }
+    ]
+  },
+  {
+    "id": "1164:8262",
+    "name": "D-LEGAL PRIV AR M",
+    "width": 390,
+    "alignment": "CENTER",
+    "x": 24,
+    "widthColumn": 342,
+    "right": 366,
+    "center": 195,
+    "dateSlot": [
+      {
+        "id": "1164:8268",
+        "text": "آخر تحديث: OWNER-INPUT (التاريخ)"
+      },
+      {
+        "id": "1164:8275",
+        "text": "We use your details only to reply to your request with MOQ, price and lead time, and to run the quote and sample process. Legal basis: OWNER-INPUT (for example, steps at your request before a contract, or legitimate interest)."
+      }
+    ]
+  },
+  {
+    "id": "1164:8475",
+    "name": "D-LEGAL PRIV ZH D",
+    "width": 1440,
+    "alignment": "CENTER",
+    "x": 340,
+    "widthColumn": 760,
+    "right": 1100,
+    "center": 720,
+    "dateSlot": [
+      {
+        "id": "1164:8481",
+        "text": "最后更新：OWNER-INPUT（日期）"
+      },
+      {
+        "id": "1164:8488",
+        "text": "We use your details only to reply to your request with MOQ, price and lead time, and to run the quote and sample process. Legal basis: OWNER-INPUT (for example, steps at your request before a contract, or legitimate interest)."
+      }
+    ]
+  },
+  {
+    "id": "1164:8726",
+    "name": "D-LEGAL PRIV ZH T",
+    "width": 768,
+    "alignment": "CENTER",
+    "x": 48,
+    "widthColumn": 672,
+    "right": 720,
+    "center": 384,
+    "dateSlot": [
+      {
+        "id": "1164:8732",
+        "text": "最后更新：OWNER-INPUT（日期）"
+      },
+      {
+        "id": "1164:8739",
+        "text": "We use your details only to reply to your request with MOQ, price and lead time, and to run the quote and sample process. Legal basis: OWNER-INPUT (for example, steps at your request before a contract, or legitimate interest)."
+      }
+    ]
+  },
+  {
+    "id": "1164:8955",
+    "name": "D-LEGAL PRIV ZH M",
+    "width": 390,
+    "alignment": "CENTER",
+    "x": 24,
+    "widthColumn": 342,
+    "right": 366,
+    "center": 195,
+    "dateSlot": [
+      {
+        "id": "1164:8961",
+        "text": "最后更新：OWNER-INPUT（日期）"
+      },
+      {
+        "id": "1164:8968",
+        "text": "We use your details only to reply to your request with MOQ, price and lead time, and to run the quote and sample process. Legal basis: OWNER-INPUT (for example, steps at your request before a contract, or legitimate interest)."
+      }
+    ]
+  },
+  {
+    "id": "1164:9163",
+    "name": "D-LEGAL TERMS D",
+    "width": 1440,
+    "alignment": "CENTER",
+    "x": 340,
+    "widthColumn": 760,
+    "right": 1100,
+    "center": 720,
+    "dateSlot": [
+      {
+        "id": "1164:9169",
+        "text": "Last updated: OWNER-INPUT (date)"
+      },
+      {
+        "id": "1164:9182",
+        "text": "OWNER-INPUT (liability wording to be written by counsel)."
+      }
+    ]
+  },
+  {
+    "id": "1164:9404",
+    "name": "D-LEGAL TERMS T",
+    "width": 768,
+    "alignment": "CENTER",
+    "x": 48,
+    "widthColumn": 672,
+    "right": 720,
+    "center": 384,
+    "dateSlot": [
+      {
+        "id": "1164:9410",
+        "text": "Last updated: OWNER-INPUT (date)"
+      },
+      {
+        "id": "1164:9423",
+        "text": "OWNER-INPUT (liability wording to be written by counsel)."
+      }
+    ]
+  },
+  {
+    "id": "1164:9623",
+    "name": "D-LEGAL TERMS M",
+    "width": 390,
+    "alignment": "CENTER",
+    "x": 24,
+    "widthColumn": 342,
+    "right": 366,
+    "center": 195,
+    "dateSlot": [
+      {
+        "id": "1164:9629",
+        "text": "Last updated: OWNER-INPUT (date)"
+      },
+      {
+        "id": "1164:9642",
+        "text": "OWNER-INPUT (liability wording to be written by counsel)."
+      }
+    ]
+  },
+  {
+    "id": "1164:9821",
+    "name": "D-LEGAL TERMS AR D",
+    "width": 1440,
+    "alignment": "CENTER",
+    "x": 340,
+    "widthColumn": 760,
+    "right": 1100,
+    "center": 720,
+    "dateSlot": [
+      {
+        "id": "1164:9827",
+        "text": "آخر تحديث: OWNER-INPUT (التاريخ)"
+      },
+      {
+        "id": "1164:9840",
+        "text": "OWNER-INPUT (liability wording to be written by counsel)."
+      }
+    ]
+  },
+  {
+    "id": "1164:10062",
+    "name": "D-LEGAL TERMS AR T",
+    "width": 768,
+    "alignment": "CENTER",
+    "x": 48,
+    "widthColumn": 672,
+    "right": 720,
+    "center": 384,
+    "dateSlot": [
+      {
+        "id": "1164:10068",
+        "text": "آخر تحديث: OWNER-INPUT (التاريخ)"
+      },
+      {
+        "id": "1164:10081",
+        "text": "OWNER-INPUT (liability wording to be written by counsel)."
+      }
+    ]
+  },
+  {
+    "id": "1164:10281",
+    "name": "D-LEGAL TERMS AR M",
+    "width": 390,
+    "alignment": "CENTER",
+    "x": 24,
+    "widthColumn": 342,
+    "right": 366,
+    "center": 195,
+    "dateSlot": [
+      {
+        "id": "1164:10287",
+        "text": "آخر تحديث: OWNER-INPUT (التاريخ)"
+      },
+      {
+        "id": "1164:10300",
+        "text": "OWNER-INPUT (liability wording to be written by counsel)."
+      }
+    ]
+  },
+  {
+    "id": "1164:10484",
+    "name": "D-LEGAL TERMS ZH D",
+    "width": 1440,
+    "alignment": "CENTER",
+    "x": 340,
+    "widthColumn": 760,
+    "right": 1100,
+    "center": 720,
+    "dateSlot": [
+      {
+        "id": "1164:10490",
+        "text": "最后更新：OWNER-INPUT（日期）"
+      },
+      {
+        "id": "1164:10503",
+        "text": "OWNER-INPUT (liability wording to be written by counsel)."
+      }
+    ]
+  },
+  {
+    "id": "1164:10725",
+    "name": "D-LEGAL TERMS ZH T",
+    "width": 768,
+    "alignment": "CENTER",
+    "x": 48,
+    "widthColumn": 672,
+    "right": 720,
+    "center": 384,
+    "dateSlot": [
+      {
+        "id": "1164:10731",
+        "text": "最后更新：OWNER-INPUT（日期）"
+      },
+      {
+        "id": "1164:10744",
+        "text": "OWNER-INPUT (liability wording to be written by counsel)."
+      }
+    ]
+  },
+  {
+    "id": "1164:10944",
+    "name": "D-LEGAL TERMS ZH M",
+    "width": 390,
+    "alignment": "CENTER",
+    "x": 24,
+    "widthColumn": 342,
+    "right": 366,
+    "center": 195,
+    "dateSlot": [
+      {
+        "id": "1164:10950",
+        "text": "最后更新：OWNER-INPUT（日期）"
+      },
+      {
+        "id": "1164:10963",
+        "text": "OWNER-INPUT (liability wording to be written by counsel)."
+      }
+    ]
+  }
+]

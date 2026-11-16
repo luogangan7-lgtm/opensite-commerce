@@ -1,0 +1,117 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"backup\":\"1271:2\",\"frames\":[{\"id\":\"1186:6642\",\"name\":\"WAVE7 OEM EN D\",\"width\":1440,\"cards\":16,\"visibleText\":32,\"badRows\":[],\"clippedText\":[],\"pairs\":[{\"id\":\"1186:6721\",\"center\":\"CENTER\",\"delta\":0}],\"brief\":[{\"id\":\"1186:6686\",\"align\":\"CENTER\"}]},{\"id\":\"1186:6805\",\"name\":\"WAVE7 OEM EN M\",\"width\":390,\"cards\":16,\"visibleText\":32,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[{\"id\":\"1186:6848\",\"align\":\"CENTER\"}]},{\"id\":\"1188:5023\",\"name\":\"WAVE7 OEM EN T\",\"width\":768,\"cards\":16,\"visibleText\":32,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[{\"id\":\"1188:5066\",\"align\":\"CENTER\"}]},{\"id\":\"1194:24009\",\"name\":\"WAVE7 OEM ZH D\",\"width\":1440,\"cards\":16,\"visibleText\":32,\"badRows\":[],\"clippedText\":[],\"pairs\":[{\"id\":\"1194:24088\",\"center\":\"CENTER\",\"delta\":0}],\"brief\":[{\"id\":\"1194:24053\",\"align\":\"CENTER\"}]},{\"id\":\"1194:24275\",\"name\":\"WAVE7 OEM ZH M\",\"width\":390,\"cards\":16,\"visibleText\":32,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[{\"id\":\"1194:24318\",\"align\":\"CENTER\"}]},{\"id\":\"1194:25099\",\"name\":\"WAVE7 OEM ZH T\",\"width\":768,\"cards\":16,\"visibleText\":32,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[{\"id\":\"1194:25142\",\"align\":\"CENTER\"}]},{\"id\":\"1194:25613\",\"name\":\"WAVE7 OEM AR D\",\"width\":1440,\"cards\":16,\"visibleText\":32,\"badRows\":[],\"clippedText\":[],\"pairs\":[{\"id\":\"1194:25692\",\"center\":\"CENTER\",\"delta\":0}],\"brief\":[{\"id\":\"1194:25657\",\"align\":\"CENTER\"}]},{\"id\":\"1194:25978\",\"name\":\"WAVE7 OEM AR M\",\"width\":390,\"cards\":16,\"visibleText\":32,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[{\"id\":\"1194:26021\",\"align\":\"CENTER\"}]},{\"id\":\"1194:27231\",\"name\":\"WAVE7 OEM AR T\",\"width\":768,\"cards\":16,\"visibleText\":32,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[{\"id\":\"1194:27274\",\"align\":\"CENTER\"}]},{\"id\":\"1186:6971\",\"name\":\"WAVE7 Sampling EN D\",\"width\":1440,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[{\"id\":\"1186:6995\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1186:7003\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1186:7011\",\"center\":\"CENTER\",\"delta\":0}],\"brief\":[]},{\"id\":\"1186:7027\",\"name\":\"WAVE7 Sampling EN M\",\"width\":390,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]},{\"id\":\"1188:5270\",\"name\":\"WAVE7 Sampling EN T\",\"width\":768,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]},{\"id\":\"1194:24522\",\"name\":\"WAVE7 Sampling ZH D\",\"width\":1440,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[{\"id\":\"1194:24546\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1194:24554\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1194:24562\",\"center\":\"CENTER\",\"delta\":0}],\"brief\":[]},{\"id\":\"1194:24679\",\"name\":\"WAVE7 Sampling ZH M\",\"width\":390,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]},{\"id\":\"1194:25346\",\"name\":\"WAVE7 Sampling ZH T\",\"width\":768,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]},{\"id\":\"1194:26302\",\"name\":\"WAVE7 Sampling AR D\",\"width\":1440,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[{\"id\":\"1194:26326\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1194:26334\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1194:26342\",\"center\":\"CENTER\",\"delta\":0}],\"brief\":[]},{\"id\":\"1194:26558\",\"name\":\"WAVE7 Sampling AR M\",\"width\":390,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]},{\"id\":\"1194:27555\",\"name\":\"WAVE7 Sampling AR T\",\"width\":768,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]},{\"id\":\"1186:7084\",\"name\":\"WAVE7 Shipping EN D\",\"width\":1440,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[{\"id\":\"1186:7092\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1186:7100\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1186:7108\",\"center\":\"CENTER\",\"delta\":0}],\"brief\":[]},{\"id\":\"1186:7136\",\"name\":\"WAVE7 Shipping EN M\",\"width\":390,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]},{\"id\":\"1188:5406\",\"name\":\"WAVE7 Shipping EN T\",\"width\":768,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]},{\"id\":\"1194:24815\",\"name\":\"WAVE7 Shipping ZH D\",\"width\":1440,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[{\"id\":\"1194:24823\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1194:24831\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1194:24839\",\"center\":\"CENTER\",\"delta\":0}],\"brief\":[]},{\"id\":\"1194:24968\",\"name\":\"WAVE7 Shipping ZH M\",\"width\":390,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]},{\"id\":\"1194:25482\",\"name\":\"WAVE7 Shipping ZH T\",\"width\":768,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]},{\"id\":\"1194:26771\",\"name\":\"WAVE7 Shipping AR D\",\"width\":1440,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[{\"id\":\"1194:26779\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1194:26787\",\"center\":\"CENTER\",\"delta\":0},{\"id\":\"1194:26795\",\"center\":\"CENTER\",\"delta\":0}],\"brief\":[]},{\"id\":\"1194:27023\",\"name\":\"WAVE7 Shipping AR M\",\"width\":390,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]},{\"id\":\"1194:27768\",\"name\":\"WAVE7 Shipping AR T\",\"width\":768,\"cards\":0,\"visibleText\":0,\"badRows\":[],\"clippedText\":[],\"pairs\":[],\"brief\":[]}]}"
+    }
+  ],
+  "structuredContent": null,
+  "isError": false,
+  "copyCorrections": {
+    "mutation": {
+      "mutatedVariableIds": [
+        "VariableID:1272:9",
+        "VariableID:1272:13",
+        "VariableID:1272:14"
+      ],
+      "changes": [
+        {
+          "id": "VariableID:1272:9",
+          "name": "cp-svc/capabilities/988",
+          "mode": "6:2",
+          "before": "Un acabado de brillo fino.",
+          "after": "Un acabado de destellos finos."
+        },
+        {
+          "id": "VariableID:1272:9",
+          "name": "cp-svc/capabilities/988",
+          "mode": "6:5",
+          "before": "Um acabamento de brilho fino.",
+          "after": "Um acabamento com brilho delicado."
+        },
+        {
+          "id": "VariableID:1272:9",
+          "name": "cp-svc/capabilities/988",
+          "mode": "6:6",
+          "before": "Покрытие с мелким блеском.",
+          "after": "Покрытие с лёгким мерцанием."
+        },
+        {
+          "id": "VariableID:1272:13",
+          "name": "cp-svc/capabilities/996",
+          "mode": "6:5",
+          "before": "Textura macia de fios em laços.",
+          "after": "Textura macia de fios em laçadas."
+        },
+        {
+          "id": "VariableID:1272:14",
+          "name": "cp-svc/capabilities/998",
+          "mode": "6:6",
+          "before": "Пришитые формы из ткани.",
+          "after": "Пришитые тканевые элементы."
+        }
+      ],
+      "zh974": "胶浆或水性油墨。"
+    },
+    "readback": {
+      "variables": [
+        {
+          "id": "VariableID:1272:2",
+          "name": "cp-svc/capabilities/974",
+          "values": {
+            "6:1": "Plastisol or water-based ink.",
+            "6:2": "Tinta plastisol o de base acuosa.",
+            "6:3": "Encre plastisol ou à base d’eau.",
+            "6:4": "Plastisol- oder wasserbasierte Farbe.",
+            "6:5": "Tinta plastisol ou à base de água.",
+            "6:6": "Пластизольные или водные краски.",
+            "6:7": "أحبار بلاستيسول أو أحبار مائية.",
+            "196:0": "胶浆或水性油墨。"
+          }
+        },
+        {
+          "id": "VariableID:1272:9",
+          "name": "cp-svc/capabilities/988",
+          "values": {
+            "6:1": "A fine sparkle finish.",
+            "6:2": "Un acabado de destellos finos.",
+            "6:3": "Une finition finement scintillante.",
+            "6:4": "Fein glitzerndes Finish.",
+            "6:5": "Um acabamento com brilho delicado.",
+            "6:6": "Покрытие с лёгким мерцанием.",
+            "6:7": "تشطيب ببريق ناعم.",
+            "196:0": "细腻的闪光效果。"
+          }
+        },
+        {
+          "id": "VariableID:1272:13",
+          "name": "cp-svc/capabilities/996",
+          "values": {
+            "6:1": "Soft looped thread texture.",
+            "6:2": "Textura suave de hilo en bucles.",
+            "6:3": "Texture douce de fils bouclés.",
+            "6:4": "Weiche Textur aus Fadenschlaufen.",
+            "6:5": "Textura macia de fios em laçadas.",
+            "6:6": "Мягкая текстура нитяных петель.",
+            "6:7": "ملمس ناعم من حلقات الخيوط.",
+            "196:0": "柔软的毛圈绣线质感。"
+          }
+        },
+        {
+          "id": "VariableID:1272:14",
+          "name": "cp-svc/capabilities/998",
+          "values": {
+            "6:1": "Stitched fabric shapes.",
+            "6:2": "Formas de tela cosidas.",
+            "6:3": "Formes de tissu cousues.",
+            "6:4": "Aufgenähte Stoffformen.",
+            "6:5": "Formas de tecido costuradas.",
+            "6:6": "Пришитые тканевые элементы.",
+            "6:7": "أشكال قماش مخيطة.",
+            "196:0": "缝制的布料造型。"
+          }
+        }
+      ]
+    }
+  }
+}

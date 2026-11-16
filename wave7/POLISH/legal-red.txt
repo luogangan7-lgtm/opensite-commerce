@@ -1,0 +1,4 @@
+  ✘  1 web/apparel/tests/launch-pages.spec.ts:54:80 › legal recovery layout en 1440 (216ms)
+    Expected: 720
+    Received: 428
+  1 failed

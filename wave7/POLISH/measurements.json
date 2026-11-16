@@ -1,0 +1,230 @@
+[
+  {
+    "path": "/",
+    "width": 1440,
+    "gaps": [
+      "16px",
+      "8px",
+      "8px",
+      "8px",
+      "12px"
+    ],
+    "home": {
+      "heading": 96,
+      "secondary": 96,
+      "align": "center",
+      "position": "50% 0px"
+    },
+    "pdp": null,
+    "sections": [
+      {
+        "class": "home-section home-tiles",
+        "padding": "96px"
+      },
+      {
+        "class": "home-section home-categories",
+        "padding": "96px"
+      },
+      {
+        "class": "home-section home-products",
+        "padding": "96px"
+      },
+      {
+        "class": "home-section home-band",
+        "padding": "96px"
+      },
+      {
+        "class": "home-section home-process sand",
+        "padding": "96px"
+      },
+      {
+        "class": "home-section home-fabric",
+        "padding": "0px"
+      },
+      {
+        "class": "home-section home-terms",
+        "padding": "96px"
+      },
+      {
+        "class": "home-section home-closing",
+        "padding": "96px"
+      }
+    ]
+  },
+  {
+    "path": "/",
+    "width": 768,
+    "gaps": [
+      "16px",
+      "8px",
+      "8px",
+      "8px",
+      "12px"
+    ],
+    "home": {
+      "heading": 32,
+      "secondary": 32,
+      "align": "center",
+      "position": "50% 0px"
+    },
+    "pdp": null,
+    "sections": [
+      {
+        "class": "home-section home-tiles",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-categories",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-products",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-band",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-process sand",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-fabric",
+        "padding": "0px"
+      },
+      {
+        "class": "home-section home-terms",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-closing",
+        "padding": "64px"
+      }
+    ]
+  },
+  {
+    "path": "/",
+    "width": 390,
+    "gaps": [
+      "16px",
+      "8px",
+      "8px",
+      "8px",
+      "12px"
+    ],
+    "home": {
+      "heading": 24,
+      "secondary": 24,
+      "align": "center",
+      "position": "50% 0px"
+    },
+    "pdp": null,
+    "sections": [
+      {
+        "class": "home-section home-tiles",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-categories",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-products",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-band",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-process sand",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-fabric",
+        "padding": "0px"
+      },
+      {
+        "class": "home-section home-terms",
+        "padding": "64px"
+      },
+      {
+        "class": "home-section home-closing",
+        "padding": "64px"
+      }
+    ]
+  },
+  {
+    "path": "/products/hoodie-set-k02/",
+    "width": 1440,
+    "gaps": [],
+    "home": null,
+    "pdp": {
+      "ratio": 0.8,
+      "fit": "contain",
+      "sticky": "sticky",
+      "rail": 96,
+      "height": 96
+    },
+    "sections": []
+  },
+  {
+    "path": "/products/hoodie-set-k02/",
+    "width": 768,
+    "gaps": [],
+    "home": null,
+    "pdp": {
+      "ratio": 0.8,
+      "fit": "contain",
+      "sticky": "static",
+      "rail": 96,
+      "height": 96
+    },
+    "sections": []
+  },
+  {
+    "path": "/products/hoodie-set-k02/",
+    "width": 390,
+    "gaps": [],
+    "home": null,
+    "pdp": {
+      "ratio": 0.8,
+      "fit": "contain",
+      "sticky": "static",
+      "rail": 96,
+      "height": 96
+    },
+    "sections": []
+  },
+  {
+    "path": "/collections/",
+    "width": 1440,
+    "gaps": [
+      "8px"
+    ],
+    "home": null,
+    "pdp": null,
+    "sections": []
+  },
+  {
+    "path": "/collections/",
+    "width": 768,
+    "gaps": [
+      "8px"
+    ],
+    "home": null,
+    "pdp": null,
+    "sections": []
+  },
+  {
+    "path": "/collections/",
+    "width": 390,
+    "gaps": [
+      "8px"
+    ],
+    "home": null,
+    "pdp": null,
+    "sections": []
+  }
+]

@@ -2,11 +2,24 @@
 import { cpSync, mkdtempSync, rmSync, appendFileSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-for (const [name, mutation] of [['brand', '<p>mgoo</p>'], ['commercial', '<p>MOQ: 100</p>'], ['worker-format', 'Content-Disposition: form-data; name=metadata'], ['direction', ''], ['hreflang', '']] as const) {
+for (const [name, mutation] of [['brand', '<p>mgoo</p>'], ['owner-input', '<p>OWNER-INPUT</p>'], ['commercial', '<p>MOQ: 100</p>'], ['moq-50', '<p>MOQ 50</p>'], ['pdp-moq-50', ''], ['about-moq-50', ''], ['worker-format', 'Content-Disposition: form-data; name=metadata'], ['direction', ''], ['hreflang', '']] as const) {
   const dir = mkdtempSync(join(tmpdir(), 'apparel-probe-'));
   try {
     cpSync('web/apparel/dist', dir, { recursive: true });
     if (name === 'worker-format') writeFileSync(join(dir, '_worker.js/index.js'), mutation);
+    else if (name === 'pdp-moq-50') {
+      const file = join(dir, 'products/hoodie-set-k02/index.html');
+      const original = readFileSync(file, 'utf8');
+      if (!original.includes('MOQ 100 pcs')) throw Error('MOQ probe target missing');
+      writeFileSync(file, original.replace('MOQ 100 pcs', 'MOQ 50 pcs'));
+    }
+    else if (name === 'about-moq-50') {
+      const file = join(dir, 'about-us/index.html');
+      const original = readFileSync(file, 'utf8');
+      const target = /(<p\b[^>]*data-owner-about-way="01"[^>]*>)[^<]*(<\/p>)/;
+      if (!target.test(original)) throw Error('About MOQ probe target missing');
+      writeFileSync(file, original.replace(target, '$1MOQ 50$2'));
+    }
     else if (name === 'direction' || name === 'hreflang') {
       const file = join(dir, 'ar/index.html');
       const original = readFileSync(file, 'utf8');

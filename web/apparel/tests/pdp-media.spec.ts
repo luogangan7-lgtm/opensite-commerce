@@ -38,7 +38,7 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280]) test(`F
   if (process.env.APPAREL_PDP_IMAGES==='1') await expect.poll(()=>image.evaluate((i:HTMLImageElement)=>i.complete && i.naturalWidth>0)).toBe(true);
  }
  const a=(await whole.boundingBox())!,b=(await detail.boundingBox())!;
- expect(a.width/a.height).toBeCloseTo(4/3,2); expect(b.width/b.height).toBeCloseTo(1,2);
+ expect(a.width/a.height).toBeCloseTo(4/5,2); expect(b.width/b.height).toBeCloseTo(1,2);
  expect(b.y).toBeGreaterThanOrEqual(a.y+a.height);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.locator('[data-gallery-main]').click();

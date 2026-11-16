@@ -1,0 +1,4 @@
+apparel	Distribution gates	2026-11-15T19:24:04.4190783Z 58 |     if (/(?:price|moq|lead time|sample cost)\s*:?\s*(?:[$€£¥]|\d)|(?:[$€£¥]|\b(?:USD|EUR|GBP|CNY))\s*\d/i.test(plain)) throw Error('Numeric commercial term');
+apparel	Distribution gates	2026-11-15T19:24:04.4192600Z error: Numeric commercial term
+apparel	Distribution gates	2026-11-15T19:24:04.4193385Z       at /home/runner/work/opensite-commerce/opensite-commerce/web/apparel/tests/dist-gate.ts:58:125
+apparel	Distribution gates	2026-11-15T19:24:04.4236736Z ##[error]Process completed with exit code 1.

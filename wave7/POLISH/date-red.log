@@ -1,0 +1,11 @@
+48 |   if (/mgoo/i.test(text) || /\baston\b/i.test(text) || text.includes('/' + 'Volumes/')) throw Error('Forbidden published text');
+49 |   for (const image of text.matchAll(/(?:src|href)="(\/img\/[^"?#]+)/g)) if (!images.has(image[1])) throw Error('Unpublished image reference');
+50 |   for (const srcset of text.matchAll(/(?:imagesrcset|srcset)="([^"]+)"/g)) for (const candidate of srcset[1].split(',')) if (!images.has(candidate.trim().split(/\s+/)[0])) throw Error('Unpublished responsive image');
+51 |   if (/tryon-|数字人形象|assets\/tryon/.test(text)) throw Error('Forbidden image provenance');
+52 |   if (path.endsWith('.html')) {
+53 |     if (text.includes('OWNER-INPUT')) throw Error(`Unresolved owner input in built HTML: ${path}`);
+                                                 ^
+error: Unresolved owner input in built HTML: privacy/index.html
+      at /Volumes/data/OpenSite Commerce/polish/web/apparel/tests/dist-gate.ts:53:45
+
+Bun v1.3.12 (macOS arm64)

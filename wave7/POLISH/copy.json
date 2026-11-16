@@ -1,0 +1,17 @@
+{
+  "authority": "owner task + docs/apparel-b2b/about-copy.md:22,58",
+  "key": "pdpMoq",
+  "scope": "Ready-made wholesale 100 pcs may mix styles; blank/decorated 100 per style mixed colours and sizes; custom 1000.",
+  "locales": {
+    "en": "MOQ 100 pcs · mix colours & sizes",
+    "zh": "100 件起订 · 同款可混色混码",
+    "es": "Pedido mínimo: 100 piezas · combina colores y tallas",
+    "fr": "Minimum de commande : 100 pièces · couleurs et tailles panachées",
+    "de": "Mindestbestellmenge: 100 Stück · Farben und Größen kombinierbar",
+    "pt": "Pedido mínimo: 100 peças · combine cores e tamanhos",
+    "ru": "Минимальный заказ: 100 шт. · можно сочетать цвета и размеры",
+    "ar": "الحد الأدنى للطلب 100 قطعة · يمكن مزج الألوان والمقاسات"
+  },
+  "runtimeSource": "web/apparel/src/data/owner-facts.ts",
+  "approval": "root msg_8cd0a266743a: all eight locales approved unchanged"
+}
