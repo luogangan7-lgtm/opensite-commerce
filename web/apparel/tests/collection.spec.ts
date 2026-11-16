@@ -124,3 +124,32 @@ test('AR colour facet labels have no Latin letters',async({page})=>{
  expect(labels.length).toBeGreaterThan(0);
  for(const label of labels) expect(label, `AR colour facet label: ${label}`).not.toMatch(/[A-Za-z]/);
 });
+
+test('h5 white facet circle has a visible edge',async({page})=>{
+ await page.setViewportSize({width:1440,height:900});
+ await page.goto('/collections/');
+ const swatch=page.locator('input[data-shop-facet="colour"][value="white"]').locator('..').locator('.shop-swatch');
+ await expect(swatch).toHaveCount(1);
+ const edge=await swatch.evaluate(el=>{const s=getComputedStyle(el);return {shadow:s.boxShadow,border:parseFloat(s.borderTopWidth)};});
+ expect(edge.shadow!=='none'||edge.border>=1, `white swatch edge: ${JSON.stringify(edge)}`).toBe(true);
+});
+
+test('h5 filter and sort pill labels stay single-line at 390 in all locales',async({page})=>{
+ for(const locale of ['en','ar','zh','es','fr','de','pt','ru']) {
+  await page.setViewportSize({width:390,height:844});
+  await page.goto(`${locale==='en'?'':`/${locale}`}/collections/`);
+  for(const selector of ['.shop-filter-open>span:first-of-type','.shop-sort>span']) {
+   const label=page.locator(selector);
+   await expect(label).toHaveCount(1);
+   const m=await label.evaluate(el=>{const s=getComputedStyle(el);return {h:el.getBoundingClientRect().height,lh:parseFloat(s.lineHeight)||parseFloat(s.fontSize)*1.2};});
+   expect(m.h, `${locale} ${selector}: height ${m.h} vs line-height ${m.lh}`).toBeLessThanOrEqual(m.lh*1.6+0.5);
+  }
+ }
+});
+
+test('h5 first card separates photo from title',async({page})=>{
+ await page.setViewportSize({width:1440,height:900});
+ await page.goto('/collections/');
+ const gap=await page.locator('[data-shop-card]').first().evaluate(el=>el.querySelector('h2')!.getBoundingClientRect().top-el.querySelector('.shop-photo')!.getBoundingClientRect().bottom);
+ expect(gap).toBeGreaterThanOrEqual(12);
+});
