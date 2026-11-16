@@ -1,0 +1,125 @@
+---
+/** PDP gallery owns role selection, colour context and native swipe; Product supplies catalog facts.
+ * Never reuse another colour's photograph when a view is unavailable. */
+import type { Product } from '../data/catalog';
+import { orderedGallery, primaryColour, galleryColours, isDetail } from '../data/gallery';
+import { pageLocale, dictionaries, productText } from '../i18n';
+import { digitalAlt } from '../data/imagery';
+interface Props { product: Product }
+const {product} = Astro.props;
+const locale = pageLocale(Astro.url), t = dictionaries[locale], text = productText[locale][product.slug];
+const primary = primaryColour(product.images), colours = galleryColours(product.images);
+const labels: Record<string,string> = {front:t.galleryFront,back:t.galleryBack,turn:t.gallerySide,structure:t.galleryConstruction,fabric:t.galleryFabric};
+const images = orderedGallery(product.images);
+const initial = images[0];
+const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.name} · ${labels[image.role!] || t.galleryDetails}`;
+---
+<div class="gallery" data-fb-gallery>
+ <div class="view-switch" role="tablist" aria-label={t.productViews}>
+  {[[t.galleryPair,'pair'],[t.gallerySide,'side'],[t.galleryDetails,'details']].map(([label,view],i)=><button type="button" role="tab" id={`view-${view}`} aria-controls="gallery-panel" aria-selected={i===0?'true':'false'} tabindex={i===0?0:-1} data-gallery-view={view}>{label}</button>)}
+ </div>
+ <div class="gallery-layout">
+  <div class="grouped-rail">
+   {colours.map(colour=><nav class="gallery-thumbs" data-gallery-colour={colour.colour} hidden={colour.colour!==primary} aria-label={t.productViews}>
+    {orderedGallery(product.images,colour.colour,primary).map((image,index)=><a href={image.src} data-role={image.role} data-colour={image.colour} data-fit={isDetail(image)?'contain':undefined} aria-label={alt(image)} aria-current={index===0?'true':undefined}><img src={image.src} alt={alt(image)} width="64" height="80" loading="lazy"/><span>{labels[image.role!]||t.galleryDetails}</span></a>)}
+   </nav>)}
+  </div>
+  <div id="gallery-panel" role="tabpanel" aria-labelledby="view-pair" tabindex="0" class="gallery-slides" data-gallery-slides aria-roledescription="carousel">
+   <figure data-gallery-slide="front"><picture class="image-card"><img data-gallery-main data-pdp-whole src={initial.src} alt={alt(initial)} width="800" height="1000" loading="eager" fetchpriority="high" role="button" tabindex="0" aria-haspopup="dialog" /></picture><figcaption data-gallery-label>{t.galleryFront}</figcaption></figure>
+   <figure data-gallery-slide="back"><picture class="image-card"><img data-gallery-back src={images.find(i=>i.role==='back')?.src} alt={t.galleryBack} width="800" height="1000" loading="eager" /></picture><figcaption>{t.galleryBack}</figcaption><p data-view-unavailable hidden>{t.galleryUnavailable}</p></figure><p data-primary-unavailable hidden>{t.galleryUnavailable}</p>
+  </div>
+ </div>
+ <div class="gallery-actions"><button type="button" data-gallery-prev aria-label={t.galleryPrevious}>‹</button><button type="button" data-gallery-zoom>{t.productViews}</button><button type="button" data-gallery-next aria-label={t.galleryNext}>›</button></div>
+ <nav class="gallery-colours" aria-label={t.productViews}>{colours.map(image=><button type="button" data-gallery-swatch={image.colour} aria-pressed={image.colour===primary?'true':'false'} aria-label={digitalAlt(image.src,locale)||image.colour}><img src={image.src} alt={digitalAlt(image.src,locale)||image.colour} width="64" height="80" loading="lazy"/></button>)}</nav>
+ <div class="gallery-tiles">{['turn','structure','fabric'].map(role=>{const image=images.find(i=>i.role===role);return <figure data-gallery-tile={role} hidden={!image}><img src={image?.src} alt={image?alt(image):labels[role]} width="800" height={role==='turn'?1000:800} loading="lazy"/><figcaption>{labels[role]}</figcaption></figure>})}</div>
+ <p class="sr-only" aria-live="polite" data-gallery-status></p>
+ <dialog data-gallery-viewer aria-label={alt(initial)}><form method="dialog"><button aria-label={t.galleryClose}>×</button></form><p data-viewer-title>{alt(initial)}</p><img src={initial.src} alt={alt(initial)} width="1200" height="1200" /></dialog>
+</div>
+<script>
+ const root = document.querySelector<HTMLElement>('[data-fb-gallery]');
+ if(root) {
+ const main=root.querySelector<HTMLImageElement>('[data-gallery-main]')!, back=root.querySelector<HTMLImageElement>('[data-gallery-back]')!;
+ const slides=root.querySelector<HTMLElement>('[data-gallery-slides]')!, second=root.querySelector<HTMLElement>('[data-gallery-slide=back]')!;
+ const viewer=root.querySelector<HTMLDialogElement>('dialog')!;
+ const tabs=[...root.querySelectorAll<HTMLButtonElement>('[data-gallery-view]')];
+ let view='pair';
+ const links=()=>[...root.querySelectorAll<HTMLAnchorElement>('.gallery-thumbs:not([hidden]) a')];
+ const choose=(link:HTMLAnchorElement)=>{
+  main.src=link.getAttribute('href')!; main.alt=link.querySelector('img')!.alt; main.dataset.fit=link.dataset.fit||'';
+  root.querySelector('[data-gallery-label]')!.textContent=link.querySelector('span')!.textContent;
+  root.querySelectorAll('.gallery-thumbs a').forEach(n=>n.removeAttribute('aria-current'));link.setAttribute('aria-current','true');
+ };
+ const select=(next:string)=>{
+  view=next; tabs.forEach(tab=>{const active=tab.dataset.galleryView===view;tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1});
+  slides.setAttribute('aria-labelledby',`view-${view}`);second.hidden=view!=='pair';
+  const role=view==='side'?'turn':view==='details'?'structure':'front';
+  const link=links().find(n=>n.dataset.role===role)||(view==='details'?links().find(n=>n.dataset.role==='fabric'):undefined);
+  main.closest('figure')!.hidden=!link;
+  if(link) choose(link);else main.removeAttribute('src');
+  root.querySelector<HTMLElement>('[data-primary-unavailable]')!.hidden=!!link;
+  root.querySelector('[data-gallery-status]')!.textContent=link?link.querySelector('img')!.alt:root.querySelector('[data-view-unavailable]')!.textContent;
+  slides.scrollTo({left:0});
+ };
+ tabs.forEach((tab,index)=>{
+  tab.addEventListener('click',()=>select(tab.dataset.galleryView!));
+  tab.addEventListener('keydown',event=>{
+   const rtl=getComputedStyle(root).direction==='rtl';
+   let target=index;
+   if(event.key==='ArrowRight')target=(index+(rtl?-1:1)+tabs.length)%tabs.length;
+   else if(event.key==='ArrowLeft')target=(index+(rtl?1:-1)+tabs.length)%tabs.length;
+   else if(event.key==='Home')target=0;else if(event.key==='End')target=tabs.length-1;else return;
+   event.preventDefault();tabs[target].focus();select(tabs[target].dataset.galleryView!);
+  });
+ });
+ const sync=()=>{
+  const all=links(), b=all.find(n=>n.dataset.role==='back');
+  back.hidden=!b;back.closest('picture')!.hidden=!b;second.querySelector<HTMLElement>('[data-view-unavailable]')!.hidden=!!b;
+  if(b){back.src=b.getAttribute('href')!;back.alt=b.querySelector('img')!.alt}else{back.removeAttribute('src')}
+  root.querySelectorAll<HTMLElement>('[data-gallery-tile]').forEach(tile=>{const link=all.find(n=>n.dataset.role===tile.dataset.galleryTile);tile.hidden=!link;const img=tile.querySelector('img')!;if(link){img.src=link.getAttribute('href')!;img.alt=link.querySelector('img')!.alt}else img.removeAttribute('src')});
+  select(view);
+ };
+ root.querySelectorAll<HTMLAnchorElement>('.gallery-thumbs a').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();const role=link.dataset.role;select(role==='front'||role==='back'?'pair':role==='turn'?'side':'details');choose(link)}));
+ root.querySelectorAll<HTMLButtonElement>('[data-gallery-swatch]').forEach(swatch=>swatch.addEventListener('click',()=>{
+  viewer.close();root.querySelectorAll<HTMLButtonElement>('[data-gallery-swatch]').forEach(n=>n.setAttribute('aria-pressed',String(n===swatch)));
+  root.querySelectorAll<HTMLElement>('[data-gallery-colour]').forEach(n=>n.hidden=n.dataset.galleryColour!==swatch.dataset.gallerySwatch);
+  document.querySelectorAll<HTMLAnchorElement>('[data-rfq-intent]').forEach(link=>{const url=new URL(link.href);url.searchParams.set('colour',swatch.dataset.gallerySwatch!);link.href=url.href});view='pair';sync();
+ }));
+ const open=(img:HTMLImageElement)=>{if(!img.getAttribute('src'))return;const target=viewer.querySelector('img')!;target.src=img.src;target.alt=img.alt;viewer.setAttribute('aria-label',img.alt);viewer.querySelector('[data-viewer-title]')!.textContent=img.alt;viewer.showModal()};
+ root.querySelector('[data-gallery-zoom]')!.addEventListener('click',()=>open(main));
+ main.addEventListener('click',()=>open(main));back.addEventListener('click',()=>open(back));
+ main.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open(main)}});
+ const move=(direction:number)=>slides.scrollBy({left:direction*slides.clientWidth*(getComputedStyle(root).direction==='rtl'?-1:1),behavior:'smooth'});
+ root.querySelector('[data-gallery-prev]')!.addEventListener('click',()=>move(-1));root.querySelector('[data-gallery-next]')!.addEventListener('click',()=>move(1));
+ slides.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();move(e.key==='ArrowRight'?1:-1)}});
+ sync();
+ }
+</script>
+<style>
+ .gallery{min-width:0;display:flex;flex-direction:column;gap:var(--sy-space-md);align-self:start}
+ .view-switch{display:flex;gap:var(--sy-space-xs)}
+ .view-switch button{flex:1;padding-inline:var(--sy-space-sm);background:transparent;color:var(--sy-color-ink);border:0;border-radius:var(--sy-radius-control)}
+ .view-switch [aria-selected=true]{background:var(--sy-color-accent);color:var(--sy-color-on-accent)}
+ .gallery-layout{display:grid;grid-template-columns:64px minmax(0,1fr);gap:var(--sy-space-md);align-items:start}
+ .gallery-thumbs{display:flex;flex-direction:column;gap:var(--sy-space-xs);max-height:600px;overflow:auto}
+ .gallery-thumbs[hidden], [hidden]{display:none!important}
+ .gallery-thumbs a{display:block;flex:none;border-radius:var(--sy-radius-image);text-decoration:none}
+ .gallery-thumbs img{width:48px;height:60px;object-fit:contain;object-position:top;border-radius:var(--sy-radius-image)}
+ .gallery-thumbs span{display:block;font-size:var(--sy-text-eyebrow)}
+ .gallery-slides{min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-md)}
+ .gallery-slides figure{min-width:0;margin:0}
+ .image-card{display:block;border-radius:var(--sy-radius-image);overflow:hidden;background:var(--sy-color-surface);box-shadow:var(--sy-shadow-card)}
+ .image-card img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:contain;object-position:50% 0;border-radius:var(--sy-radius-image);cursor:zoom-in}
+ .image-card img[data-fit=contain]{object-fit:contain}
+ figcaption{padding-block-start:var(--sy-space-xs);font-size:var(--sy-text-eyebrow)}
+ .gallery-actions{display:flex;justify-content:space-between;gap:var(--sy-space-xs)}
+ .gallery-colours{display:flex;gap:var(--sy-space-xs);flex-wrap:wrap}
+ .gallery-colours button{border-radius:var(--sy-radius-image);background:var(--sy-color-canvas)}
+ .gallery-colours img{width:40px;height:50px;object-fit:contain;object-position:top;border-radius:var(--sy-radius-inner)}
+ .gallery-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sy-space-sm)}
+ .gallery-tiles figure{margin:0;min-width:0}
+ .gallery-tiles img{width:100%;height:auto;aspect-ratio:1;object-fit:contain;object-position:top;border-radius:var(--sy-radius-image)}
+ .gallery-tiles [data-gallery-tile=turn] img{aspect-ratio:4/5}
+ @media(min-width:1101px){.gallery{position:sticky;top:var(--sy-space-lg)}}
+ @media(max-width:767px){.gallery-layout{display:flex;flex-direction:column-reverse}.grouped-rail{width:100%}.gallery-thumbs{flex-direction:row;max-height:none}.gallery-slides{display:flex;width:100%;overflow-x:auto;scroll-snap-type:x mandatory}.gallery-slides figure{flex:0 0 100%;scroll-snap-align:start}.view-switch button{font-size:var(--sy-text-eyebrow)}}
+ @media(prefers-reduced-motion:reduce){.gallery-slides{scroll-behavior:auto}}
+</style>
