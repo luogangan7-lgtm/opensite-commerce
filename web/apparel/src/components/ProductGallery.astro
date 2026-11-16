@@ -21,7 +21,7 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
  <div class="gallery-layout">
   <div class="grouped-rail">
    {colours.map(colour=><nav class="gallery-thumbs" data-gallery-colour={colour.colour} hidden={colour.colour!==primary} aria-label={t.productViews}>
-    {orderedGallery(product.images,colour.colour,primary).map((image,index)=><a href={image.src} data-role={image.role} data-colour={image.colour} data-fit={isDetail(image)?'contain':undefined} aria-label={alt(image)} aria-current={index===0?'true':undefined}><img src={image.src} alt={alt(image)} width="64" height="80" loading="lazy"/><span>{labels[image.role!]||t.galleryDetails}</span></a>)}
+    {orderedGallery(product.images,colour.colour,primary).map((image,index)=><a href={image.src} data-role={image.role} data-colour={image.colour} data-fit={isDetail(image)?'contain':undefined} aria-label={alt(image)} aria-current={index===0?'true':undefined}><img src={image.src} alt={alt(image)} width="64" height="80" loading="lazy"/><span>{image.role==='structure'?t.galleryDetails:labels[image.role!]||t.galleryDetails}</span></a>)}
    </nav>)}
   </div>
   <div id="gallery-panel" role="tabpanel" aria-labelledby="view-pair" tabindex="0" class="gallery-slides" data-gallery-slides aria-roledescription="carousel">
@@ -112,6 +112,8 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
  .image-card img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:contain;object-position:50% 0;border-radius:var(--sy-radius-image);cursor:zoom-in}
  .image-card img[data-fit=contain]{object-fit:contain}
  figcaption{padding-block-start:var(--sy-space-xs);font-size:var(--sy-text-eyebrow)}
+ .gallery-thumbs a[data-role=structure]{margin-block-start:var(--sy-space-md)}
+ .gallery-actions button{background:transparent;color:var(--sy-color-ink);border-color:var(--sy-color-hairline)}
  .gallery-actions{display:flex;justify-content:space-between;gap:var(--sy-space-xs)}
  .gallery-colours{display:flex;gap:var(--sy-space-xs);flex-wrap:wrap}
  .gallery-colours button{border-radius:var(--sy-radius-image);background:var(--sy-color-canvas)}
