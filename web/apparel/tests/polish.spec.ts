@@ -12,10 +12,11 @@ for (const width of [1440, 768, 390]) {
         const text = range.getBoundingClientRect();
         return Math.max(arrow.left - text.right, text.left - arrow.right);
       }));
-      expect(gaps.length).toBeGreaterThan(0);
+      if(path==='/') expect(gaps.length).toBeGreaterThan(0);
+      else {await expect(page.locator('.shop-quote').first()).not.toBeEmpty();await expect(page.locator('.shop-quote span[aria-hidden]')).toHaveCount(0);}
       for (const gap of gaps) expect(gap).toBeGreaterThan(0);
-      const portrait = page.locator(path === '/' ? '.wholesale-photo img' : '.collection-hero > img');
-      await expect(portrait).toHaveCSS('object-position', /^50% 0(?:px|%)$/);
+      const portrait = page.locator(path === '/' ? '.wholesale-photo img' : '.shop-photo > a > img:first-child');
+      await expect(portrait.first()).toHaveCSS('object-position', /^50% 0(?:px|%)$/);
     }
   });
   test(`POLISH PDP frame and thumbnail rail ${width}`, async ({ page }) => {
