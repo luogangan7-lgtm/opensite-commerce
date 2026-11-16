@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import frozen from '../design/collection-frozen.json';
 import digital from '../digital-sources.json';
 import homeMedia from '../home-media.json';
+import aboutMedia from '../about-media.json';
 import contactMedia from '../contact-media.json';
 import serviceMedia from '../service-media.json';
 import { digitalDelivery } from '../image-plan';
@@ -28,7 +29,7 @@ for (const master of digital) {
  for (const delivery of digitalDelivery(master)) images.add(delivery.src);
 }
 // Frozen Home media: SHA-bound masters ship only their exact 1024/640 derivatives.
-for (const master of [...homeMedia, ...contactMedia, ...serviceMedia]) for (const delivery of digitalDelivery(master)) images.add(delivery.src);
+for (const master of [...homeMedia, ...aboutMedia, ...contactMedia, ...serviceMedia]) for (const delivery of digitalDelivery(master)) images.add(delivery.src);
 for (const asset of frozen.assets) for (const file of asset.derivatives) images.add(file.src);
 
 // Dictionary-backed slot references only; source review stays deploy-only.

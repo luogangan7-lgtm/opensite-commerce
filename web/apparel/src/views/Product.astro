@@ -107,7 +107,3 @@ const relatedCards = (featuredRelated ? [featuredRelated, ...related.filter(p =>
   @media (max-width: 767px) { .pdp-media-pair { grid-template-columns: minmax(0, 1fr); } }
 </style>
 
-<style is:global>
-  /* Keep the shared RFQ action in document flow on PDPs so it cannot obscure content. */
-  body:has(.pdp-section) .quote-float { position: static; margin: var(--sy-space-lg); width: fit-content; }
-</style>

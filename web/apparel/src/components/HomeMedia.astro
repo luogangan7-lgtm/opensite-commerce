@@ -1,10 +1,11 @@
 ---
-/** Frozen Home media, read by Home/Hero only. SHA-bound masters are packaged by
+/** Frozen editorial media for Home/Hero and About us. SHA-bound masters are packaged by
  * home-images via the existing downscale-only digital delivery writer. */
 import media from '../../home-media.json';
-interface Props { id: string; alt: string; hero?: boolean; class?: string }
-const {id,alt,hero=false,class:className}=Astro.props;
-const image=media.find(row=>row.id===id);
+import aboutMedia from '../../about-media.json';
+interface Props { id: string; alt: string; hero?: boolean; class?: string; scope?: 'about' }
+const {id,alt,hero=false,class:className,scope}=Astro.props;
+const image=(scope === 'about' ? aboutMedia : media).find(row=>row.id===id);
 if(!image) throw Error(`Unknown Home master ${id}`);
 const srcset=image.width>640 ? `${image.src.replace('.webp','-640.webp')} 640w, ${image.src} ${Math.min(1024,image.width)}w` : undefined;
 ---
