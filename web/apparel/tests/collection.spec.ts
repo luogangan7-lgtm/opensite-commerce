@@ -1,6 +1,9 @@
 /** Owner-approved store listing: static fallback, URL facets, ordering, pagination, RTL and CLS. */
 import {test,expect} from '@playwright/test';
-import {products} from '../src/data/catalog';
+if(process.env.CP6_BROWSER_EXECUTABLE) test.use({launchOptions:{executablePath:process.env.CP6_BROWSER_EXECUTABLE}});
+import {readFileSync} from 'node:fs';
+import type {Product} from '../src/data/catalog';
+const products:Product[]=JSON.parse(readFileSync(new URL('../src/data/products.json',import.meta.url),'utf8'));
 import {selectStyles,cardViews} from '../src/data/shop';
 for(const locale of ['en','ar','zh']) for(const width of [390,768,1280,1440]) {
  test(`${locale} store listing ${width}`,async({page})=>{

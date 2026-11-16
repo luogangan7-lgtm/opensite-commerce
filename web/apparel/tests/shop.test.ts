@@ -1,5 +1,8 @@
 /** CP-SHOP correctness against catalog, explicit unknowns and existing back provenance. */
 import {test,expect} from 'bun:test';
+import {readFileSync} from 'node:fs';
+import {ownerMoq,pdpMoq} from '../src/data/owner-facts';
+import {locales} from '../src/i18n';
 import {products} from '../src/data/catalog';
 import {shopFacts,selectStyles,setShopQuery,cardViews,pageSize} from '../src/data/shop';
 test('facets intersect explicit product data and preserve Featured order',()=>{
@@ -29,4 +32,14 @@ test('URL roundtrip preserves unrelated state, encoded colour and default remova
 test('each swap comes from a SHA-bound back role of the same colour',()=>{
  expect(pageSize).toBe(24);
  for(const p of products) {const {front,back}=cardViews(p);expect(front.role).toBe('front');expect(back).toBeDefined();expect(back!.role).toBe('back');expect(back!.colour).toBe(front.colour);expect(back!.sha256_16||back!.web_sha256).toBeTruthy();expect(p.images).toContain(back!);}
+});
+
+test('every rendered listing MOQ line uses the owner 100-piece fact in all eight locales',()=>{
+ expect(ownerMoq.ready).toBe(100);
+ for(const locale of locales) {
+  const html=readFileSync(`web/apparel/dist/${locale==='en'?'':locale+'/'}collections/index.html`,'utf8');
+  const lines=[...html.matchAll(/<p\b[^>]*class="shop-moq"[^>]*>(.*?)<\/p>/g)].map(m=>m[1]);
+  expect(lines).toHaveLength(products.length);
+  for(const line of lines)expect(line).toBe(pdpMoq[locale].replaceAll('&','&amp;'));
+ }
 });

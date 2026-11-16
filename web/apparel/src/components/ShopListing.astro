@@ -44,7 +44,7 @@ const label = (key: string) => t[`cp-shop/${key}` as Key];
  <div data-shop-empty hidden><h2>{t['cp6.copy/no-styles-match-these-filters']}</h2><p>{t['cp6.copy/try-removing-a-filter-or-request-a-style-tha']}</p></div>
  <button type="button" data-shop-more hidden>{label('more')}</button>
  </div></div>
- <aside class="shop-b2b"><p>{pdpMoq[locale]}</p><p>{label('custom').replace('{moq}', ownerMoq.custom.toLocaleString(locale))}</p><a href={getRelativeLocaleUrl(locale,'/sampling/')}>{t.samples}</a><a href={getRelativeLocaleUrl(locale,'/shipping/')}>{t['about.order-ship-title']}</a></aside>
+ <aside class="shop-b2b"><p class="shop-owner-ready">{pdpMoq[locale]}</p><p class="shop-owner-custom">{label('custom').replace('{moq}', ownerMoq.custom.toLocaleString(locale))}</p><a href={getRelativeLocaleUrl(locale,'/sampling/')}>{t.samples}</a><a href={getRelativeLocaleUrl(locale,'/shipping/')}>{t['about.order-ship-title']}</a></aside>
 </div>
 <script>
 import { pageSize, selectStyles, setShopQuery, shopFacets, type ShopFacet } from '../data/shop';
