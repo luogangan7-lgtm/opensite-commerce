@@ -71,7 +71,7 @@ for (const file of files(root)) {
       for (const [name,value] of [['ready', expected], ['custom', dictionaries[locale]['cp-shop/custom'].replace('{moq}', ownerMoq.custom.toLocaleString(locale)).replaceAll('&','&amp;')]]) {
         const paragraph = new RegExp(`<p\\b[^>]*class="shop-owner-${name}"[^>]*>([^<]*)<\\/p>`, 'g');
         const matches = [...commercialText.matchAll(paragraph)];
-        if (matches.length !== 1 || matches[0][1] !== value) throw Error('Owner listing B2B MOQ changed');
+        if (matches.length !== 1 || matches[0][1] !== value) throw Error(`Owner listing B2B MOQ changed ${path}/${name}: actual=${JSON.stringify(matches.map(m=>m[1]))} expected=${JSON.stringify(value)}`);
         commercialText = commercialText.replace(paragraph, `<p>${dictionaries[locale].quote}</p>`);
       }
     }
