@@ -6,7 +6,7 @@ import { getRelativeLocaleUrl } from 'astro:i18n';
 import { products, categories } from '../data/catalog';
 import { shopFacts, shopFacets, cardViews } from '../data/shop';
 import { shopCustomMoq, pdpMoq } from '../data/owner-facts';
-import { digitalAlt, digitalLabel } from '../data/imagery';
+import { digitalAlt } from '../data/imagery';
 import { dictionaries, pageLocale, productText, type Key } from '../i18n';
 interface Props { category?: string }
 const { category } = Astro.props;
@@ -28,7 +28,6 @@ const label = (key: string) => t[`cp-shop/${key}` as Key];
  </details>
  <div class="shop-results">
  <div class="shop-toolbar"><p data-shop-count role="status" aria-live="polite">{label('count').replace('{shown}',String(items.length)).replace('{total}',String(items.length))}</p><label>{label('sort')}<select data-shop-sort><option value="featured">{label('featured')}</option><option value="code">{label('code')}</option></select></label></div>
- <p class="shop-disclosure">{digitalLabel(locale)}</p>
  <div class="shop-grid">{items.map(p => {
  const { front, back } = cardViews(p), name = productText[locale][p.slug].name;
  const colours = p.images.filter(i => i.role === 'front' && i.colour);
@@ -108,7 +107,6 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 .shop button:hover{background:var(--sy-color-placeholder)}
 .shop-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--sy-space-md);margin-block-end:var(--sy-space-md)}
 .shop-toolbar label{display:flex;align-items:center}
-.shop-disclosure{font-size:var(--sy-text-small);color:var(--sy-color-muted)}
 .shop-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-grid-y) var(--sy-space-grid-x)}
 .shop-card{min-width:0}
 .shop-card[hidden]{display:none}
