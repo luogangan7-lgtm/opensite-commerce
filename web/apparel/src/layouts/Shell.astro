@@ -57,13 +57,13 @@ const canonical = new URL(getRelativeLocaleUrl(locale, path), origin).href;
 <details class="mobile-languages"><summary>{t.language}: {languageNames[locale]}</summary><nav aria-label={t.language}>{locales.map(lang => <a data-locale-link href={getRelativeLocaleUrl(lang, path)} lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'} aria-current={lang === locale ? 'page' : undefined}>{languageNames[lang]}</a>)}</nav></details>
 </section></div></div></header>
 <CookieConsent /><main id="content"><slot /></main>
+{!/^\/(?:privacy|terms|404(?:\.html)?)\/?$/.test(path) && <div class="quote-dock"><a class="quote-float button" href={href('/contact/')}>{t.shellRequest}</a></div>}
 <footer><div class="wrap footer">
 <div><a class="brand" href={href('/')} aria-label={t.brandName}><BrandLogo variant="reverse" footer /></a><p>{t.footerText}</p></div>
 <nav aria-label={t.company}><h2>{t.company}</h2><a href={href('/collections/')}>{t.shellCollections}</a><a href={href('/oem-odm/')}>{t.navOem}</a><a href={href('/about-us/')}>{t.shellAboutUs}</a><a href={href('/about/')}>{t.shellFactory}</a><a href={href('/collections/')}>{t.footerSize}</a></nav>
 <nav aria-label={t.footerHelp}><h2>{t.footerHelp}</h2><a href={href('/sampling/')}>{t.footerSampling}</a><a href={href('/shipping/')}>{t.footerShipping}</a><a href={href('/terms/')}>{t.footerTerms}</a><a href={href('/privacy/')}>{t.footerPrivacy}</a></nav>
 <nav aria-label={t.shellContact}><h2>{t.shellContact}</h2><a href={href('/contact/')}>{t.shellRequest}</a><a href="https://wa.me/85270227648">{t.footerWhatsapp}</a><a href="mailto:sales@sourcyowear.com">{t.footerEmail}</a><a href={href('/contact/') + '#rfq-form'}>{t.footerContactForm}</a></nav>
 </div><div class="wrap footer-legal"><span>{t.footerCopyright}</span><span>{t.footerNotice}</span></div></footer>
-{!/^\/(?:privacy|terms|404(?:\.html)?)\/?$/.test(path) && <a class="quote-float button" href={href('/contact/')}>{t.shellRequest}</a>}
 </body></html>
 
 <script>

@@ -1,5 +1,41 @@
 /** C5 HDR/MENU browser gate; built Shell at mobile and existing desktop breakpoints. */
 import { test, expect } from '@playwright/test';
+// Shared Header: desktop links form one row; approved tablet widths use the menu.
+for (const locale of ['en', 'ar']) for (const width of [1440, 1280, 1101, 1024, 900, 768]) {
+  test(`header nav baseline ${locale} ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const prefix = locale === 'en' ? '' : '/ar';
+    for (const route of ['/', '/about-us/']) {
+      await page.goto(`${prefix}${route}`);
+      await page.evaluate(() => document.fonts.ready);
+      const nav = page.locator('.header-inner > nav');
+      if (width <= 1100) {
+        await expect(nav).toBeHidden();
+        const toggle = page.locator('[data-menu-toggle]');
+        await expect(toggle).toBeVisible();
+        const logo = await page.locator('header .brand').boundingBox(), menu = await toggle.boundingBox();
+        expect(Math.abs(logo!.y + logo!.height / 2 - menu!.y - menu!.height / 2)).toBeLessThanOrEqual(1);
+      } else {
+        const items = nav.locator(':scope > a, :scope > details > summary');
+        await expect(items).toHaveCount(5);
+        const before = await items.evaluateAll(nodes => nodes.map(n => ({ y: n.getBoundingClientRect().y, h: n.getBoundingClientRect().height })));
+        expect(Math.max(...before.map(b => b.y)) - Math.min(...before.map(b => b.y))).toBeLessThanOrEqual(1);
+        const textY = await items.evaluateAll(nodes => nodes.map(n => {
+          const range = document.createRange(); range.selectNodeContents(n.firstChild!);
+          return range.getBoundingClientRect().y;
+        }));
+        expect(Math.max(...textY) - Math.min(...textY)).toBeLessThanOrEqual(1);
+        await nav.locator('summary').click();
+        await expect(nav.locator('.about-dropdown')).toBeVisible();
+        expect(await items.evaluateAll(nodes => nodes.map(n => ({ y: n.getBoundingClientRect().y, h: n.getBoundingClientRect().height })))).toEqual(before);
+        const trigger = await nav.locator('summary').boundingBox(), panel = await nav.locator('.about-dropdown').boundingBox();
+        expect(panel!.y).toBeGreaterThanOrEqual(trigger!.y + trigger!.height - 1);
+        await page.keyboard.press('Escape');
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+  });
+}
 for (const locale of ['en', 'zh', 'ar']) {
   const prefix = locale === 'en' ? '' : `/${locale}`;
   test(`mobile navigation ${locale}`, async ({ page }) => {

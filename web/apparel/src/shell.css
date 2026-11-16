@@ -4,9 +4,10 @@ header .header-inner { padding-block: var(--sy-space-md); flex-wrap: nowrap; }
 header .brand { flex-shrink: 0; }
 header .header-inner > .button { order: 2; white-space: nowrap; }
 header .language-switcher { margin-inline-start: auto; }
-header .header-inner > nav { gap: var(--sy-space-grid-x); }
+header .header-inner > nav { gap: var(--sy-space-grid-x); align-items: center; flex-wrap: nowrap; }
+header .header-inner > nav > a { display: inline-flex; align-items: center; min-height: 44px; white-space: nowrap; }
 /* CP-ABOUT: a native disclosure preserves About us and Factory as separate destinations. */
-.about-navigation { position: relative; }
+.about-navigation { position: relative; padding: 0; border: 0; }
 .about-navigation > summary { display: flex; align-items: center; gap: var(--sy-space-xs); min-height: 44px; list-style: none; font-weight: inherit; }
 .about-navigation > summary::-webkit-details-marker { display: none; }
 .nav-caret { width: var(--sy-space-xs); height: var(--sy-space-xs); border-inline-end: 1px solid currentColor; border-block-end: 1px solid currentColor; transform: rotate(45deg); margin-block-start: calc(-1 * var(--sy-space-2xs)); }
@@ -15,6 +16,8 @@ header .header-inner > nav { gap: var(--sy-space-grid-x); }
 .about-dropdown a { display: flex; align-items: center; min-height: 44px; padding: var(--sy-space-xs) var(--sy-space-md); }
 .about-dropdown a:hover,.about-dropdown a:focus-visible { background: var(--sy-color-surface-alt); }
 .about-dropdown [aria-current="page"] { text-decoration: underline; text-underline-offset: var(--sy-space-2xs); }
+/* Shared RFQ dock reserves its own space after main; it cannot cover reading text. */
+.quote-dock { display: flex; justify-content: flex-end; padding: var(--sy-space-grid-x); }
 .header-over-image { position: absolute; inset-inline: 0; inset-block-start: var(--sy-space-lg); background: transparent; border: 0; }
 .header-over-image .header-inner { width: min(calc(100% - 2 * var(--sy-space-lg)), calc(var(--sy-layout-max) - var(--sy-space-xl))); padding: var(--sy-space-xs) var(--sy-space-lg); border: 0; box-shadow: inset 0 0 0 var(--sy-space-hair) color-mix(in srgb, var(--sy-color-on-inverse) 35%, transparent); border-radius: var(--sy-radius-pill); background: color-mix(in srgb, var(--sy-color-ink) 78%, transparent); color: var(--sy-color-on-inverse); }
 .header-over-image .header-inner > .button { background: transparent; border-color: currentColor; color: inherit; }
