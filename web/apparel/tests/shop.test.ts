@@ -1,7 +1,7 @@
 /** CP-SHOP correctness against catalog, explicit unknowns and existing back provenance. */
 import {test,expect} from 'bun:test';
 import {readFileSync} from 'node:fs';
-import {ownerMoq,pdpMoq} from '../src/data/owner-facts';
+import {ownerMoq,pdpMoq,shopCustomMoq} from '../src/data/owner-facts';
 import {locales} from '../src/i18n';
 import {products} from '../src/data/catalog';
 import {shopFacts,selectStyles,setShopQuery,cardViews,pageSize} from '../src/data/shop';
@@ -42,4 +42,11 @@ test('every rendered listing MOQ line uses the owner 100-piece fact in all eight
   expect(lines).toHaveLength(products.length);
   for(const line of lines)expect(line).toBe(pdpMoq[locale].replaceAll('&','&amp;'));
  }
+});
+
+test('custom minimum uses deterministic owner grouping across Node and Bun locale runtimes',()=>{
+ expect(ownerMoq.custom).toBe(1000);
+ expect(shopCustomMoq('ar')).toContain('1,000');
+ expect(shopCustomMoq('fr')).toContain('1 000');
+ expect(shopCustomMoq('de')).toContain('1.000');
 });

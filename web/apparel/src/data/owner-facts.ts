@@ -22,3 +22,9 @@ export function aboutMoqCopy(locale: Locale, way: typeof aboutWays[number]): str
   const amount = quantity.toLocaleString('en-US').replaceAll(',', grouping[locale]);
   return dictionaries[locale][`about.ways-body-${way}`].replace('{moq}', amount);
 }
+
+/** Listing quantities use the same explicit grouping as About across Node/Bun ICU builds. */
+export function shopCustomMoq(locale: Locale): string {
+  const amount = ownerMoq.custom.toLocaleString('en-US').replaceAll(',', grouping[locale]);
+  return dictionaries[locale]['cp-shop/custom'].replace('{moq}', amount);
+}

@@ -12,7 +12,7 @@ import serviceMedia from '../service-media.json';
 import { digitalDelivery } from '../image-plan';
 import products from '../src/data/products.json';
 import { dictionaries, locales, type Locale } from '../src/i18n';
-import { pdpMoq, aboutWays, aboutMoqCopy, ownerMoq } from '../src/data/owner-facts';
+import { pdpMoq, aboutWays, aboutMoqCopy, shopCustomMoq } from '../src/data/owner-facts';
 import { imageBase, widths } from '../src/data/imagery';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 const policy = JSON.parse(readFileSync(join(root, 'rfq-policy.json'), 'utf8'));
@@ -68,7 +68,7 @@ for (const file of files(root)) {
       const count = products.filter(p => parts.length === 2 || p.category === parts[1]).length;
       if (cards.length !== count || cards.some(m => m[1] !== expected)) throw Error('Owner listing MOQ changed');
       commercialText = commercialText.replace(card, `<p>${dictionaries[locale].quote}</p>`);
-      for (const [name,value] of [['ready', expected], ['custom', dictionaries[locale]['cp-shop/custom'].replace('{moq}', ownerMoq.custom.toLocaleString(locale)).replaceAll('&','&amp;')]]) {
+      for (const [name,value] of [['ready', expected], ['custom', shopCustomMoq(locale).replaceAll('&','&amp;')]]) {
         const paragraph = new RegExp(`<p\\b[^>]*class="shop-owner-${name}"[^>]*>([^<]*)<\\/p>`, 'g');
         const matches = [...commercialText.matchAll(paragraph)];
         if (matches.length !== 1 || matches[0][1] !== value) throw Error(`Owner listing B2B MOQ changed ${path}/${name}: actual=${JSON.stringify(matches.map(m=>m[1]))} expected=${JSON.stringify(value)}`);
