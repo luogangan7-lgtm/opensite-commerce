@@ -12,7 +12,7 @@ const primary = primaryColour(product.images), colours = galleryColours(product.
 const labels: Record<string,string> = {front:t.galleryFront,back:t.galleryBack,turn:t.gallerySide,structure:t.galleryConstruction,fabric:t.galleryFabric};
 const images = orderedGallery(product.images);
 const initial = images[0];
-const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.name} · ${labels[image.role!] || t.galleryDetails}`;
+const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.name}: ${t.view} ${images.indexOf(image) + 1}`;
 ---
 <div class="gallery" data-fb-gallery>
  <div class="view-switch" role="tablist" aria-label={t.productViews}>
