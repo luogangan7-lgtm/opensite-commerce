@@ -67,7 +67,7 @@ for (const locale of ['en', 'zh', 'ar']) for (const width of [1440, 768, 390]) t
     await expect(page.locator('.quote-float')).toHaveCount(0);
     if (route === '404') {
       await expect(page.locator('.error-code')).toHaveCSS('font-size', '88px');
-      await expect(page.locator('.recovery-card').first()).toHaveCSS('background-color', 'rgb(239, 231, 214)');
+      await expect(page.locator('.recovery-card').first()).toHaveCSS('background-color', 'rgb(244, 240, 231)');
     } else {
       await expect(page.locator('h1')).toHaveCSS('font-size', width === 390 ? '36px' : '56px');
       const column = await page.locator('.service-copy').boundingBox();

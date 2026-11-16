@@ -29,7 +29,7 @@ const legal = kind === 'privacy' || kind === 'terms';
   .service-copy { max-inline-size: 72ch; }
   .service-copy > div, aside { margin-block: var(--sy-space-grid-y); }
   /* Approved legal typography keeps its own ramp when the global mobile ramp changes. */
-  .legal-page { --sy-text-h2: 56px; --sy-text-h3: 36px; --sy-text-h4: 24px; padding-block: var(--sy-space-gutter-lg); border: 0; }
+  .legal-page { --sy-text-h2: 56px; --sy-text-h3: 36px; --sy-text-h4: 24px; padding-block: var(--sy-space-gutter-lg); border: var(--sy-space-0); }
   .legal-page > *, .legal-page .service-copy { max-inline-size: 760px; margin-inline: auto; }
   @media (min-width: 1101px) { .legal-page { width: min(calc(100% - 2 * var(--sy-space-gutter-lg)), calc(var(--sy-layout-desktop) - 2 * var(--sy-space-gutter-lg))); } }
   .legal-page h1 { font-size: var(--sy-text-h2); margin-block: 0 var(--sy-space-md); }
