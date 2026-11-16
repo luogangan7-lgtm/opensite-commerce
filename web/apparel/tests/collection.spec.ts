@@ -116,3 +116,11 @@ for(const locale of ['en','ar','zh']) for(const width of [390,1440]) {
   if(width===390){await page.locator('[data-shop-filter-dialog] form button').click();await page.evaluate(()=>scrollTo(0,800));const ys=await page.locator('.shop-tabs a').evaluateAll(els=>els.map(x=>Math.round(x.getBoundingClientRect().y)));expect(new Set(ys).size).toBe(1);const toolbar=(await page.locator('.shop-toolbar').boundingBox())!;expect(toolbar.y).toBeGreaterThanOrEqual(-1);expect(toolbar.y).toBeLessThan(10);}
  });
 }
+
+test('AR colour facet labels have no Latin letters',async({page})=>{
+ await page.setViewportSize({width:1440,height:900});
+ await page.goto('/ar/collections/');
+ const labels=await page.locator('.shop-colour-option .shop-option-text').allTextContents();
+ expect(labels.length).toBeGreaterThan(0);
+ for(const label of labels) expect(label, `AR colour facet label: ${label}`).not.toMatch(/[A-Za-z]/);
+});

@@ -2,9 +2,26 @@
 import {test,expect} from 'bun:test';
 import {readFileSync} from 'node:fs';
 import {ownerMoq,pdpMoq,shopCustomMoq,shopReadyMoq} from '../src/data/owner-facts';
-import {locales} from '../src/i18n';
+import {locales,dictionaries,type Key} from '../src/i18n';
 import {products} from '../src/data/catalog';
 import {shopFacts,selectStyles,setShopQuery,cardViews,pageSize,featuredStyles} from '../src/data/shop';
+const colourFamilies=['black','white','cream','grey','charcoal','navy','blue','green','brown','beige','red','pink','purple'] as const;
+
+test('every raw front colour has an approved family',async()=>{
+ const shop:any=await import('../src/data/shop');
+ const raw=new Set(products.flatMap(p=>p.images.filter(i=>i.role==='front'&&i.colour).map(i=>i.colour!)));
+ expect(raw.size).toBeGreaterThan(50);
+ for(const value of raw) expect(colourFamilies, `unmapped raw colour: ${value}`).toContain(shop.colourFamily?.[value]);
+});
+
+test('colour facet labels have no raw annotations or CJK outside zh',()=>{
+ for(const locale of locales) for(const family of colourFamilies) {
+  const key=`cp-shop/colour-${family}` as Key, label=dictionaries[locale][key];
+  expect(label, `${locale}:${key}`).toBeTruthy();
+  expect(label, `${locale}:${key}`).not.toContain('(');
+  if(locale!=='zh') expect(label, `${locale}:${key}`).not.toMatch(/[\u3400-\u9fff]/);
+ }
+});
 test('facets intersect explicit product data and preserve Featured order',()=>{
  for(const category of new Set(products.map(p=>p.category))) {
   expect(selectStyles(products,new URLSearchParams({category}))).toEqual(products.filter(p=>p.category===category));
