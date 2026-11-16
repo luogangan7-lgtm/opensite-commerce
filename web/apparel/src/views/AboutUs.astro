@@ -34,12 +34,12 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
 <section class="about-section about-inverse"><div class="about-inner"><p class="about-eyebrow">{b('cta-eyebrow')}</p><h2>{b('cta-title')}</h2><p class="about-lead">{b('cta-body')}</p><a class="button about-quote" href={href('/contact/')}>{b('request-quote')} <span aria-hidden="true">{arrow}</span></a><p>{b('cta-contact')}</p></div></section>
 </Shell>
 <style>
- .about-section{padding:var(--sy-space-section);background:var(--sy-color-canvas);color:var(--sy-color-ink);line-height:1.55;border:0;}
+ .about-section{padding:var(--sy-space-section);background:var(--sy-color-canvas);color:var(--sy-color-ink);line-height:1.55;border:var(--sy-space-0);}
  .about-inner{max-width:1248px;margin-inline:auto;display:flex;flex-direction:column;gap:var(--sy-space-gutter-lg);min-width:0;}
  .about-section h1,.about-section h2,.about-section h3,.about-section p,.about-section address{margin:0;max-width:none;}
  .about-section h1,.about-section h2{white-space:pre-line;text-wrap:balance;}
  .about-section h3{font-size:var(--sy-text-h4);}
- .about-section .about-subtitle{font-size:var(--sy-text-h3);white-space:pre-line;}
+ .about-section .about-subtitle{font-weight:var(--sy-weight-heading);font-size:var(--sy-text-h3);white-space:pre-line;}
  .about-eyebrow{font-size:var(--sy-text-eyebrow);font-weight:var(--sy-weight-label);}
  .about-lead,.about-capabilities{font-size:var(--sy-text-lead);white-space:pre-line;}
  .about-intro>.about-inner>h1,.about-intro>.about-inner>.about-eyebrow,.about-intro>.about-inner>.about-lead{text-align:center;}
@@ -59,7 +59,7 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
  .about-ways{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-grid-x);}
  .about-ways li{display:flex;flex-direction:column;gap:var(--sy-space-grid-x);min-width:0;}
  .about-number{font-family:var(--sy-font-heading);font-size:var(--sy-text-h4);}
- .about-inverse{background:var(--sy-color-ink);color:var(--sy-color-on-inverse);}
+ .about-inverse{background:var(--sy-color-surface-alt);color:var(--sy-color-ink);}
  .about-inverse h2,.about-inverse h3,.about-inverse p,.about-inverse a{color:inherit;}
  .about-brand-row,.about-visit-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-gutter-lg);align-items:start;}
  .about-brand-image{height:460px;}
@@ -70,12 +70,12 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
  .about-sand{background:var(--sy-color-surface-alt);}
  .about-terms{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sy-space-gutter-lg);}
  .about-company p{white-space:pre-line;}
- .about-quote{align-self:flex-start;background:var(--sy-color-on-inverse);color:var(--sy-color-ink)!important;}
+ .about-quote{align-self:flex-start;background:var(--sy-color-accent);color:var(--sy-color-on-accent)!important;}
  @media(max-width:1100px){
   .about-section{padding:var(--sy-space-section-sm) var(--sy-space-gutter-mobile);}
   .about-section h1{font-size:var(--sy-text-h1-mobile);}
   .about-section h2{font-size:var(--sy-text-h2-mobile);}
-  .about-section .about-subtitle{font-size:var(--sy-text-h3-mobile);}
+  .about-section .about-subtitle{font-weight:var(--sy-weight-heading);font-size:var(--sy-text-h3-mobile);}
   .about-section h3{font-size:var(--sy-text-h4-mobile);}
   .about-number{font-size:var(--sy-text-h4-mobile);}
   .about-intro-row{grid-template-columns:300px minmax(0,1fr);gap:var(--sy-space-gutter-md);}
