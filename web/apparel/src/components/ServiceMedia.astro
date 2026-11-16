@@ -1,0 +1,11 @@
+---
+/** Service masters shared by the three approved templates. Depends on the SHA-bound
+ * service-media inventory and existing packager; techniques always require localized alt. */
+import media from '../../service-media.json';
+interface Props { id: string; alt: string; eager?: boolean }
+const { id, alt, eager = false } = Astro.props;
+const image = media.find(row => row.id === id);
+if (!image) throw Error(`Unknown service master ${id}`);
+if (image.kind === 'technique' && !alt) throw Error(`Technique alt required: ${id}`);
+---
+<picture data-service-media={id}><img src={image.src} srcset={`${image.src.replace('.webp', '-640.webp')} 640w, ${image.src} 1024w`} sizes="(min-width: 901px) 50vw, 100vw" width={image.width} height={image.height} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" /></picture>

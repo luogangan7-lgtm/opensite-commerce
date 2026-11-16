@@ -6,6 +6,7 @@ import products from './src/data/products.json';
 import digital from './digital-sources.json';
 import details from './detail-sources.json';
 import home from './home-media.json';
+import service from './service-media.json';
 import contact from './contact-media.json';
 import frozen from './design/collection-frozen.json';
 import { slotInventory, staticImages, assertSlotReferences, digitalDelivery } from './image-plan';
@@ -19,7 +20,7 @@ const escape = (s: string) => s.replaceAll('&','&amp;').replaceAll('"','&quot;')
 export function packagingGate(root: string) {
  const planned = new Set([
   ...products.flatMap(p => [...p.images.map(i=>i.src), ...p.size_chart]),
-  ...[...digital, ...home, ...contact, ...frozen.assets].flatMap(i=>digitalDelivery(i).map(d=>d.src)),
+  ...[...digital, ...home, ...service, ...contact, ...frozen.assets].flatMap(i=>digitalDelivery(i).map(d=>d.src)),
   ...details.map(i=>i.src),
   ...Object.entries(slotInventory).flatMap(([page,slots])=>slots.map(slot=>`${imageBase(`${page}/${slot}`)}-1024.webp`)),
  ]);
@@ -41,7 +42,7 @@ export function packagingGate(root: string) {
    }
    if (!planned.has(src)) errors.push(`${route}: unplanned image ${src}`);
    // Frozen editorial images have decorative semantics; product/slot images require locale-bound copy.
-   const decorative=[...home,...frozen.assets,...contact.filter(i=>i.id!=='pattern')].some(i=>i.src===src)
+   const decorative=[...service.filter(i=>i.kind==='catalog'),...home,...frozen.assets,...contact.filter(i=>i.id!=='pattern')].some(i=>i.src===src)
     || /(?:^|\/)contact\/index.html$/.test(route) && digital.some(i=>i.src===src && i.wave==='W1' && ['apparel-59043','cotton430-hoodie-58065'].includes(i.slug));
    const translated=digitalAlt(src,locale);
    if (alt===undefined || !(alt==='' && decorative) && !localized.has(alt) && !(translated && alt===escape(translated))) errors.push(`${route}: missing or unlocalized alt ${src}`);
