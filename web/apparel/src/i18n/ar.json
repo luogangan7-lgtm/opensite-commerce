@@ -600,5 +600,7 @@
   "galleryFabric": "القماش",
   "galleryUnavailable": "هذه الزاوية غير متاحة بهذا اللون",
   "galleryPrevious": "الزاوية السابقة",
-  "galleryNext": "الزاوية التالية"
+  "galleryNext": "الزاوية التالية",
+  "galleryShowBack": "عرض الجهة الخلفية",
+  "galleryShowFront": "عرض الجهة الأمامية"
 }

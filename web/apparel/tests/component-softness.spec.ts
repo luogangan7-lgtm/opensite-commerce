@@ -117,7 +117,7 @@ for (const width of [1440, 768, 390]) test(`soft component radii and secondary h
    const thumb = page.locator('.gallery-thumbs:not([hidden]) a').first();
    await thumb.click();
    await expect(thumb).toHaveAttribute('aria-current', 'true');
-   await expect.soft(thumb).toHaveCSS('outline-style', 'solid');
+   await expect.soft(thumb.locator('img')).toHaveCSS('outline-style', 'solid');
    for (const property of ['border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius']) {
     await expect.soft(thumb).toHaveCSS(property, '16px');
     await expect.soft(page.locator('.moq-line')).toHaveCSS(property, '20px');

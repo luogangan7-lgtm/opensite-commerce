@@ -600,5 +600,7 @@
   "galleryFabric": "面料",
   "galleryUnavailable": "此颜色暂无该视图",
   "galleryPrevious": "上一视图",
-  "galleryNext": "下一视图"
+  "galleryNext": "下一视图",
+  "galleryShowBack": "显示背面",
+  "galleryShowFront": "显示正面"
 }

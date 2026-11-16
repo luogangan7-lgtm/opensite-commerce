@@ -600,5 +600,7 @@
   "galleryFabric": "Ткань",
   "galleryUnavailable": "Этот ракурс недоступен в данном цвете",
   "galleryPrevious": "Предыдущий ракурс",
-  "galleryNext": "Следующий ракурс"
+  "galleryNext": "Следующий ракурс",
+  "galleryShowBack": "Показать вид сзади",
+  "galleryShowFront": "Показать вид спереди"
 }

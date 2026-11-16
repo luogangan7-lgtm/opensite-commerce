@@ -600,5 +600,7 @@
   "galleryFabric": "Tecido",
   "galleryUnavailable": "Vista indisponível nesta cor",
   "galleryPrevious": "Vista anterior",
-  "galleryNext": "Vista seguinte"
+  "galleryNext": "Vista seguinte",
+  "galleryShowBack": "Mostrar costas",
+  "galleryShowFront": "Mostrar frente"
 }

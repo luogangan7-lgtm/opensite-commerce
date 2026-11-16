@@ -600,5 +600,7 @@
   "galleryFabric": "Fabric",
   "galleryUnavailable": "View unavailable in this colour",
   "galleryPrevious": "Previous view",
-  "galleryNext": "Next view"
+  "galleryNext": "Next view",
+  "galleryShowBack": "Show back",
+  "galleryShowFront": "Show front"
 }

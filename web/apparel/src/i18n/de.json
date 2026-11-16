@@ -600,5 +600,7 @@
   "galleryFabric": "Stoff",
   "galleryUnavailable": "Ansicht in dieser Farbe nicht verfügbar",
   "galleryPrevious": "Vorherige Ansicht",
-  "galleryNext": "Nächste Ansicht"
+  "galleryNext": "Nächste Ansicht",
+  "galleryShowBack": "Rückseite zeigen",
+  "galleryShowFront": "Vorderseite zeigen"
 }
