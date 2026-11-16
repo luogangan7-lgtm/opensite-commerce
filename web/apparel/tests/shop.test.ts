@@ -14,6 +14,12 @@ test('every raw front colour has an approved family',async()=>{
  for(const value of raw) expect(colourFamilies, `unmapped raw colour: ${value}`).toContain(shop.colourFamily?.[value]);
 });
 
+test('colour families are ordered by catalog product count descending',async()=>{
+ const shop:any=await import('../src/data/shop');
+ const count=(f:string)=>products.filter(p=>shop.shopFacts(p).colour.includes(f)).length;
+ const expected=[...new Set(Object.values(shop.colourFamily)) as string[]].sort((a,b)=>count(b)-count(a)||a.localeCompare(b));
+ expect(shop.colourFamilies).toEqual(expected);
+});
 test('colour facet labels have no raw annotations or CJK outside zh',()=>{
  for(const locale of locales) for(const family of colourFamilies) {
   const key=`cp-shop/colour-${family}` as Key, label=dictionaries[locale][key];
@@ -26,7 +32,7 @@ test('facets intersect explicit product data and preserve Featured order',()=>{
  for(const category of new Set(products.map(p=>p.category))) {
   expect(selectStyles(products,new URLSearchParams({category}))).toEqual(products.filter(p=>p.category===category));
  }
- expect(selectStyles(products,new URLSearchParams('colour=black'))).toEqual(products.filter(p=>p.images.some(i=>i.role==='front'&&i.colour==='black')));
+ expect(selectStyles(products,new URLSearchParams('colour=black'))).toEqual(products.filter(p=>shopFacts(p).colour.includes('black')));
  for(const key of ['fabric','fit','fleece'] as const) for(const value of new Set(products.flatMap(p=>shopFacts(p)[key]))) {
   expect(selectStyles(products,new URLSearchParams({[key]:value,colour:'black'}))).toEqual(products.filter(p=>shopFacts(p)[key].includes(value)&&shopFacts(p).colour.includes('black')));
  }
@@ -40,9 +46,9 @@ test('sort is numeric code order and does not mutate catalog',()=>{
 });
 test('URL roundtrip preserves unrelated state, encoded colour and default removal',()=>{
  let q=new URLSearchParams('utm_source=test');
- q=setShopQuery(q,'colour','stone/greige');q=setShopQuery(q,'sort','code');
+ q=setShopQuery(q,'colour','beige');q=setShopQuery(q,'sort','code');
  const round=new URL('https://example.org/collections/?'+q).searchParams;
- expect(round.get('colour')).toBe('stone/greige');expect(round.get('sort')).toBe('code');expect(round.get('utm_source')).toBe('test');
+ expect(round.get('colour')).toBe('beige');expect(round.get('sort')).toBe('code');expect(round.get('utm_source')).toBe('test');
  expect(setShopQuery(round,'sort','featured').has('sort')).toBe(false);
  expect(selectStyles(products,round)).toEqual(selectStyles(products,q));
 });

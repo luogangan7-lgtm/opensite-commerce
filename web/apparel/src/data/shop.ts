@@ -1,7 +1,7 @@
 /** Listing adapter: catalog facts only; consumed by static cards, URL controls and tests.
  * Unknown composition/fit never matches a facet. Featured uses the approved prefix and preserves the remaining catalog order.
  */
-import { products, type Product } from './catalog';
+import type { Product } from './catalog';
 export const shopFacets = ['category', 'colour', 'fit', 'fabric', 'fleece'] as const;
 export type ShopFacet = typeof shopFacets[number];
 export const pageSize = 24;
@@ -26,8 +26,8 @@ export const colourFamily: Record<string,Family> = {
 export const colourHex: Record<Family,string> = {
  black:'#1a1a1a',white:'#ffffff',cream:'#e6dfcc',grey:'#9a9a94',charcoal:'#444444',navy:'#26374a',blue:'#476b8a',green:'#315840',brown:'#6b4026',beige:'#c8b18c',red:'#a52a2a',pink:'#d9a5ad',purple:'#756477',
 };
-const familyCount=(family:Family)=>products.filter(p=>p.images.some(i=>i.role==='front'&&i.colour&&colourFamily[i.colour]===family)).length;
-export const colourFamilies:Family[]=[...new Set(Object.values(colourFamily))].sort((a,b)=>familyCount(b)-familyCount(a)||a.localeCompare(b));
+// Approved family order by catalog product count, descending (ties alphabetical).
+export const colourFamilies:Family[]=['black','white','brown','green','grey','beige','navy','cream','charcoal','red','purple','pink','blue'];
 // Owner-approved D-SHOP B display order; remaining catalog entries retain their order.
 export const shopNameKeys: Record<string,string> = { '59043':'cp-shop/figma-0001', '58065':'cp-shop/figma-0008', '8900-31':'cp-shop/figma-0010', '69018':'cp-shop/figma-0013', 'TZ2804-7':'cp-shop/figma-0015', '0253':'cp-shop/figma-0017', '59011':'cp-shop/figma-0019', '8900-32':'cp-shop/figma-0010' };
 const featuredCodes = ['59043','58065','8900-31','69018','TZ2804-7','0253','59011','8900-32'];
