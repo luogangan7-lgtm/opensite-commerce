@@ -12,7 +12,7 @@ import serviceMedia from '../service-media.json';
 import { digitalDelivery } from '../image-plan';
 import products from '../src/data/products.json';
 import { dictionaries, locales, type Locale } from '../src/i18n';
-import { pdpMoq, aboutWays, aboutMoqCopy, shopCustomMoq } from '../src/data/owner-facts';
+import { pdpMoq, aboutWays, aboutMoqCopy, shopCustomMoq, shopReadyMoq } from '../src/data/owner-facts';
 import { imageBase, widths } from '../src/data/imagery';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 const policy = JSON.parse(readFileSync(join(root, 'rfq-policy.json'), 'utf8'));
@@ -62,7 +62,7 @@ for (const file of files(root)) {
     // Replace only validated values with quote text before the unchanged commercial checks.
     let commercialText = text;
     if (parts[0] === 'collections') {
-      const expected = pdpMoq[locale].replaceAll('&', '&amp;');
+      const expected = shopReadyMoq(locale).replaceAll('&', '&amp;');
       const card = /<p\b[^>]*class="shop-moq"[^>]*>([^<]*)<\/p>/g;
       const cards = [...commercialText.matchAll(card)];
       const count = products.filter(p => parts.length === 2 || p.category === parts[1]).length;

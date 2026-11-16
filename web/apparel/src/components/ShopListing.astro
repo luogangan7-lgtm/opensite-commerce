@@ -4,46 +4,50 @@
  */
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { products, categories } from '../data/catalog';
-import { shopFacts, shopFacets, cardViews } from '../data/shop';
-import { shopCustomMoq, pdpMoq } from '../data/owner-facts';
+import { shopFacts, shopFacets, cardViews, featuredStyles, shopNameKeys } from '../data/shop';
+import { shopCustomMoq, shopReadyMoq } from '../data/owner-facts';
 import { digitalAlt } from '../data/imagery';
 import { dictionaries, pageLocale, productText, type Key } from '../i18n';
 interface Props { category?: string }
 const { category } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
-const items = category ? products.filter(p => p.category === category) : products;
+const catalog = featuredStyles(products);
+const items = category ? catalog.filter(p => p.category === category) : catalog;
 const choices: Record<string,string[]> = Object.fromEntries(shopFacets.map(key => [key, [...new Set(items.flatMap(p => shopFacts(p)[key]))].sort()]));
 const label = (key: string) => t[`cp-shop/${key}` as Key];
+const categoryKeys:Record<string,Key>={apparel:'cp-shop/figma-0026','cotton430-hoodie':'cp-shop/figma-0027','crew-fleece':'cp-shop/figma-0028','hoodie-set':'cp-shop/figma-0029','zip-ups-jackets':'cp-shop/figma-0030'};
+const categoryLabel=(value:string)=>t[categoryKeys[value] || value as Key];
+const colourLabel=(value:string)=>{const image=products.flatMap(p=>p.images).find(i=>i.role==='front'&&i.colour===value);return image ? digitalAlt(image.src,locale)?.split(';')[0] || value : value;};
 ---
 <div class="shop" data-shop data-products={JSON.stringify(items)} data-count-template={label('count')}>
- <div class="shop-title"><p>{t.collections}</p><h1>{category ? t[category as Key] : label('all')}</h1><p>{t.collectionLead}</p></div>
- <nav class="shop-tabs" aria-label={t.collections}>
-  <a href={getRelativeLocaleUrl(locale, '/collections/')} aria-current={!category ? 'page' : undefined}>{label('all')}</a>
-  {Object.keys(categories).map(key => <a href={getRelativeLocaleUrl(locale, `/collections/${key}/`)} aria-current={category === key ? 'page' : undefined}>{t[key as Key]}</a>)}
+ <div class="shop-title"><p>{t['cp-shop/figma-0022']}</p><h1>{category ? categoryLabel(category) : label('all')}</h1><p>{t['cp-shop/figma-0024']}</p></div>
+ <nav class="shop-tabs category-links" aria-label={t.collections}>
+  <a href={getRelativeLocaleUrl(locale, '/collections/')} aria-current={!category ? 'page' : undefined}>{label('any')}</a>
+  {Object.keys(categories).map(key => <a href={getRelativeLocaleUrl(locale, `/collections/${key}/`)} aria-current={category === key ? 'page' : undefined}>{categoryLabel(key)}</a>)}
  </nav>
  <div class="shop-layout">
- <button type="button" class="shop-filter-open" data-shop-filter-open hidden>{label('filters')}</button><dialog class="shop-filter-dialog" data-shop-filter-dialog><form method="dialog"><button aria-label={t.menuClose}>×</button></form></dialog><details class="shop-filters" open><summary>{label('filters')}</summary>
- <div class="shop-facet-list">{shopFacets.map(key => <label>{label(key)}<select data-shop-facet={key} aria-label={label(key)}><option value="">{label('any')}</option>{choices[key].map((v: string) => <option value={v}>{key === 'category' ? t[v as Key] : key === 'fleece' ? (v === 'yes' ? t['cp6.chip-fleece'] : t['cp6.filter-unlined']) : v}</option>)}</select></label>)}
- <button type="button" data-shop-clear>{t['cp6.copy/clear-filters']}</button></div>
+ <dialog class="shop-filter-dialog" data-shop-filter-dialog><form method="dialog"><button aria-label={t.menuClose}>×</button></form></dialog><details class="shop-filters" open><summary>{label('filters')}</summary>
+ <div class="shop-facet-list">{shopFacets.map(key => <label>{label(key)}<select class="chip" data-shop-facet={key} aria-label={label(key)}><option value="">{label('any')}</option>{choices[key].map((v: string) => <option value={v}>{key === 'category' ? categoryLabel(v) : key === 'fleece' ? (v === 'yes' ? label('fleece') : t['cp6.filter-unlined']) : key==='colour' ? colourLabel(v) : key==='fit'&&v==='oversized' ? t['cp-shop/figma-0042'] : key==='fabric'&&v==='cotton' ? t['cp-shop/figma-0044'] : key==='fabric'&&v==='polyester' ? t['cp-shop/figma-0045'].split('/').at(-1)?.trim() : v}</option>)}</select></label>)}
+ <button type="button" data-shop-clear>{t['cp6.copy/clear-filters']}</button><p>{t['cp-shop/figma-0050']}</p></div>
  </details>
  <div class="shop-results">
- <div class="shop-toolbar"><p data-shop-count role="status" aria-live="polite">{label('count').replace('{shown}',String(items.length)).replace('{total}',String(items.length))}</p><label>{label('sort')}<select data-shop-sort><option value="featured">{label('featured')}</option><option value="code">{label('code')}</option></select></label></div>
+ <div class="shop-toolbar"><p data-shop-count role="status" aria-live="polite">{label('count').replace('{shown}',String(items.length)).replace('{total}',String(items.length))}</p><button type="button" class="shop-filter-open" data-shop-filter-open hidden>{label('filters')}</button><label><select data-shop-sort aria-label={label('sort')}><option value="featured">{label('featured')}</option><option value="code">{label('code')}</option></select></label></div>
  <div class="shop-grid">{items.map(p => {
- const { front, back } = cardViews(p), name = productText[locale][p.slug].name;
+ const { front, back } = cardViews(p), name = t[shopNameKeys[p.style_codes[0]] as Key] || productText[locale][p.slug].name;
  const colours = p.images.filter(i => i.role === 'front' && i.colour);
  const url = getRelativeLocaleUrl(locale, `/products/${p.slug}/`);
  const quote = `${getRelativeLocaleUrl(locale, '/contact/')}?${new URLSearchParams({ product: p.slug, colour: front.colour || '' })}#rfq-form`;
- return <article class="shop-card" data-shop-card={p.slug}>
-  <div class="shop-photo" data-swapped="false"><a href={url} aria-label={name}><img src={front.src} alt={digitalAlt(front.src,locale) || name} width="600" height="750" loading="lazy" decoding="async" />{back && <img class="shop-back" data-role="back" src={back.src} alt={digitalAlt(back.src,locale) || name} width="600" height="750" loading="lazy" decoding="async" />}</a>{back && <button type="button" data-shop-swap aria-pressed="false" aria-label={`${label('swap')} · ${p.style_codes.join(' / ')}`}>{label('swap')}</button>}</div>
+ return <article class="shop-card card" data-shop-card={p.slug}>
+  <div class="shop-photo image-card" data-swapped="false"><a href={url} aria-label={name}><img src={front.src} alt={digitalAlt(front.src,locale) || name} width="600" height="750" loading="lazy" decoding="async" />{back && <img class="shop-back" data-role="back" src={back.src} alt={digitalAlt(back.src,locale) || name} width="600" height="750" loading="lazy" decoding="async" />}</a>{back && <div class="shop-view-toggle-slot" data-shop-view-toggle-slot />}</div>
   <p><bdi>{p.style_codes.join(' / ')}</bdi></p><h2><a href={url}>{name}</a></h2>
   <p class="shop-colours" aria-label={p.colourway_note}>{colours.slice(0,4).map(i => <img src={i.src} alt={digitalAlt(i.src,locale) || i.colour} width="16" height="16" loading="lazy" />)}<span>({colours.length})</span></p>
-  <p class="shop-moq">{pdpMoq[locale]}</p><a class="shop-quote" href={quote}>{t.request}</a>
+  <p class="shop-moq">{shopReadyMoq(locale)}</p><a class="shop-quote" href={quote}>{t.request}</a>
  </article>;
  })}</div>
  <div data-shop-empty hidden><h2>{t['cp6.copy/no-styles-match-these-filters']}</h2><p>{t['cp6.copy/try-removing-a-filter-or-request-a-style-tha']}</p></div>
  <button type="button" data-shop-more hidden>{label('more')}</button>
  </div></div>
- <aside class="shop-b2b"><p class="shop-owner-ready">{pdpMoq[locale]}</p><p class="shop-owner-custom">{shopCustomMoq(locale)}</p><a href={getRelativeLocaleUrl(locale,'/sampling/')}>{t.samples}</a><a href={getRelativeLocaleUrl(locale,'/shipping/')}>{t['about.order-ship-title']}</a></aside>
+ <aside class="shop-b2b"><h2>{t['cp-shop/figma-0055']}</h2><div class="shop-terms"><p class="shop-owner-ready">{shopReadyMoq(locale)}</p><p class="shop-owner-custom">{shopCustomMoq(locale)}</p><a href={getRelativeLocaleUrl(locale,'/sampling/')}>{t.samples}</a><a href={getRelativeLocaleUrl(locale,'/shipping/')}>{t['about.order-ship-title']}</a></div><p>{t['cp-shop/figma-0057']}</p></aside>
 </div>
 <script>
 import { pageSize, selectStyles, setShopQuery, shopFacets, type ShopFacet } from '../data/shop';
@@ -62,6 +66,8 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
  filterOpen.addEventListener('click', () => { dialog.append(filters); filters.open = true; dialog.showModal(); });
  dialog.addEventListener('close', () => { anchor.after(filters); filterOpen.focus(); });
  const sort = root.querySelector<HTMLSelectElement>('[data-shop-sort]')!;
+ const activeTab=root.querySelector<HTMLElement>('.shop-tabs [aria-current]');
+ void document.fonts.ready.then(()=>activeTab?.scrollIntoView({block:'nearest',inline:'nearest'}));
  let limit = pageSize;
  function render() {
   const q = new URLSearchParams(location.search), selected = selectStyles(items,q);
@@ -85,7 +91,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
   history.pushState(null,'',url); limit = pageSize; render();
  });
  for (const button of root.querySelectorAll<HTMLButtonElement>('[data-shop-swap]')) button.addEventListener('click', () => {
-  const next = button.getAttribute('aria-pressed') !== 'true'; button.setAttribute('aria-pressed',String(next)); button.parentElement!.dataset.swapped = String(next);
+  const next = button.getAttribute('aria-pressed') !== 'true'; button.setAttribute('aria-pressed',String(next)); button.closest<HTMLElement>('.shop-photo')!.dataset.swapped = String(next);
  });
  addEventListener('popstate', () => { limit = pageSize; render(); }); render();
 }
@@ -95,9 +101,9 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 .shop-title{margin-block-end:var(--sy-space-xl)}
 .shop-title h1{font-size:var(--sy-text-h2);margin-block:var(--sy-space-sm)}
 .shop-tabs{display:flex;gap:var(--sy-space-md);overflow-x:auto;margin-block-end:var(--sy-space-xl);border-block-end:var(--sy-space-hair) solid var(--sy-color-hairline)}
-.shop-tabs a{white-space:nowrap;padding:var(--sy-space-sm) var(--sy-space-md);text-decoration:none}
-.shop-tabs [aria-current]{box-shadow:inset 0 calc(-1 * var(--sy-space-hair)) var(--sy-color-ink)}
-.shop-layout{display:grid;grid-template-columns:calc(7 * var(--sy-space-xl)) minmax(0,1fr);gap:var(--sy-space-grid-x)}
+.shop-tabs a{white-space:nowrap;flex-shrink:0;font-size:var(--sy-text-small);padding:var(--sy-space-sm) var(--sy-space-md);text-decoration:none;border-radius:var(--sy-radius-pill)}
+.shop-tabs [aria-current]{background:var(--sy-color-surface);color:var(--sy-color-ink);box-shadow:inset 0 calc(-1 * var(--sy-space-hair)) var(--sy-color-ink)}
+.shop-layout{display:grid;grid-template-columns:calc(9 * var(--sy-space-grid-x)) minmax(0,1fr);gap:var(--sy-space-xl)}
 .shop-filter-open{display:none!important}.shop-filter-dialog{width:min(calc(100% - 2 * var(--sy-space-gutter-mobile)),var(--sy-layout-mobile));max-height:90dvh;padding:var(--sy-space-lg);border:var(--sy-space-hair) solid var(--sy-color-border);border-radius:var(--sy-radius-card);background:var(--sy-color-surface);color:var(--sy-color-ink)}.shop-filter-dialog::backdrop{background:var(--sy-color-overlay)}.shop-filter-dialog .shop-filters{display:block}.shop-filters{align-self:start;border:0;padding:0}
 .shop-filters summary{min-height:var(--control-size-md);cursor:pointer}
 .shop-facet-list{display:grid;gap:var(--sy-space-lg)}
@@ -106,26 +112,29 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 .shop button{border-width:var(--sy-space-hair);border-radius:var(--sy-radius-control);background:var(--sy-color-surface);border-color:var(--sy-color-border);color:var(--sy-color-ink);padding:var(--sy-space-sm) var(--sy-space-md);min-height:var(--control-size-md)}
 .shop button:hover{background:var(--sy-color-placeholder)}
 .shop-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--sy-space-md);margin-block-end:var(--sy-space-md)}
-.shop-toolbar label{display:flex;align-items:center}
+.shop-toolbar>p{margin:0;font-size:var(--sy-text-small);flex:1;min-width:0}.shop-toolbar label{display:flex;align-items:center;width:calc(6 * var(--sy-space-xl) + var(--sy-space-xs))}
 .shop-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-grid-y) var(--sy-space-grid-x)}
-.shop-card{min-width:0}
+.shop-card{display:flex;flex-direction:column;align-self:stretch;min-width:0;background:var(--sy-color-surface);border-radius:var(--sy-radius-card);box-shadow:var(--sy-shadow-card);overflow:hidden;padding-block-end:var(--sy-space-sm)}
 .shop-card[hidden]{display:none}
-.shop-photo{position:relative;aspect-ratio:4/5;border-radius:var(--sy-radius-card);overflow:hidden;background:var(--sy-color-placeholder)}
-.shop-photo a{display:block;height:100%}
+.shop-photo{position:relative;aspect-ratio:4/5;border-radius:var(--sy-radius-image);overflow:hidden;background:var(--sy-color-placeholder)}
+.shop-photo a{display:block;height:100%}.shop-photo img{border-radius:var(--sy-radius-image)}
 .shop-photo img{width:100%;height:100%;object-fit:contain;object-position:top}
 .shop-back{position:absolute;inset:0;opacity:0}
 .shop-photo[data-swapped="true"] .shop-back{opacity:1}
-.shop-photo button{position:absolute;inset-block-end:var(--sy-space-xs);inset-inline-end:var(--sy-space-xs);font-size:var(--sy-text-small)}
-.shop-card h2{font-family:var(--sy-font-body);font-size:var(--sy-text-body);font-weight:var(--sy-weight-body);margin:0}
+.shop-view-toggle-slot{position:absolute;inset-block-start:var(--sy-space-xs);inset-inline-end:var(--sy-space-xs);width:var(--control-size-md);height:var(--control-size-md)}
+.shop-card h2{font-family:var(--sy-font-body);font-size:var(--sy-text-small);font-weight:var(--sy-weight-body);margin:0}
 .shop-card h2 a{text-decoration:none}
+.shop-card>h2,.shop-card>p{padding-inline:var(--sy-space-xs)}
 .shop-card p{margin-block:var(--sy-space-xs);font-size:var(--sy-text-small)}
 .shop-colours{display:flex;align-items:center;gap:var(--sy-space-xs)}
 .shop-colours img{width:var(--sy-space-md);height:var(--sy-space-md);border-radius:var(--sy-radius-pill);object-fit:cover}
-.shop-quote{display:inline-flex;align-items:center;min-height:var(--control-size-md);text-underline-offset:var(--sy-space-xs)}
+.shop-quote{font-size:var(--sy-text-small);margin-block-start:auto;display:inline-flex;align-items:center;min-height:var(--control-size-md);text-underline-offset:var(--sy-space-xs);border-radius:var(--sy-radius-pill);padding-inline:var(--sy-space-md)}
 [data-shop-more]{display:flex;margin:var(--sy-space-xl) auto}
 [data-shop-more][hidden]{display:none}
-.shop-b2b{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--sy-space-lg);padding:var(--sy-space-xl);margin-block-start:var(--sy-space-section-sm);background:var(--sy-color-surface);border:var(--sy-space-hair) solid var(--sy-color-hairline);border-radius:var(--sy-radius-card)}
+.shop-b2b{display:grid;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--sy-space-lg);padding:var(--sy-space-gutter-lg);margin-inline:calc(-1 * var(--sy-space-gutter-lg));margin-block-start:var(--sy-space-section-sm);background:var(--sy-color-surface-alt);border:var(--sy-space-0);border-radius:var(--sy-radius-card)}
+.shop-b2b h2{font-size:var(--sy-text-h3);margin:0}.shop-b2b>p{margin:0}
+.shop-terms{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sy-space-lg)}
 @media(hover:hover) and (pointer:fine){.shop-photo:hover .shop-back{opacity:1}}
-@media(max-width:1024px){.shop-filter-open:not([hidden]){display:inline-flex!important}.shop[data-enhanced="true"] .shop-layout>.shop-filters{display:none}.shop-filter-dialog .shop-facet-list{grid-template-columns:1fr}.shop{width:calc(100% - 2 * var(--sy-space-gutter-md))}.shop-layout{grid-template-columns:minmax(0,1fr)}.shop-facet-list{grid-template-columns:repeat(3,minmax(0,1fr))}.shop-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:600px){.shop{width:calc(100% - 2 * var(--sy-space-gutter-mobile))}.shop-grid{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:var(--sy-space-xs)}.shop-facet-list{grid-template-columns:repeat(2,minmax(0,1fr))}.shop-toolbar{align-items:start;flex-direction:column}.shop-toolbar label{align-self:end}.shop-b2b{padding:var(--sy-space-lg)}}
+@media(max-width:1024px){.shop-b2b{padding:var(--sy-space-gutter-md);margin-inline:calc(-1 * var(--sy-space-gutter-md))}.shop-tabs{padding-inline:var(--sy-space-md);mask-image:linear-gradient(to right,transparent,var(--sy-color-ink) var(--sy-space-md),var(--sy-color-ink) calc(100% - var(--sy-space-md)),transparent);mask-mode:alpha;scrollbar-width:thin;scroll-padding-inline:var(--sy-space-md)}.shop-filter-open:not([hidden]){display:inline-flex!important}.shop[data-enhanced="true"] .shop-layout>.shop-filters{display:none}.shop-filter-dialog .shop-facet-list{grid-template-columns:1fr}.shop{width:calc(100% - 2 * var(--sy-space-gutter-md))}.shop-layout{grid-template-columns:minmax(0,1fr)}.shop-facet-list{grid-template-columns:repeat(3,minmax(0,1fr))}.shop-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.shop{width:calc(100% - 2 * var(--sy-space-gutter-mobile))}.shop-grid{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:var(--sy-space-xs)}.shop-facet-list{grid-template-columns:repeat(2,minmax(0,1fr))}.shop-toolbar{align-items:center;gap:var(--sy-space-xs)}.shop-toolbar label{width:calc(4 * var(--sy-space-xl));flex-shrink:0}.shop-filter-open{font-size:var(--sy-text-small)}.shop-b2b{padding:var(--sy-space-gutter-mobile);margin-inline:calc(-1 * var(--sy-space-gutter-mobile))}.shop-terms{display:grid}}
 </style>

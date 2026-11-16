@@ -16,6 +16,8 @@ export const pdpMoq: Record<Locale, string> = {
   ar: `الحد الأدنى للطلب ${ownerMoq.ready} قطعة · يمكن مزج الألوان والمقاسات`,
 };
 export const aboutWays = ['01', '02', '03', '04'] as const;
+/** Concise listing line preserves the exact owner quantity and existing locale wording. */
+export const shopReadyMoq = (locale: Locale): string => pdpMoq[locale].split(' · ')[0];
 const grouping: Record<Locale, string> = { en: ',', zh: ',', es: '.', fr: ' ', de: '.', pt: '.', ru: ' ', ar: ',' };
 export function aboutMoqCopy(locale: Locale, way: typeof aboutWays[number]): string {
   const quantity = way === '04' ? ownerMoq.custom : ownerMoq.ready;

@@ -1,10 +1,17 @@
 /** Listing adapter: catalog facts only; consumed by static cards, URL controls and tests.
- * Unknown composition/fit never matches a facet. Featured preserves catalog order.
+ * Unknown composition/fit never matches a facet. Featured uses the approved prefix and preserves the remaining catalog order.
  */
 import type { Product } from './catalog';
 export const shopFacets = ['category', 'colour', 'fit', 'fabric', 'fleece'] as const;
 export type ShopFacet = typeof shopFacets[number];
 export const pageSize = 24;
+// Owner-approved D-SHOP B display order; remaining catalog entries retain their order.
+export const shopNameKeys: Record<string,string> = { '59043':'cp-shop/figma-0001', '58065':'cp-shop/figma-0008', '8900-31':'cp-shop/figma-0010', '69018':'cp-shop/figma-0013', 'TZ2804-7':'cp-shop/figma-0015', '0253':'cp-shop/figma-0017', '59011':'cp-shop/figma-0019', '8900-32':'cp-shop/figma-0010' };
+const featuredCodes = ['59043','58065','8900-31','69018','TZ2804-7','0253','59011','8900-32'];
+export function featuredStyles(items: Product[]): Product[] {
+  const rank = (p: Product) => { const i=featuredCodes.indexOf(p.style_codes[0]); return i < 0 ? featuredCodes.length : i; };
+  return [...items].sort((a,b) => rank(a)-rank(b));
+}
 export function shopFacts(p: Product): Record<ShopFacet, string[]> {
   const text = p.fabric_weight_fit.toLowerCase();
   return {

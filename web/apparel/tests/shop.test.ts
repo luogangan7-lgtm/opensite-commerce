@@ -1,10 +1,10 @@
 /** CP-SHOP correctness against catalog, explicit unknowns and existing back provenance. */
 import {test,expect} from 'bun:test';
 import {readFileSync} from 'node:fs';
-import {ownerMoq,pdpMoq,shopCustomMoq} from '../src/data/owner-facts';
+import {ownerMoq,pdpMoq,shopCustomMoq,shopReadyMoq} from '../src/data/owner-facts';
 import {locales} from '../src/i18n';
 import {products} from '../src/data/catalog';
-import {shopFacts,selectStyles,setShopQuery,cardViews,pageSize} from '../src/data/shop';
+import {shopFacts,selectStyles,setShopQuery,cardViews,pageSize,featuredStyles} from '../src/data/shop';
 test('facets intersect explicit product data and preserve Featured order',()=>{
  for(const category of new Set(products.map(p=>p.category))) {
   expect(selectStyles(products,new URLSearchParams({category}))).toEqual(products.filter(p=>p.category===category));
@@ -40,7 +40,7 @@ test('every rendered listing MOQ line uses the owner 100-piece fact in all eight
   const html=readFileSync(`web/apparel/dist/${locale==='en'?'':locale+'/'}collections/index.html`,'utf8');
   const lines=[...html.matchAll(/<p\b[^>]*class="shop-moq"[^>]*>(.*?)<\/p>/g)].map(m=>m[1]);
   expect(lines).toHaveLength(products.length);
-  for(const line of lines)expect(line).toBe(pdpMoq[locale].replaceAll('&','&amp;'));
+  for(const line of lines)expect(line).toBe(shopReadyMoq(locale).replaceAll('&','&amp;'));
  }
 });
 
@@ -49,4 +49,12 @@ test('custom minimum uses deterministic owner grouping across Node and Bun local
  expect(shopCustomMoq('ar')).toContain('1,000');
  expect(shopCustomMoq('fr')).toContain('1 000');
  expect(shopCustomMoq('de')).toContain('1.000');
+});
+
+test('Featured follows the eight owner-approved D-SHOP B identities without dropping catalog items',()=>{
+ const ordered=featuredStyles(products);
+ expect(ordered.slice(0,8).map(p=>p.style_codes[0])).toEqual(['59043','58065','8900-31','69018','TZ2804-7','0253','59011','8900-32']);
+ expect(new Set(ordered.map(p=>p.slug))).toEqual(new Set(products.map(p=>p.slug)));
+ expect(shopFacts(products.find(p=>p.slug==='apparel-59043')!).fit).toEqual(['oversized']);
+ expect(selectStyles(products,new URLSearchParams('fabric=cotton&fit=oversized')).some(p=>p.slug==='apparel-59043')).toBe(true);
 });
