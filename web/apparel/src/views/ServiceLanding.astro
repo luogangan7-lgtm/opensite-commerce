@@ -60,13 +60,12 @@ p { max-inline-size: none; margin: 0; }
 /* Home separates its heading group and content grid by sy-space-2xl (48px).
    The existing 24px stack gap plus this margin keeps eyebrow/body rhythm intact. */
 .three,.four,.techniques { margin-block-start: var(--sy-space-lg); }
-.matrix { grid-template-columns: 32fr 23fr; }
+.matrix { grid-template-columns: 32fr 23fr; background: var(--sy-color-placeholder); border-radius: var(--sy-radius-card); }
 .split { grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--sy-space-split); align-items: center; }
 .opening { grid-template-columns: repeat(2,minmax(0,1fr)); padding-block-start: var(--sy-space-2xl); }
 /* Match HomeHero's top anchor: the SHA-bound masters include complete heads. */
 .svc-page :global([data-service-media^="catalog-"] img) { object-position: 50% 0%; }
 .opening :global(img) { block-size: 540px; object-fit: cover; }
-.matrix-band { background: var(--sy-color-surface-alt); }
 .capability-panel,.brief-panel { padding: var(--sy-space-xl) var(--sy-space-lg); align-self: stretch; }
 .capability-panel { display: grid; grid-template-rows: auto auto repeat(4, 1fr); }
 .capability-panel article,.brief-panel article { gap: var(--sy-space-sm); }

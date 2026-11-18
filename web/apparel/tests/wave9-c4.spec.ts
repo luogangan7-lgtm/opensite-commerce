@@ -44,9 +44,18 @@ for (const locale of ['en', 'ar', 'zh']) for (const width of [390, 768, 1440]) {
     if (locale === 'zh') await expect(page.locator('footer a[href$="/oem-odm/"]')).toHaveText('OEM / ODM');
     await page.goto(base + 'oem-odm/');
     await page.evaluate(() => document.fonts.ready);
-    const matrix = page.locator('.matrix-band');
-    await expect(matrix).toHaveCSS('border-radius', '0px');
-    await expect(matrix.locator('.capability-panel')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const band = page.locator('.matrix-band');
+    const matrix = band.locator('.matrix');
+    await expect(band).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(matrix).toHaveCSS('border-radius', '20px');
+    await expect(matrix).toHaveCSS('background-color', 'rgb(239, 231, 214)');
+    const panel = (await matrix.boundingBox())!;
+    const gutter = width === 390 ? 24 : 48;
+    expect(panel.x).toBe(gutter);
+    expect(width - panel.x - panel.width).toBe(gutter);
+    for (const group of ['.capability-panel', '.brief-panel']) {
+      await expect(matrix.locator(group)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    }
     if (width < 1440) {
       await expect(page.locator('main h1')).toHaveCSS('font-size', width === 390 ? '26px' : '36px');
       await expect(page.locator('.workflow h3').first()).toHaveCSS('font-size', width === 390 ? '20px' : '24px');
