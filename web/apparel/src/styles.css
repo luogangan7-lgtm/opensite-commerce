@@ -183,7 +183,7 @@ footer { padding-block-end: var(--sy-space-section-sm); }
  --sy-reading-subtitle: var(--sy-text-h4);
 }
 
-/* Figma Sourcyo/Type Mobile mode; tablet retains Desktop, matching existing 650px switch. */
+/* Apply Figma mobile type to the page body so reading aliases retain the desktop values. */
 @media (max-width: 650px) {
  body {
   --sy-text-eyebrow: var(--sy-text-eyebrow-mobile);
