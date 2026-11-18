@@ -36,7 +36,7 @@ for (const width of [1440, 768, 390]) {
     if(width>=768)expect(geometry.rows).toBe(geometry.links);else await expect(page.locator('.grouped-rail')).toBeHidden();
     expect(geometry.inside).toBe(true);
     expect(geometry.content).toBeLessThanOrEqual(geometry.height);
-    await expect(page.locator('.moq-line')).toHaveText('MOQ 100 pcs · mix colours & sizes');
-    await expect(page.locator('[data-quick-spec]')).toContainText('100 pcs');
+    await expect(page.locator('.moq-line')).toHaveText('MOQ 50 pcs · mix colours & sizes');
+    await expect(page.locator('[data-quick-spec]')).toContainText('50 pcs');
   });
 }
