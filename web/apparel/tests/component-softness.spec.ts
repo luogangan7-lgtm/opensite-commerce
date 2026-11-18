@@ -3,14 +3,14 @@
 import { test, expect } from '@playwright/test';
 
 const classes = {
- button: '.button, button',
+ button: '.button, button, .shop-quote',
  card: '.card, .tile, .home-card-grid a, .home-model, .home-form, .rfq, .cookie-banner, .success-card, .recovery-card, .pdp-detail-card',
  'image-card': '.image-card, .gallery > picture, .wholesale-photo',
  thumb: '.gallery-thumbs a, .gallery-colours button',
  'info-box': '.info-box, .moq-line, .home-promo, .collection-promo, .capability-panel, .brief-panel, .capabilities-strip, .form-status',
  input: 'input:not([type=hidden]), textarea',
- tab: '[role=tab], .tab, .category-links a',
- chip: '.chip, .facet, .home-badge',
+ tab: '[role=tab], .tab, .category-links a, .shop-tabs a',
+ chip: '.chip, .facet, .home-badge, [data-shop-facet]',
 };
 const routes = ['/', '/collections/', '/collections/hoodie-set/', '/products/hoodie-set-k02/', '/oem-odm/', '/sampling/', '/about-us/', '/about/', '/contact/', '/privacy/', '/404.html', '/zh/', '/ar/about-us/'];
 

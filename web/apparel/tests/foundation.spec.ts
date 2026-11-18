@@ -1,5 +1,7 @@
 /** Browser contract against static output, only synthetic intercepted RFQs. */
 import { test, expect } from '@playwright/test';
+import {readFileSync} from 'node:fs';
+import {shopNameKeys} from '../src/data/shop';
 import products from '../src/data/products.json' with { type: 'json' };
 import identities from './card-identities.json' with { type: 'json' };
 import en from '../src/i18n/en.json' with { type: 'json' };
@@ -7,6 +9,7 @@ import zh from '../src/i18n/zh.json' with { type: 'json' };
 import enProducts from '../src/i18n/products.en.json' with { type: 'json' };
 import zhProducts from '../src/i18n/products.zh.json' with { type: 'json' };
 const cardTitle = (locale: string, sku: string) => identities.find(identity => identity.slug === sku)!.localized_titles[locale as keyof typeof identities[0]['localized_titles']];
+const listingTitle=(locale:string,sku:string)=>{const p=products.find(p=>p.slug===sku)!;const key=shopNameKeys[p.style_codes[0]];return key?JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`,import.meta.url),'utf8'))[key]:cardTitle(locale,sku);};
 const slug = products[0].slug;
 test('contact prefill and language switching retain path/query/fragment', async ({ page }) => {
   await page.goto(`/contact/?product=${slug}&type=sample&subject=fabric-photos#rfq-form`);
@@ -80,7 +83,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   await expect(page.locator('[data-english-fallback]')).toHaveCount(0);
   await expect(page.locator('h1')).toContainText('卫衣');
   await page.goto('/zh/collections/');
-  await expect(page.locator('.tile h3').first()).toHaveText(cardTitle('zh', 'apparel-59043'));
+  await expect(page.locator('[data-shop-card] h2').first()).toHaveText(listingTitle('zh','apparel-59043'));
   for (const locale of ['zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
     for (const route of ['shipping', 'privacy', 'terms']) {
       await page.goto(`/${locale}/${route}/`);
@@ -104,7 +107,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   await page.locator('.gallery-thumbs:not([hidden]) a[data-role="front"]').click();
   await expect(page.locator('[data-digital-label]')).toHaveCount(0);
   await page.goto('/zh/collections/');
-  await expect(page.locator('.tile img').first()).toHaveAttribute('alt', /正面/);
+  await expect(page.locator('[data-shop-card] .shop-photo img').first()).toHaveAttribute('alt', /正面/);
 });
 
 // §14 per-SKU acceptance; fixed contract identities, existing locale dictionaries and suite.
@@ -122,12 +125,14 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) 
       await page.route('**/api/rfq', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }));
       const category = products.find(product => product.slug === sku)!.category;
       await page.goto(`${prefix}/collections/${category}/`);
-      const card = page.locator('.tile').filter({ has: page.locator('bdi', { hasText: new RegExp(`^${style}$`) }) });
+      const card = page.locator('[data-shop-card]').filter({ has: page.locator('bdi', { hasText: new RegExp(`^${style}$`) }) });
+      while(!await card.isVisible() && await page.locator('[data-shop-more]').isVisible()) await page.locator('[data-shop-more]').click();
       await expect(card).toHaveCount(1);
       const title = cardTitle(locale, sku);
-      await expect(card.locator('h3')).toHaveText(title);
-      await expect(card).toHaveAttribute('href', `${prefix}/products/${sku}/`);
-      await card.click();
+      await expect(card.locator('h2')).toHaveText(listingTitle(locale,sku));
+      const entrance=card.locator('h2 a');
+      await expect(entrance).toHaveAttribute('href', `${prefix}/products/${sku}/`);
+      await entrance.click();
       await expect(page).toHaveURL(`${prefix}/products/${sku}/`);
       await expect(page.locator('h1')).toHaveText(title);
       await expect(page.locator('.product-info > .muted bdi')).toHaveText(style);

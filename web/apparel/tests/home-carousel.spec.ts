@@ -77,7 +77,7 @@ for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) test(`HOME-BM mo
  const privateNote=(await models.nth(1).locator('h3').innerText()).replace(/^02 · /,'');
  await models.nth(1).locator('a').click();
  await expect(page).toHaveURL(new RegExp(`${prefix}/collections/\\?intent=private-label$`));
- const product=page.locator('.product-grid > a').first();
+ const product=page.locator('.shop-photo > a').first();
  await expect(product).toHaveAttribute('href',/intent=private-label/);
  await product.click();
  await expect(page.locator('[data-rfq-intent=quote]')).toHaveAttribute('href',/intent=private-label/);
