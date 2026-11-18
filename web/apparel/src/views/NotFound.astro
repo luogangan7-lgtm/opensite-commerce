@@ -25,11 +25,16 @@ const labels = [t.collections, t.details, t.oem, t.quote];
   .recovery-card { display: grid; grid-template-rows: subgrid; grid-row: span 2; gap: var(--sy-space-sm); padding-block: var(--sy-space-xs); text-align: start; text-decoration: none; }
   .recovery-card > span { display: flex; justify-content: space-between; align-items: center; gap: var(--sy-space-sm); border-block-end: var(--sy-space-hair) solid var(--sy-color-hairline); }
   .recovery-card:hover > span { text-decoration: underline; }
-  .recovery-card p { margin: 0; }
+  .recovery-card p { margin: 0; font-size: var(--sy-text-small); }
+  .recovery-card > span { font-family: var(--sy-font-heading); font-size: 24px; }
 
-  @media (max-width: 650px) {
+  @media (max-width: 900px) {
     .recovery { padding-block: var(--sy-space-lg); padding-inline: var(--sy-space-gutter-mobile); }
-    .recovery-grid { grid-template-columns: minmax(0, 1fr); }
+    .recovery h1 { font-size: 24px; }
+    .recovery-grid { grid-template-columns: minmax(0, 1fr); max-inline-size: calc(var(--sy-layout-mobile) - 2 * var(--sy-space-gutter-mobile)); }
     .recovery .button { width: 100%; }
+  }
+  @media (651px <= width <= 900px) {
+    .recovery { padding: var(--sy-space-2xl) var(--sy-space-gutter-lg); }
   }
 </style>

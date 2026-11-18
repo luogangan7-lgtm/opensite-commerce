@@ -103,7 +103,9 @@ p { max-inline-size: none; margin: 0; }
  /* The formal tablet crop is720x320 (9:4). Preserve that source window at
     the900px breakpoint too, so a wider slot cannot cut the bottom of a head. */
  .opening :global(img),.workflow :global(img),.split :global(img) { block-size: auto; min-block-size: 320px; aspect-ratio: 9 / 4; }
- .workflow :global(img) { inline-size: 100%; aspect-ratio: 9 / 4; }
+ .workflow :global(picture) { justify-self: center; }
+ .workflow :global(img) { block-size: 320px; aspect-ratio: 4 / 5; }
+ .techniques figure { inline-size: 100%; max-inline-size: calc((var(--sy-layout-mobile) - 3 * var(--sy-space-lg)) / 2); }
  .reverse .phase-copy { order: 0; }
 }
 </style>
