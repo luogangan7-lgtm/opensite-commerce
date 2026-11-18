@@ -22,7 +22,7 @@ const legal = kind === 'privacy' || kind === 'terms';
       <ul>{sections.map(([heading], index) => <li><a href={`#${sectionAnchor(index)}`}>{heading}</a></li>)}</ul>
     </details>}
     <div class="service-copy">
-      {sections.map(([heading, text], index) => <div id={legal ? sectionAnchor(index) : undefined}><h2>{heading}</h2><p>{text}{kind === 'privacy' && index === 2 && <> <button type="button" data-cookie-reopen>{ui.cookieSettings}</button></>}</p></div>)}
+      {sections.map(([heading, text], index) => <div id={legal ? sectionAnchor(index) : undefined}><h2>{heading}</h2><p><span data-legal-text>{text}</span>{kind === 'privacy' && index === 2 && <> <button type="button" data-cookie-reopen>{ui.cookieSettings}</button></>}</p></div>)}
       {legal && <aside><h3>{t.identity}</h3><p>湖南旋粮生态科技有限公司<br /><bdi>Hunan Xuanliang Eco-Technology Co., Ltd.</bdi><br /><bdi>91430105MA7J4C1WX7</bdi></p><p>{t.address}</p></aside>}
 
     </div>

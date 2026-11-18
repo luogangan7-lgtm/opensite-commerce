@@ -31,7 +31,7 @@ for (const locale of languages) for (const route of routes) {
       expect(text).toContain('91430105MA7J4C1WX7');
       await expect(page.locator('.legal-updated')).toContainText(launchDates[locale]);
       expect(text).not.toContain('OWNER-INPUT');
-      expect(await page.locator('.service-copy > div > p').allTextContents()).toEqual(legalCopy[locale as keyof typeof legalCopy][route as 'privacy' | 'terms'][2].map(section => section[1]));
+      expect(await page.locator('.service-copy > div > p > [data-legal-text]').allTextContents()).toEqual(legalCopy[locale as keyof typeof legalCopy][route as 'privacy' | 'terms'][2].map(section => section[1]));
       await expect(page.locator('#rfq-form')).toHaveCount(0);
     }
     if (route === 'privacy') {
