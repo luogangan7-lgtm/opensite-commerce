@@ -3,36 +3,41 @@
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { abuseMessages } from '../data/abuse-i18n';
 import { dictionaries, pageLocale } from '../i18n';
-interface Props { product?: string }
-const { product = '' } = Astro.props;
+interface Props { product?: string; quoteSection?: boolean }
+const { product = '', quoteSection = false } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 // Isolate the catalog code inside Arabic prose so hyphenated SKUs retain their order.
 const code = locale === 'ar' ? `\u2068${product}\u2069` : product;
 const siteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY;
 const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entries(t).filter(([key]) => key.startsWith('error.') || ['sending', 'success', 'rfqError', 'rfqServerError'].includes(key))) };
 ---
-<form id="rfq-form" class="rfq" data-state="Default" novalidate action="/api/rfq" method="post" data-success-url={getRelativeLocaleUrl(locale, "/contact/") + "?sent=1"} data-private-label={t["home.bm.private-title"].replace(/^02 · /, "")} data-sample-label={t.requestSample} data-messages={JSON.stringify(messages)}>
+<form id="rfq-form" class:list={['rfq', { 'quote-rfq': quoteSection }]} data-state="Default" novalidate action="/api/rfq" method="post" data-success-url={getRelativeLocaleUrl(locale, "/contact/") + "?sent=1"} data-private-label={t["home.bm.private-title"].replace(/^02 · /, "")} data-sample-label={t.requestSample} data-messages={JSON.stringify(messages)}>
 <input type="hidden" name="locale" value={locale} />
-{/\/contact\/?$/.test(Astro.url.pathname) && <h2>{t.rfqTitle}</h2>}<p class="muted rfq-intro" data-prefill-context>{t.rfqIntro}</p>
+{quoteSection && <h2>{t.rfqTitle}</h2>}<p class="muted rfq-intro" data-prefill-context>{t.rfqIntro}</p>
 <p class="form-status" tabindex="-1" role="status" aria-live="polite" id="rfq-status"></p>
 <div class="form-pair"><label>{t.firstName}<input name="first_name" placeholder={t.firstNamePlaceholder} autocomplete="given-name" required maxlength="50" /></label>
 <label>{t.lastName}<input name="last_name" placeholder={t.lastNamePlaceholder} autocomplete="family-name" required maxlength="50" /></label></div>
 <label>{t.rfqEmail}<input name="email" type="email" placeholder={t.rfqEmailPlaceholder} autocomplete="email" required maxlength="254" dir="ltr" /></label>
 <label>{t.rfqCompany}<input name="company" placeholder={t.rfqCompanyPlaceholder} autocomplete="organization" required maxlength="150" /></label>
-<label>{t.quantity}<input name="quantity_note" placeholder={t.quantityPlaceholder} required maxlength="200" /></label>
+<label>{t.quantity}<span class="quantity-field"><input name="quantity_note" placeholder={t.quantityPlaceholder} required maxlength="200" />{quoteSection && <span class="quantity-placeholder" aria-hidden="true">{t.quantityPlaceholder}</span>}</span></label>
 <label>{t.projectDetails}<textarea name="message" placeholder={t.projectDetailsPlaceholder} rows="4" required maxlength="2000">{product ? `${t.style}: ${code}` : ''}</textarea></label>
 <div hidden><label>Website<input name="website" tabindex="-1" autocomplete="off" /></label></div>
 
 {/* Necessary anti-abuse functionality: independent of optional analytics consent. */}
 {siteKey && <><div class="cf-turnstile" data-sitekey={siteKey} data-action="rfq" data-language={locale === 'zh' ? 'zh-cn' : locale} data-size="flexible"></div><script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></>}
-<button type="submit" disabled>{t.rfqSend}</button><p class="muted rfq-fine-print">{t.rfqFinePrint}</p>
+<button type="submit" disabled>{t.rfqSend}{quoteSection && <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span>}</button><p class="muted rfq-fine-print">{t.rfqFinePrint}</p>
 </form>
 <script>
   document.querySelectorAll<HTMLFormElement>('.rfq').forEach(async form => {
     const messages: Record<string, string> = JSON.parse(form.dataset.messages!);
+    const showFieldErrors = form.classList.contains('quote-rfq');
     form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input:not([type="hidden"]), textarea').forEach(input => {
       input.addEventListener('invalid', () => input.setCustomValidity(messages[input.validity.typeMismatch ? 'error.email' : 'error.required']));
-      input.addEventListener('input', () => { input.setCustomValidity(''); input.removeAttribute('aria-invalid'); });
+      input.addEventListener('input', () => {
+        input.setCustomValidity('');
+        input.removeAttribute('aria-invalid');
+        if (showFieldErrors) input.removeAttribute('aria-describedby');
+      });
     });
     if (/\/contact\/?$/.test(window.location.pathname)) {
       // The full catalog is needed only for contact prefill, after first paint.
@@ -64,7 +69,23 @@ const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entrie
       if (button.disabled) return;
       if (!form.checkValidity()) {
         form.dataset.state = 'Error'; status.textContent = messages.rfqError;
-        form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(':invalid').forEach(input => { input.setAttribute('aria-invalid', 'true'); input.setAttribute('aria-describedby', 'rfq-status'); });
+        form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(':invalid').forEach(input => {
+          input.setAttribute('aria-invalid', 'true');
+          input.setAttribute('aria-describedby', 'rfq-status');
+          if (showFieldErrors) {
+            const label = input.closest('label')!;
+            let error = label.querySelector<HTMLElement>('.rfq-field-error');
+            if (!error) {
+              error = document.createElement('span');
+              error.className = 'rfq-field-error';
+              error.setAttribute('aria-hidden', 'true');
+              error.id = `rfq-error-${input.name}`;
+              label.append(error);
+            }
+            error.textContent = input.validationMessage;
+            input.setAttribute('aria-describedby', `rfq-status ${error.id}`);
+          }
+        });
         form.querySelector<HTMLElement>(':invalid')?.focus(); return;
       }
       button.disabled = true; form.dataset.state = 'Submitting'; form.setAttribute('aria-busy', 'true'); status.textContent = messages.sending;
@@ -101,4 +122,26 @@ const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entrie
 .rfq[data-state="Error"] .form-status, .rfq[data-state="ServerError"] .form-status { color: var(--sy-color-error); background: var(--sy-color-error-bg); padding: var(--sy-space-sm); }
 .rfq [aria-invalid="true"] { border-color: var(--sy-color-error); }
 @media (max-width: 767px) { .rfq { padding: var(--sy-space-lg); } .rfq h2 { font-size: var(--sy-text-h3-mobile); } .rfq .form-pair { grid-template-columns: minmax(0, 1fr); } }
+
+.quote-rfq { box-shadow: none; }
+.quote-rfq .form-pair { column-gap: var(--sy-space-md); align-items: start; }
+.quote-rfq input, .quote-rfq textarea { border-color: var(--sy-color-hairline); padding-inline: var(--sy-space-sm); }
+.quote-rfq [aria-invalid="true"] { border-color: var(--sy-color-error); }
+.quote-rfq[data-state="Error"] .form-status, .quote-rfq[data-state="ServerError"] .form-status { padding: 0; background: none; }
+.quote-rfq .form-status, .quote-rfq :global(.rfq-field-error) { font-size: var(--sy-text-small); }
+.quote-rfq :global(.rfq-field-error) { display: none; color: var(--sy-color-error); }
+.quote-rfq label:has([aria-invalid="true"]) > :global(.rfq-field-error) { display: block; }
+.quote-rfq button { inline-size: 100%; font-weight: var(--sy-weight-body); }
+.quantity-field { position: relative; }
+.quantity-placeholder { display: none; }
+@media (max-width: 1023px) {
+  .quote-rfq { padding: var(--sy-space-card-pad); }
+  .quote-rfq h2 { font-size: var(--sy-text-h3-mobile); }
+  .quote-rfq .form-pair { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+  .quote-rfq [name="quantity_note"] { min-block-size: calc(var(--sy-space-2xl) + var(--sy-space-grid-x)); }
+  .quote-rfq [name="quantity_note"]::placeholder { color: transparent; }
+  .quote-rfq [name="quantity_note"]:placeholder-shown + .quantity-placeholder { display: block; position: absolute; inset-block-start: var(--sy-space-sm); inset-inline: var(--sy-space-sm); color: var(--sy-color-muted); font-size: var(--sy-text-body); pointer-events: none; }
+}
 </style>

@@ -148,14 +148,11 @@ footer { padding-block-end: var(--sy-space-section-sm); }
 
 /* Measured shared geometry from the design frames; factual form fields remain the existing contract. */
 .contact-banner { aspect-ratio: 3 / 1; background: var(--sy-color-placeholder); }
-.contact-heading { padding-block: var(--sy-space-section-sm) var(--sy-space-grid-x); border: var(--sy-space-0); }
-.contact-form { grid-template-columns: 19fr 11fr; padding-block-start: var(--sy-space-grid-x); }
-.contact-form .rfq { padding: var(--sy-space-gutter-md); border: var(--sy-space-0); box-shadow: var(--sy-shadow-card); border-radius: var(--sy-radius-card); background: var(--sy-color-surface); }
 .form-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-grid-x); }
 .pdp-section { padding-block-start: var(--sy-space-grid-x); }
 .gallery > picture > img { border-radius: var(--sy-radius-inner); }
 .product-info .actions { display: grid; }
-@media (max-width: 650px) { .contact-form, .form-pair { grid-template-columns: minmax(0, 1fr); } .contact-form .rfq { padding: var(--sy-space-grid-x); } }
+@media (max-width: 650px) { .form-pair { grid-template-columns: minmax(0, 1fr); } }
 
 /* G/C retain their full square composition inside the shared portrait frame. */
 .gallery [data-fit="contain"], .gallery [data-fit="contain"] img { object-fit: contain; }

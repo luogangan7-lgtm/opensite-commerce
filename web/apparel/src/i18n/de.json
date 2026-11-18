@@ -133,7 +133,7 @@
   "footerWhatsapp": "WhatsApp",
   "footerEmail": "E-Mail",
   "footerContactForm": "Kontaktformular",
-  "footerNotice": "Illustrative Bilder. Fabrikfotos auf Anfrage.",
+  "footerNotice": "Die Produktbilder dienen der Veranschaulichung. Die Fabrikfotos sind echt.",
   "navOem": "OEM / ODM",
   "menuClose": "Schließen",
   "footerCopyright": "© 2026 Sourcyo Apparel",
@@ -716,5 +716,6 @@
   "cp-shop/colours-two": "{n} Farben",
   "cp-shop/colours-few": "{n} Farben",
   "cp-shop/colours-many": "{n} Farben",
-  "cp-shop/colours-other": "{n} Farben"
+  "cp-shop/colours-other": "{n} Farben",
+  "wave9.contact.languageAnswer": "Geben Sie in Ihrer Anfrage an, welche Sprache Sie bevorzugen."
 }
