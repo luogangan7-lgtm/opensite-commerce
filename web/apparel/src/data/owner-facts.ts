@@ -4,7 +4,7 @@
  * About ways-only extension msg_d3aed81653ee (2026-11-15).
  * Wholesale may mix styles; blank/decorated mix colours/sizes within each style. */
 import { dictionaries, type Locale } from '../i18n';
-export const ownerMoq = { ready: 100, custom: 1000 } as const;
+export const ownerMoq = { ready: 50, custom: 1000 } as const;
 export const pdpMoq: Record<Locale, string> = {
   en: `MOQ ${ownerMoq.ready} pcs · mix colours & sizes`,
   zh: `${ownerMoq.ready} 件起订 · 同款可混色混码`,

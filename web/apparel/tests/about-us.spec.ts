@@ -16,7 +16,7 @@ for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) {
     await expect(main).toContainText('湖南旋粮生态科技有限公司');
     await expect(main.locator('address')).toContainText('1401');
     await expect(main.locator('address')).toContainText('B8');
-    await expect(main).toContainText(/100|١٠٠/);
+    await expect(main).toContainText(/50|٥٠/);
     await expect(main).toContainText(/1[,\.\s]?000|١[٬،]?٠٠٠/);
     await expect(main).toContainText('EXW');
     await expect(main).toContainText('FOB');

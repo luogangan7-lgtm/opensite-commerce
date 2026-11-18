@@ -41,6 +41,6 @@ test('About ways use the owner-approved 100/100/100/1000 quantities in all eight
     expect(template.match(/\{moq\}/g)).toHaveLength(1);
     expect(template).not.toMatch(/\d/);
     const amounts = [...aboutMoqCopy(locale, way).matchAll(/\d(?:[\d,. ]*\d)?/g)].map(row => Number(row[0].replace(/\D/g, '')));
-    expect(amounts).toEqual([way === '04' ? 1000 : 100]);
+    expect(amounts).toEqual([way === '04' ? 1000 : 50]);
   }
 });
