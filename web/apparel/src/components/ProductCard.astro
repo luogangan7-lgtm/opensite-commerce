@@ -6,7 +6,7 @@ import { getRelativeLocaleUrl } from 'astro:i18n';
 import type { Product } from '../data/catalog';
 import { cardViews, shopFacts, shopNameKeys, colourHex, type Family } from '../data/shop';
 import { digitalAlt } from '../data/imagery';
-import { shopReadyMoq } from '../data/owner-facts';
+import { shopCardMoq } from '../data/owner-facts';
 import { dictionaries, pageLocale, productText, type Key } from '../i18n';
 
 interface Props { product: Product; listing?: boolean; shortName?: string }
@@ -14,8 +14,8 @@ const { product, listing = false, shortName } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 const fullName = productText[locale][product.slug].name;
 const nameKey = product.category === 'cotton430-hoodie' ? 'cp-shop/figma-0008' : shopNameKeys[product.style_codes[0]];
-const label = shortName ?? (t[nameKey as Key] || fullName);
-const name = locale === 'zh' ? label.replace(/T\s*恤/gu, '短袖上衣') : label;
+const fallbackName = locale === 'zh' ? fullName.replace(/T\s*恤/gu, '短袖上衣') : fullName;
+const name = shortName ?? (t[nameKey as Key] || fallbackName);
 const { front, back } = cardViews(product);
 const families = shopFacts(product).colour as Family[];
 const colourCount = t[`cp-shop/colours-${new Intl.PluralRules(locale).select(families.length)}` as Key].replace('{n}', String(families.length));
@@ -38,9 +38,9 @@ const Heading = listing ? 'h2' : 'h3';
     <Heading class="product-card-title"><a href={url} title={fullName}>{name}</a></Heading>
     <p class="product-card-code">{t.pdpStyle} <bdi>{product.style_codes.join(' / ')}</bdi></p>
     <p class="shop-colours">{families.slice(0, 4).map(family => <span class="shop-dot" style={`--shop-swatch:${colourHex[family]}`} aria-hidden="true" />)}<span>{colourCount}</span></p>
-    <p class="shop-moq">{shopReadyMoq(locale)}</p>
+    <p class="shop-moq">{shopCardMoq(locale)}</p>
   </div>
-  <a class="shop-quote" href={quote}>{t.request}</a>
+  <a class="shop-quote" href={quote}>{t['cp-shop/figma-0005']}</a>
 </article>
 
 <style>

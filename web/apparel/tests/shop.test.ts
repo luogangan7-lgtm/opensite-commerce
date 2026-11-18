@@ -1,7 +1,7 @@
 /** CP-SHOP correctness against catalog, explicit unknowns and existing back provenance. */
 import {test,expect} from 'bun:test';
 import {readFileSync} from 'node:fs';
-import {ownerMoq,pdpMoq,shopCustomMoq,shopReadyMoq} from '../src/data/owner-facts';
+import {ownerMoq,pdpMoq,shopCustomMoq,shopCardMoq} from '../src/data/owner-facts';
 import {locales,dictionaries,type Key} from '../src/i18n';
 import {products} from '../src/data/catalog';
 import {shopFacts,selectStyles,setShopQuery,cardViews,pageSize,featuredStyles} from '../src/data/shop';
@@ -63,7 +63,7 @@ test('every rendered listing MOQ line uses the owner 100-piece fact in all eight
   const html=readFileSync(`web/apparel/dist/${locale==='en'?'':locale+'/'}collections/index.html`,'utf8');
   const lines=[...html.matchAll(/<p\b[^>]*class="shop-moq"[^>]*>(.*?)<\/p>/g)].map(m=>m[1]);
   expect(lines).toHaveLength(products.length);
-  for(const line of lines)expect(line).toBe(shopReadyMoq(locale).replaceAll('&','&amp;'));
+  for(const line of lines)expect(line).toBe(shopCardMoq(locale).replaceAll('&','&amp;'));
  }
 });
 

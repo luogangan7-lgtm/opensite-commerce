@@ -628,7 +628,7 @@
   "cp-shop/figma-0001": "Oversized T-shirt",
   "cp-shop/figma-0002": "Style 59043",
   "cp-shop/figma-0003": "4 colours",
-  "cp-shop/figma-0004": "MOQ 100 pcs",
+  "cp-shop/figma-0004": "MOQ {moq} pcs",
   "cp-shop/figma-0005": "Request a quote",
   "cp-shop/figma-0006": "Front / back",
   "cp-shop/figma-0007": "Request a quote",
