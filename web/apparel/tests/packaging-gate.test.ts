@@ -6,6 +6,7 @@ import { packagingGate } from '../packaging-gate';
 import { activeSlotInput } from '../image-plan';
 import digital from '../digital-sources.json';
 import details from '../detail-sources.json';
+import { productText } from '../src/i18n';
 import { digitalAlt } from '../src/data/imagery';
 
 test('unknown images, missing static assets, wrong localized alt and retired PDP slots fail then recover', () => {
@@ -19,6 +20,10 @@ test('unknown images, missing static assets, wrong localized alt and retired PDP
   copyFileSync('web/apparel/public/brand/primary.svg',join(dir,'brand/primary.svg'));
   expect(()=>packagingGate(dir)).not.toThrow();
   write(good.replace(image.src,'/img/unplanned.webp')); expect(()=>packagingGate(dir)).toThrow(/unplanned image/);
+  const localized = digitalAlt(image.src, 'fr')!;
+  const namedAlt = `${productText.fr[image.slug].name} — ${localized}`;
+  write(good.replace(localized, namedAlt)); expect(() => packagingGate(dir)).not.toThrow();
+  write(good.replace(localized, `wrong product — ${localized}`)); expect(() => packagingGate(dir)).toThrow(/unlocalized alt/);
   write(good.replace(digitalAlt(image.src,'fr')!,digitalAlt(image.src,'en')!)); expect(()=>packagingGate(dir)).toThrow(/unlocalized alt/);
   write(good+ '<picture data-slot="pdp/craft_fleece"><img src="/img/site/illustrative_pdp_craft_fleece-1024.webp" alt="legacy"></picture>');
   expect(()=>packagingGate(dir)).toThrow(/Unpublished slot/);

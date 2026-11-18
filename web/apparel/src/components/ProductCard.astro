@@ -1,0 +1,62 @@
+---
+/** Borderless catalog tile used by the store, Home and PDP. Facts come from the catalog and owner MOQ source. */
+import '@fontsource/literata/400.css';
+import '@fontsource/noto-serif-sc/400.css';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import type { Product } from '../data/catalog';
+import { cardViews, shopFacts, shopNameKeys, colourHex, type Family } from '../data/shop';
+import { digitalAlt } from '../data/imagery';
+import { shopCardMoq } from '../data/owner-facts';
+import { dictionaries, pageLocale, productText, type Key } from '../i18n';
+
+interface Props { product: Product; listing?: boolean; shortName?: string }
+const { product, listing = false, shortName } = Astro.props;
+const locale = pageLocale(Astro.url), t = dictionaries[locale];
+const fullName = productText[locale][product.slug].name;
+const nameKey = product.category === 'cotton430-hoodie' ? 'cp-shop/figma-0008' : shopNameKeys[product.style_codes[0]];
+const fallbackName = locale === 'zh' ? fullName.replace(/T\s*恤/gu, '短袖上衣') : fullName;
+const name = shortName ?? (t[nameKey as Key] || fallbackName);
+const { front, back } = cardViews(product);
+const families = shopFacts(product).colour as Family[];
+const colourCount = t[`cp-shop/colours-${new Intl.PluralRules(locale).select(families.length)}` as Key].replace('{n}', String(families.length));
+const url = getRelativeLocaleUrl(locale, `/products/${product.slug}/`);
+const quote = `${getRelativeLocaleUrl(locale, '/contact/')}?${new URLSearchParams({ product: product.slug, colour: front.colour || '' })}#rfq-form`;
+const alt = (src: string) => {
+  const description = digitalAlt(src, locale);
+  return description ? `${fullName} — ${description}` : fullName;
+};
+const Heading = listing ? 'h2' : 'h3';
+---
+<article class="product-card" data-product-card={product.slug} data-shop-card={listing ? product.slug : undefined}>
+  <div class="shop-photo">
+    <a href={url} title={fullName} aria-label={name}>
+      <img src={front.src} alt={alt(front.src)} width="600" height="750" loading="lazy" decoding="async" />
+      {listing && back && <img class="shop-back" data-role="back" src={back.src} alt={alt(back.src)} width="600" height="750" loading="lazy" decoding="async" />}
+    </a>
+  </div>
+  <div class="shop-card-body">
+    <Heading class="product-card-title"><a href={url} title={fullName}>{name}</a></Heading>
+    <p class="product-card-code">{t.pdpStyle} <bdi>{product.style_codes.join(' / ')}</bdi></p>
+    <p class="shop-colours">{families.slice(0, 4).map(family => <span class="shop-dot" style={`--shop-swatch:${colourHex[family]}`} aria-hidden="true" />)}<span>{colourCount}</span></p>
+    <p class="shop-moq">{shopCardMoq(locale)}</p>
+  </div>
+  <a class="shop-quote" href={quote}>{t['cp-shop/figma-0005']}</a>
+</article>
+
+<style>
+.product-card { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; align-self: stretch; }
+.product-card[hidden] { display: none; }
+.shop-photo { position: relative; aspect-ratio: 4 / 5; overflow: hidden; border-radius: var(--sy-radius-image); background: var(--sy-color-placeholder); }
+.shop-photo a { display: block; height: 100%; }
+.shop-photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.shop-back { position: absolute; inset: 0; opacity: 0; }
+@media (hover: hover) and (pointer: fine) { .shop-photo:hover .shop-back { opacity: 1; } }
+.shop-card-body { display: grid; align-content: start; padding-block-start: var(--sy-space-sm); }
+.product-card-title, .shop-card-body p, .shop-quote {
+  margin: 0; font-family: var(--sy-font-body); font-size: var(--sy-text-small); font-weight: var(--sy-weight-body);
+}
+.product-card-title a { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; text-decoration: none; }
+.shop-colours { display: flex; align-items: center; gap: var(--sy-space-2xs); }
+.shop-dot { flex: none; width: var(--sy-space-sm); height: var(--sy-space-sm); border-radius: var(--sy-radius-pill); background: var(--shop-swatch); }
+.shop-quote { display: inline-flex; align-items: start; justify-self: start; border-radius: var(--sy-radius-pill); min-height: var(--control-size-md); }
+</style>
