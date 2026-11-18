@@ -14,6 +14,31 @@ const allowed = new Set([
   ...products.flatMap(product => product.style_codes),
 ].map(value => value.toLowerCase()));
 
+test('F3 Chinese catalog banner keeps the samples and trade terms together', async ({ page }) => {
+  const custom = ownerMoq.custom.toLocaleString('en-US');
+  for (const path of ['/zh/collections/', '/zh/collections/cotton430-hoodie/']) {
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto(path);
+    const banner = page.locator('.shop-b2b');
+    await expect(banner.getByRole('link', { name: '获取报价', exact: true })).toHaveText('获取报价 →');
+    await expect(banner.locator('.shop-terms')).toHaveText(`${ownerMoq.ready} 件起订 / 定制 ${custom} 件起 / 样品 / EXW 或 FOB`);
+    const samples = banner.getByRole('link', { name: '样品', exact: true });
+    await expect(samples).toHaveAttribute('href', '/zh/sampling/');
+    const trade = banner.getByText('EXW 或 FOB', { exact: true });
+    await page.evaluate(() => document.fonts.ready);
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      const lines = await banner.locator('.shop-term').evaluateAll(facts =>
+        new Set(facts.map(fact => Math.round(fact.getBoundingClientRect().top))).size);
+      expect(lines, `${path} at ${width}px`).toBe(width === 390 ? 1 : 2);
+      const terms = await trade.boundingBox();
+      const link = await samples.boundingBox();
+      expect(terms!.y, `${path} at ${width}px`).toBeCloseTo(link!.y, 0);
+      expect(terms!.x + terms!.width).toBeLessThanOrEqual(width);
+    }
+  }
+});
+
 for (const locale of ['ar', 'zh']) test(`localized catalog copy ${locale}`, async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   for (const [path, selector] of [
