@@ -750,5 +750,7 @@
   "pdpFabricWeight": "Fabric weight",
   "pdpQuoteConfirmed": "Confirmed in your quote",
   "pdpFinishOnRequest": "Custom dyeing on request",
-  "pdpSwipe": "Swipe to see all measurements"
+  "pdpSwipe": "Swipe to see all measurements",
+  "about.factory-caption": "Factory",
+  "legalContents": "On this page"
 }

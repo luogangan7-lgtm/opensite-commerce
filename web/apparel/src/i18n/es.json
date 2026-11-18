@@ -750,5 +750,7 @@
   "pdpFabricWeight": "Peso del tejido",
   "pdpQuoteConfirmed": "Confirmado en el presupuesto",
   "pdpFinishOnRequest": "Teñido personalizado bajo pedido",
-  "pdpSwipe": "Desliza para ver todas las medidas"
+  "pdpSwipe": "Desliza para ver todas las medidas",
+  "about.factory-caption": "Fábrica",
+  "legalContents": "En esta página"
 }

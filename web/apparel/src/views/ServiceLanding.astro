@@ -3,6 +3,7 @@
  * Route inventory calls this view; Shell and ServiceMedia own shared chrome/media.
  * Copy is locale-bound; capabilities match owner scope and RFQ preserves existing query enums. */
 import Shell from '../layouts/Shell.astro';
+import HomeMedia from '../components/HomeMedia.astro';
 import ServiceMedia from '../components/ServiceMedia.astro';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { dictionaries, pageLocale, type Key } from '../i18n';
@@ -26,31 +27,31 @@ const photographs = ['catalog-hoodie', 'catalog-green', 'catalog-crew'];
 {oem && <div class="svc-wrap opening"><ServiceMedia id="catalog-hoodie" alt="" eager /><ServiceMedia id="catalog-green" alt="" eager /></div>}
 <section class="intro"><div class="svc-wrap"><p class="eyebrow">{c(oem ? 814 : sample ? 851 : 869)}</p><h1>{title}</h1><p class="lead">{c(oem ? 816 : sample ? 853 : 871)}</p>{oem && <a class="button" href={href}>{t.shellRequest} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a>}</div></section>
 {oem ? <>
-<section><div class="svc-wrap"><p class="eyebrow">{c(817)}</p><h2>{c(818)}</h2><div class="three">{[819,822,825].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{c(n+2)}</p></article>)}</div></div></section>
-<section><div class="svc-wrap matrix"><div class="capability-panel"><p class="eyebrow">{cap(950)}</p><h2>{cap(951)}</h2>{groups.map(n => <article data-capability-group={n}><h3>{capHeading(n)}</h3><p class="lines">{cap(n+1)}</p></article>)}</div><div class="brief-panel inverse"><p class="eyebrow">{cap(960)}</p><h2>{cap(961)}</h2>{[962,964,966,968].map(n => <article><h3>{capHeading(n)}</h3><p>{cap(n+1)}</p></article>)}</div></div></section>
+<section class="development-brief"><div class="svc-wrap"><p class="eyebrow">{c(817)}</p><h2>{c(818)}</h2><div class="three">{[819,822,825].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{c(n+2)}</p></article>)}</div></div></section>
+<section class="matrix-band"><div class="svc-wrap matrix"><div class="capability-panel"><p class="eyebrow">{cap(950)}</p><h2>{cap(951)}</h2>{groups.map(n => <article data-capability-group={n}><h3>{capHeading(n)}</h3><p class="lines">{cap(n+1)}</p></article>)}</div><div class="brief-panel"><p class="eyebrow">{cap(960)}</p><h2>{cap(961)}</h2>{[962,964,966,968].map(n => <article><h3>{capHeading(n)}</h3><p>{cap(n+1)}</p></article>)}</div></div></section>
 <section class="inverse"><div class="svc-wrap"><p class="eyebrow">{c(832)}</p><h2>{c(833)}</h2><div class="three workflow">{[834,837,840].map((n,i) => <article><ServiceMedia id={photographs[i]} alt="" /><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{c(n+2)}</p></article>)}</div></div></section>
-<section><div class="svc-wrap split assurance"><ServiceMedia id="catalog-green" alt="" /><div><h3>{c(843)}</h3><p>{c(844)}</p><p>{c(845)}</p></div></div></section>
+<section><div class="svc-wrap split assurance"><HomeMedia scope="about" id="factory-floor" alt="" /><div><h3>{c(843)}</h3><p class="lead">{c(844)}</p><p>{c(845)}</p></div></div></section>
 <section><div class="svc-wrap"><p class="eyebrow">{cap(970)}</p><h2>{cap(971)}</h2><p>{cap(972)}</p><div class="techniques" data-techniques>{media.filter(image => image.kind === 'technique').map(image => <figure data-technique={image.id}><ServiceMedia id={image.id} alt={t[image.altKey as Key]} /><h3 class="technique-label" data-technique-label>{t[image.altKey as Key]}</h3><p class="technique-description" data-technique-description>{cap(Number(image.altKey.split('/').pop()) + 1)}</p></figure>)}</div></div></section>
 </> : <>
 {sample && <section class="capabilities-strip"><div class="svc-wrap"><p class="eyebrow">{cap(1005)}</p><h3>{cap(1006)}</h3><div class="four">{groups.map((n,i) => <article data-capability-group={n}><h3>{capHeading(i===3 ? 1010 : n)}</h3><p>{cap(i===3 ? 1011 : 1007+i)}</p></article>)}</div></div></section>}
-{phases.map(([kicker,number,heading,body], i) => <section class:list={{inverse:i===1,phase:true}}><div class="svc-wrap"><p class="eyebrow phase-kicker">{c(kicker)}</p><div class:list={{split:true,reverse:i===1}}><div class="phase-copy"><p class="step-number">{c(number)}</p><h2>{c(heading)}</h2><p class="lead">{c(body)}</p></div><ServiceMedia id={photographs[i]} alt="" /></div></div></section>)}
-{sample ? <section><div class="svc-wrap"><p class="eyebrow">{c(865)}</p><h2>{c(866)}</h2><p class="lead">{c(867)}</p></div></section> : <section><div class="svc-wrap"><p class="eyebrow">{c(881)}</p><h2>{c(882)}</h2><div class="three">{[883,886,889].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{n===889 ? <a href="mailto:sales@sourcyowear.com"><bdi>{c(n+2)}</bdi></a> : c(n+2)}</p></article>)}</div></div></section>}
+{phases.map(([kicker,number,heading,body], i) => <section class:list={{inverse:i===1,phase:true}}><div class="svc-wrap"><div class:list={{split:true,reverse:i===1}}><div class="phase-copy"><p class="eyebrow">{c(kicker)}</p><p class="step-number">{c(number)}</p><h2>{c(heading)}</h2><p class="lead">{c(body)}</p></div><ServiceMedia id={photographs[i]} alt="" /></div></div></section>)}
+{sample ? <section class="seasonal"><div class="svc-wrap"><p class="eyebrow">{c(865)}</p><h2>{c(866)}</h2><p class="lead">{c(867)}</p></div></section> : <section class="service-facts"><div class="svc-wrap"><p class="eyebrow">{c(881)}</p><h2>{c(882)}</h2><div class="three">{[883,886,889].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{n===889 ? <a href="mailto:sales@sourcyowear.com"><bdi>{c(n+2)}</bdi></a> : c(n+2)}</p></article>)}</div></div></section>}
 </>}
 <section class="inverse quote"><div class="svc-wrap"><p class="eyebrow">{c(848)}</p><h2>{c(oem ? 849 : sample ? 868 : 892)}</h2><p class="lead">{c(850)}</p><a class="button" data-service-rfq href={href}>{t.shellRequest} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a></div></section>
 </div>
 </Shell>
 <style>
-.svc-page { max-inline-size: var(--sy-layout-desktop); margin-inline: auto; line-height: 1.55; }
+.svc-page { --service-display: var(--sy-text-h2); --service-detail: var(--sy-reading-title); max-inline-size: var(--sy-layout-desktop); margin-inline: auto; line-height: 1.55; }
 .svc-wrap { margin-inline: var(--sy-space-gutter-lg); }
 section { border: var(--sy-space-0); }
-h1,h2 { font-size: var(--sy-text-h2); line-height: 1.2; margin: 0; }
-h3 { margin: 0; font-size: var(--sy-text-h4); }
+h1,h2 { font-size: var(--service-display); line-height: 1.2; margin: 0; }
+h3 { margin: 0; font-size: var(--sy-text-h4); line-height: 1.2; }
 p { max-inline-size: none; margin: 0; }
 .svc-wrap,.phase-copy,article,.brief-panel,.capability-panel { display: flex; flex-direction: column; gap: var(--sy-space-lg); min-inline-size: 0; }
 .eyebrow { font-size: var(--sy-text-eyebrow); }
 .intro { text-align: center; }
 .intro .svc-wrap { align-items: center; }
-.svc-page .button { gap: var(--sy-space-xs); }
+.svc-page .button { min-block-size: 44px; padding-block: 0; }
 [data-service-rfq] { align-self: flex-start; }
 .lead { max-inline-size: none; }
 .three,.four,.matrix,.split,.opening,.techniques { display: grid; gap: var(--sy-space-lg); min-inline-size: 0; }
@@ -59,46 +60,75 @@ p { max-inline-size: none; margin: 0; }
 /* Home separates its heading group and content grid by sy-space-2xl (48px).
    The existing 24px stack gap plus this margin keeps eyebrow/body rhythm intact. */
 .three,.four,.techniques { margin-block-start: var(--sy-space-lg); }
-.matrix { grid-template-columns: 32fr 23fr; }
+.matrix { grid-template-columns: 32fr 23fr; background: var(--sy-color-placeholder); border-radius: var(--sy-radius-card); }
 .split { grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--sy-space-split); align-items: center; }
 .opening { grid-template-columns: repeat(2,minmax(0,1fr)); padding-block-start: var(--sy-space-2xl); }
 /* Match HomeHero's top anchor: the SHA-bound masters include complete heads. */
 .svc-page :global([data-service-media^="catalog-"] img) { object-position: 50% 0%; }
 .opening :global(img) { block-size: 540px; object-fit: cover; }
-.capability-panel,.capabilities-strip { background: var(--sy-color-surface-alt); }
-.capability-panel,.brief-panel { padding: var(--sy-space-lg); align-self: stretch; }
-.brief-panel { justify-content: center; }
-.capability-panel h2,.brief-panel h2 { font-size: var(--sy-text-h3); }
+.capability-panel,.brief-panel { padding: var(--sy-space-xl) var(--sy-space-lg); align-self: stretch; }
+.capability-panel { display: grid; grid-template-rows: auto auto repeat(4, 1fr); }
+.capability-panel article,.brief-panel article { gap: var(--sy-space-sm); }
+.brief-panel { justify-content: flex-start; }
+.capability-panel h2,.brief-panel h2 { font-size: var(--service-detail); }
 .lines { white-space: pre-line; }
 .inverse { background: var(--sy-color-surface-alt); color: var(--sy-color-ink); }
-.workflow :global(img) { block-size: 280px; object-fit: cover; }
+.workflow article { display: grid; grid-template-rows: subgrid; grid-row: span 4; }
+.workflow :global(img) { block-size: 280px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--sy-radius-image); }
 .split :global(img) { block-size: 400px; object-fit: cover; }
 .assurance :global(img) { block-size: 480px; }
 .assurance { gap: var(--sy-space-lg); }
+.assurance h3 { font-size: var(--service-detail); font-weight: var(--sy-weight-heading); }
 .assurance > div { display: flex; flex-direction: column; gap: var(--sy-space-lg); }
 .techniques :global(img) { aspect-ratio: 1; object-fit: cover; }
 .techniques figure { display: grid; grid-template-rows: subgrid; grid-row: span 3; gap: var(--sy-space-sm); margin: 0; min-inline-size: 0; }
-.technique-label { font: var(--sy-weight-body) var(--sy-text-lead)/1.25 var(--sy-font-body); }
+.technique-label { font: var(--sy-weight-body) var(--sy-text-body)/1.55 var(--sy-font-body); }
 .technique-description { font-size: var(--sy-text-small); }
-.phase-kicker { text-align: center; }
-.phase-copy h2 { font-size: var(--sy-text-h3); }
+.intro h1 { white-space: pre-line; }
+.phase-copy h2 { font-size: var(--service-detail); }
 .step-number { font: var(--sy-weight-heading) var(--sy-text-h2)/1.2 var(--sy-font-heading); }
 .reverse .phase-copy { order: 1; }
-.capabilities-strip { padding-block: var(--sy-space-lg); }
+.capabilities-strip { padding-block: var(--sy-space-section-sm); background: var(--sy-color-placeholder); }
+.capabilities-strip .svc-wrap > h3 { font-size: var(--service-detail); font-weight: var(--sy-weight-heading); }
+.capabilities-strip .four article { gap: var(--sy-space-sm); }
+.capabilities-strip .four h3 { font: var(--sy-weight-body) var(--sy-text-body)/1.55 var(--sy-font-body); }
+.capabilities-strip .four p { font-size: var(--sy-text-small); }
 @media(max-width:900px) {
- .svc-wrap { margin-inline: var(--sy-space-gutter-mobile); }
+ .svc-page { --service-display: var(--sy-reading-title); --service-detail: var(--service-display); }
  section { padding-block: var(--sy-space-section-sm); }
- h1,h2 { font-size: var(--sy-text-h2-mobile); }
- .quote h2 { font-size: var(--sy-text-h3-mobile); }
- h3,.phase-copy h2,.capability-panel h2,.brief-panel h2 { font-size: var(--sy-text-h3-mobile); }
+ .capability-panel { display: flex; }
+ .split { gap: var(--sy-space-split); }
+ .split :global(img) { block-size: auto; min-block-size: 320px; aspect-ratio: 9 / 4; }
+ .capabilities-strip { padding-block: var(--sy-space-2xl); }
+ .capabilities-strip .four { grid-template-columns: repeat(2, minmax(0, 1fr)); max-inline-size: calc(var(--sy-layout-mobile) - 2 * var(--sy-space-gutter-mobile)); }
+ .techniques { row-gap: var(--sy-space-xs); }
+ .techniques figure { gap: var(--sy-space-xs); }
+ .techniques figure:not(:nth-last-child(-n+2)) { padding-block-end: var(--sy-space-md); }
+ .technique-label { margin-block-start: var(--sy-space-xs); min-block-size: 1lh; }
+ .technique-label:lang(ar), .technique-description { min-block-size: 2lh; }
+ .technique-description { line-height: 1.55; }
+ .assurance { gap: var(--sy-space-lg); }
+ .capabilities-strip .svc-wrap > h3 { font-size: var(--sy-reading-subtitle); font-weight: var(--sy-weight-title); }
+ .service-facts:lang(en) article:nth-child(-n+2) p:last-child,
+ [data-service-page="shipping"]:lang(ar) .phase:not(.inverse) .lead { min-block-size: 2lh; }
+ [data-service-page="sampling"]:lang(en) .capabilities-strip + .phase .lead { min-block-size: 2lh; }
  .three,.matrix,.split,.opening { grid-template-columns: minmax(0,1fr); }
  .four,.techniques { grid-template-columns: repeat(2,minmax(0,1fr)); }
- .four h3 { font-size: var(--sy-text-h4-mobile); }
  .opening > :global(picture:last-child) { display: none; }
  .opening { padding-block-start: var(--sy-space-lg); }
  /* The formal tablet crop is720x320 (9:4). Preserve that source window at
     the900px breakpoint too, so a wider slot cannot cut the bottom of a head. */
- .opening :global(img),.workflow :global(img),.split :global(img) { block-size: auto; min-block-size: 320px; aspect-ratio: 9 / 4; }
+ .opening :global(img),.workflow :global(img) { block-size: auto; min-block-size: 320px; aspect-ratio: 9 / 4; }
+ .workflow :global(picture) { justify-self: center; }
+ .workflow :global(img) { block-size: 320px; aspect-ratio: 4 / 5; }
+ .techniques { inline-size: min(100%, calc(var(--sy-layout-mobile) - 2 * var(--sy-space-gutter-mobile))); }
  .reverse .phase-copy { order: 0; }
+}
+@media (max-width: 650px) {
+ .svc-page { --service-display: var(--sy-text-h3-mobile); }
+ .svc-wrap { margin-inline: var(--sy-space-gutter-mobile); }
+ .capabilities-strip .svc-wrap > h3 { font-size: var(--sy-text-h4-mobile); }
+ .development-brief h2:lang(ar) { min-block-size: 2lh; }
+ .service-facts:lang(en) article:last-child p:last-child { min-block-size: 2lh; }
 }
 </style>

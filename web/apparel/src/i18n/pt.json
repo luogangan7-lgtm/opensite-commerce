@@ -750,5 +750,7 @@
   "pdpFabricWeight": "Gramagem do tecido",
   "pdpQuoteConfirmed": "Confirmado no orçamento",
   "pdpFinishOnRequest": "Tingimento personalizado sob consulta",
-  "pdpSwipe": "Deslize para ver todas as medidas"
+  "pdpSwipe": "Deslize para ver todas as medidas",
+  "about.factory-caption": "Fábrica",
+  "legalContents": "Nesta página"
 }

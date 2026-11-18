@@ -750,5 +750,7 @@
   "pdpFabricWeight": "Stoffgewicht",
   "pdpQuoteConfirmed": "Wird im Angebot bestätigt",
   "pdpFinishOnRequest": "Individuelle Färbung auf Anfrage",
-  "pdpSwipe": "Wischen, um alle Maße zu sehen"
+  "pdpSwipe": "Wischen, um alle Maße zu sehen",
+  "about.factory-caption": "Fabrik",
+  "legalContents": "Auf dieser Seite"
 }

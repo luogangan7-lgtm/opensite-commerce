@@ -750,5 +750,7 @@
   "pdpFabricWeight": "Grammage du tissu",
   "pdpQuoteConfirmed": "Confirmé dans le devis",
   "pdpFinishOnRequest": "Teinture personnalisée sur demande",
-  "pdpSwipe": "Balayez pour voir toutes les mesures"
+  "pdpSwipe": "Balayez pour voir toutes les mesures",
+  "about.factory-caption": "Usine",
+  "legalContents": "Sur cette page"
 }
