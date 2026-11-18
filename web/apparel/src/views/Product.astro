@@ -74,6 +74,7 @@ const relatedCards = isFeaturedHoodie
 @media (max-width: 650px) { .pdp-related { padding-block: var(--sy-space-2xl) var(--sy-space-lg); width: calc(100% - 2 * var(--sy-space-gutter-mobile)); } }
   .pdp-section, .pdp-details, #size-chart { width: min(calc(100% - 2 * var(--sy-space-gutter-lg)), calc(var(--sy-layout-desktop) - 2 * var(--sy-space-gutter-lg))); }
   .pdp-section { padding-block: var(--sy-space-gutter-lg); }
+  .pdp-breadcrumb, .product-info p { font-size: var(--sy-text-small); }
   .pdp-breadcrumb a { color: inherit; }
   .pdp { grid-template-columns: minmax(0, 760fr) minmax(0, 528fr); gap: var(--sy-space-split); margin-block-start: var(--sy-space-xl); }
   .product-info { display: flex; flex-direction: column; gap: var(--sy-space-lg); }
@@ -84,8 +85,10 @@ const relatedCards = isFeaturedHoodie
   [data-full-spec] { table-layout: fixed; align-self: start; margin: 0; }
   [data-full-spec] th { width: 40%; }
   [data-full-spec] th, [data-full-spec] td { padding-block: var(--sy-space-sm); }
+  @media (min-width: 1025px) { [data-full-spec] caption { padding-block-end: var(--sy-space-md); } }
   .pdp-details { padding-block: var(--sy-space-section) var(--sy-space-2xl); border-block-start: var(--sy-space-hair) solid var(--sy-color-hairline); }
   #size-chart { padding-block: var(--sy-space-2xl); }
+  @media (min-width: 769px) { #size-chart > h2 { margin-block-end: var(--sy-space-grid-y); } }
   #size-chart > p { margin-block: var(--sy-space-lg); font-size: var(--sy-text-small); }
   .size-table-scroll { overflow-x: auto; border: var(--sy-space-hair) solid var(--sy-color-hairline); border-radius: var(--sy-radius-inner); background: var(--sy-color-surface); }
   .size-table-scroll thead, .size-table-scroll th:first-child { background: var(--sy-color-surface-alt); }
@@ -106,10 +109,12 @@ const relatedCards = isFeaturedHoodie
   .size-table-scroll th, .size-table-scroll td { white-space: nowrap; }
   .eyebrow { font-family: var(--sy-font-body); font-size: var(--sy-text-eyebrow); }
   @media (max-width: 1024px) { .pdp, .pdp-details { grid-template-columns: minmax(0, 1fr); gap: var(--sy-space-xl); } }
-  @media (max-width: 650px) {
-    .pdp-section, .pdp-details, #size-chart { width: calc(100% - 2 * var(--sy-space-gutter-mobile)); }
+  @media (max-width: 768px) {
     .pdp-section { padding-block: var(--sy-space-gutter-mobile); }
     .pdp-details { padding-block: var(--sy-space-section-sm) var(--sy-space-gutter-mobile); }
+  }
+  @media (max-width: 650px) {
+    .pdp-section, .pdp-details, #size-chart { width: calc(100% - 2 * var(--sy-space-gutter-mobile)); }
   }
 </style>
 

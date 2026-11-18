@@ -114,12 +114,12 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
  .image-card img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:contain;object-position:50% 0;border-radius:var(--sy-radius-image);cursor:zoom-in}
  .image-card img[data-fit=contain]{object-fit:contain}
  figcaption{padding-block-start:var(--sy-space-xs);font-size:var(--sy-text-eyebrow)}
- .gallery-colours{display:flex;gap:var(--sy-space-xs);flex-wrap:wrap}
+ .gallery-colours{display:flex;gap:var(--sy-space-xs);flex-wrap:wrap;padding:0;overflow:visible}
  .gallery-colours button{width:44px;height:55px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:var(--sy-radius-inner);background:transparent;flex:none}
  .gallery-colours button[aria-pressed=true]{outline:2px solid var(--sy-color-accent);outline-offset:2px}
  .gallery-colour-label{margin:0;font-size:var(--sy-text-eyebrow)}
  .gallery-colours img{display:block;width:44px;height:55px;object-fit:contain;object-position:top;border-radius:var(--sy-radius-inner)}
- .gallery-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sy-space-sm)}
+ .gallery-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sy-space-md)}
  .gallery-tiles figure{margin:0;min-width:0}
  .gallery-tile-photo{position:relative;aspect-ratio:1;}
  .gallery-tiles img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:top;border-radius:var(--sy-radius-image)}
