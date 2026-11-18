@@ -34,7 +34,7 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
  </div>
  <nav class="gallery-colours" aria-label={t.productViews}>{colours.map(image=><button type="button" data-gallery-swatch={image.colour} data-gallery-colour-label={colourLabel(image)} aria-pressed={image.colour===primary?'true':'false'} aria-label={digitalAlt(image.src,locale)||image.colour}><img src={image.src} alt={digitalAlt(image.src,locale)||image.colour} width="64" height="80" loading="lazy"/></button>)}</nav>
  <p class="gallery-colour-label" data-gallery-colour-label>{colourLabel(initial)}</p>
- <div class="gallery-tiles">{['turn','structure','fabric'].map(role=>{const image=images.find(i=>i.role===role);return <figure data-gallery-tile={role} hidden={!image}><div class="gallery-tile-photo"><img src={image?.src} alt={image?alt(image):labels[role]} width="800" height="800" loading="lazy"/></div><figcaption>{labels[role]}</figcaption></figure>})}</div>
+ <div class="gallery-tiles" data-pdp-media>{['turn','structure','fabric'].map(role=>{const image=images.find(i=>i.role===role);return <figure data-gallery-tile={role} hidden={!image}><div class="gallery-tile-photo"><img data-pdp-detail={role === 'structure' ? true : undefined} data-pdp-fabric={role === 'fabric' ? true : undefined} src={image?.src} alt={image?alt(image):labels[role]} width="800" height="800" loading="lazy"/></div><figcaption>{labels[role]}</figcaption></figure>})}</div>
  <p class="sr-only" aria-live="polite" data-gallery-status></p>
  <dialog data-gallery-viewer aria-label={alt(initial)}><form method="dialog"><button aria-label={t.galleryClose}>×</button></form><p data-viewer-title>{alt(initial)}</p><img src={initial.src} alt={alt(initial)} width="1200" height="1200" /></dialog>
 </div>
@@ -82,7 +82,6 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
   const backMobile=root.querySelector('source[data-gallery-back-mobile]')!;if(b)backMobile.setAttribute('srcset',b.getAttribute('href')!.replace(/\.webp$/,'-640.webp'));else backMobile.removeAttribute('srcset');
   if(b){back.src=b.getAttribute('href')!;back.alt=b.querySelector('img')!.alt}else{back.removeAttribute('src')}
   root.querySelectorAll<HTMLElement>('[data-gallery-tile]').forEach(tile=>{const link=all.find(n=>n.dataset.role===tile.dataset.galleryTile);tile.hidden=!link;const img=tile.querySelector('img')!;if(link){img.src=link.getAttribute('href')!;img.alt=link.querySelector('img')!.alt}else img.removeAttribute('src')});
-  document.querySelectorAll<HTMLImageElement>('[data-pdp-detail], [data-pdp-fabric]').forEach(img=>{const role=img.hasAttribute('data-pdp-fabric')?'fabric':'structure';const link=all.find(n=>n.dataset.role===role);img.hidden=!link;if(link){img.src=link.getAttribute('href')!;img.alt=link.querySelector('img')!.alt}else img.removeAttribute('src')});
   select(view);
  };
  root.querySelectorAll<HTMLAnchorElement>('.gallery-thumbs a').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();const role=link.dataset.role;select(role==='front'||role==='back'?'pair':role==='turn'?'side':'details');if(role==='back'){if(matchMedia('(max-width:767px)').matches)move(1)}else choose(link)}));
@@ -102,7 +101,7 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
 <style>
  .gallery{min-width:0;display:flex;flex-direction:column;gap:var(--sy-space-md);align-self:start}
  .gallery-layout{display:grid;grid-template-columns:64px minmax(0,1fr);gap:var(--sy-space-md);align-items:start}
- .gallery-thumbs{display:flex;flex-direction:column;gap:var(--sy-space-sm);max-height:600px;overflow:auto}
+ .gallery-thumbs{display:flex;flex-direction:column;gap:var(--sy-space-sm);max-height:443px;overflow:auto;margin:0;padding:0}
  .gallery-thumbs[hidden], [hidden]{display:none!important}
  .gallery-thumbs a{display:flex;flex-direction:column;align-items:start;gap:var(--sy-space-2xs);flex:none;border-radius:var(--sy-radius-inner);text-decoration:none;background:transparent;overflow:visible}
  .gallery-thumbs a[aria-current]{outline:none}

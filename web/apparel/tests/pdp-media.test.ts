@@ -20,7 +20,7 @@ test('missing same-colour media fails rather than substituting another SKU or co
  expect(() => pdpMediaPair([{src:'front',role:'front',colour:'white'},{src:'detail',role:'structure',colour:'black'}])).toThrow();
 });
 test('PDP replaces generic craft illustrations with FIT pair', () => {
- const view=readFileSync(new URL('../src/views/Product.astro',import.meta.url),'utf8');
+ const view=readFileSync(new URL('../src/components/ProductGallery.astro',import.meta.url),'utf8');
  expect(view).not.toContain('pdp/craft_'); expect(view).toContain('data-pdp-media');
- expect(view).toContain('object-fit: contain');
+ expect(view).toMatch(/object-fit:\s*contain/);
 });

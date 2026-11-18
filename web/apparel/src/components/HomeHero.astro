@@ -97,11 +97,11 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
   h1{font-size:var(--sy-text-h2);}
   .hero-photo:nth-child(3) :global(img){object-position:77.3636% 0;}
  }
- @media(max-width:650px){
+ @media(max-width:768px){
   .home-hero{--home-photo-height:560px;--home-facts-height:122px;--home-copy-top:176px;--home-gutter:var(--sy-space-gutter-mobile);}
   /* Long locale copy must grow the hero instead of covering carousel controls. */
   .hero-visual{height:auto;min-height:var(--home-photo-height);}
-  .hero-content{position:relative;inset-inline-start:auto;top:auto;max-width:none;margin-inline:var(--home-gutter);padding-block:var(--home-copy-top) calc(var(--sy-space-section) + var(--sy-space-2xl));}
+  .hero-content{position:relative;inset-inline-start:auto;top:auto;max-width:none;margin-inline:var(--home-gutter);padding-block:var(--home-copy-top) var(--sy-space-section);}
   h1{font-size:var(--sy-text-h1-mobile);}
   .hero-sub{font-size:var(--sy-text-body);}
   .hero-dots{inset-inline-end:auto;inset-inline-start:50%;top:auto;bottom:var(--sy-space-lg);transform:translateX(-50%);display:flex;direction:ltr;}

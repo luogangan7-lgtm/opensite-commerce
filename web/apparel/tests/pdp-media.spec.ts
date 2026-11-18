@@ -19,7 +19,7 @@ test('all 115 served PDPs use their own primary whole and same-colour structure'
 });
 for(const [locale,t] of Object.entries(dictionaries)) test(`caption ${locale}`,async({page})=>{
  await page.goto(path(locale));
- await expect(page.locator('[data-pdp-media] figcaption')).toHaveCount(0);
+ await expect(page.locator('[data-pdp-media] [data-gallery-tile=structure] figcaption')).toBeVisible();
  const translations = JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`, import.meta.url),'utf8'));
  const productText = JSON.parse(readFileSync(new URL(`../src/i18n/products.${locale}.json`, import.meta.url),'utf8'));
  const detailAlt = await page.locator('[data-pdp-detail]').getAttribute('alt');
@@ -108,7 +108,7 @@ for(const locale of ['en','ar','zh']) test(`structured size cells ${locale}`, as
    const kg=String(cell).match(/\d+/g)!.map(amount=>Math.round(Number(amount)/2)).join('-');
    return (/^<|以下$/.test(String(cell)) ? '<' : '')+kg+(locale==='ar'?' كغ':' kg');
   })]);
-  await expect(page.locator('[data-pdp-media] figcaption')).toHaveCount(0);
+  await expect(page.locator('[data-pdp-media] [data-gallery-tile=structure] figcaption')).toBeVisible();
   const floating=page.locator('.quote-float');await expect(floating).toHaveCSS('position','static');
  }
 });

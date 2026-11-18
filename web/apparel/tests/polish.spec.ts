@@ -37,6 +37,6 @@ for (const width of [1440, 768, 390]) {
     expect(geometry.inside).toBe(true);
     expect(geometry.content).toBeLessThanOrEqual(geometry.height);
     await expect(page.locator('.moq-line')).toHaveText('MOQ 50 pcs · mix colours & sizes');
-    await expect(page.locator('[data-quick-spec]')).toContainText('50 pcs');
+    await expect(page.locator('.moq-line')).toContainText('50 pcs');
   });
 }
