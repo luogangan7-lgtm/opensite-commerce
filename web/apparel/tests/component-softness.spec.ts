@@ -7,7 +7,7 @@ const classes = {
  card: '.card, .tile, .home-card-grid a, .home-model, .home-form, .rfq, .cookie-banner, .success-card, .recovery-card, .pdp-detail-card',
  'image-card': '.image-card, .gallery > picture, .wholesale-photo',
  thumb: '.gallery-thumbs a, .gallery-colours button',
- 'info-box': '.info-box, .moq-line, .home-promo, .collection-promo, .capability-panel, .brief-panel, .form-status',
+ 'info-box': '.info-box, .moq-line, .home-promo, .collection-promo, .form-status',
  input: 'input:not([type=hidden]), textarea',
  tab: '[role=tab], .tab, .category-links a, .shop-tabs a',
  chip: '.chip, .facet, .home-badge, [data-shop-facet]',

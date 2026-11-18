@@ -1,5 +1,7 @@
 # WAVE9 C4 fix 1 visual comparison
 
+> Root visual sign-off accepted both shared chrome bands on `a8fc308d`. The dark, text-dense footer uses a ≤5% raw RGB threshold after side-by-side review of light text antialiasing. The approved English tagline wrap avoids the “buyers.” widow.
+
 Diagnostic preflight for the browser build corresponding to `c7037ce4`. This table uses the refreshed F3 and standalone baselines delivered by FIGMA-DRIFT-1. The final packaged comparison will be linked on the PR after exact-head CI. Measured 63 captures against the formal F3 page references for bodies and the dedicated master exports for shared chrome. **21 header and 43 footer comparisons exceed 2% against their masters.**
 
 Pixel difference counts pixels with a change greater than 10 in any RGB channel. Images use native CSS pixels. Header and page align at the top, footer aligns at the bottom. Rows missing from either image count as changed. Figma drift is the page band compared with the master. Its columns give the formal page node IDs.

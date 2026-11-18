@@ -178,9 +178,14 @@ footer { padding-block-end: var(--sy-space-section-sm); }
  .mobile-languages { padding: 0; border: var(--sy-space-0); }
 }
 
+:root {
+ --sy-reading-title: var(--sy-text-h3);
+ --sy-reading-subtitle: var(--sy-text-h4);
+}
+
 /* Figma Sourcyo/Type Mobile mode; tablet retains Desktop, matching existing 650px switch. */
 @media (max-width: 650px) {
- :root {
+ body {
   --sy-text-eyebrow: var(--sy-text-eyebrow-mobile);
   --sy-text-body: var(--sy-text-body-mobile);
   --sy-text-lead: var(--sy-text-lead-mobile);
@@ -194,4 +199,4 @@ footer { padding-block-end: var(--sy-space-section-sm); }
 }
 
 /* Bounded information surfaces share the card token; full-bleed page sections retain their own geometry. */
-.moq-line, .home-promo, .collection-promo, .capability-panel, .brief-panel, .recovery-card, .form-status, .pdp-detail-card { border-radius: var(--sy-radius-card); }
+.moq-line, .home-promo, .collection-promo, .recovery-card, .form-status, .pdp-detail-card { border-radius: var(--sy-radius-card); }

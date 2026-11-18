@@ -37,6 +37,7 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
  .about-section{padding:var(--sy-space-section);background:var(--sy-color-canvas);color:var(--sy-color-ink);line-height:1.55;border:var(--sy-space-0);}
  .about-inner{max-width:1248px;margin-inline:auto;display:flex;flex-direction:column;gap:var(--sy-space-gutter-lg);min-width:0;}
  .about-section h1,.about-section h2,.about-section h3,.about-section p,.about-section address{margin:0;max-width:none;}
+ .about-section h1,.about-section h2,.about-section h3{line-height:1.15;}
  .about-section h1,.about-section h2{white-space:pre-line;text-wrap:balance;}
  .about-section h3{font-size:var(--sy-text-h4);}
  .about-section .about-subtitle{font-size:var(--sy-text-h3);white-space:pre-line;}
@@ -74,6 +75,9 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
  .about-terms > div{display:grid;grid-template-rows:subgrid;grid-row:span 2;align-items:stretch;}
  .about-company p{white-space:pre-line;}
  .about-quote{align-self:flex-start;background:var(--sy-color-accent);color:var(--sy-color-on-accent)!important;}
+ @media(min-width:1101px){
+  .about-ways:lang(en) p{min-block-size:4lh;}
+ }
  @media(max-width:1100px){
   .about-section{padding:var(--sy-space-section-sm) var(--sy-space-gutter-mobile);}
   .about-section h1{font-size:var(--sy-text-h1-mobile);}
@@ -88,11 +92,17 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
   .about-terms{grid-template-columns:minmax(0,1fr);}
  }
  @media(max-width:900px){
-  .about-intro h1{font-size:var(--sy-text-h3);}
+  .about-intro h1{font-size:var(--sy-reading-title);}
   .about-section h2{font-size:var(--sy-text-h3-mobile);}
-  .about-section .about-visit-title{font-size:var(--sy-text-h4);}
+  .about-section .about-visit-title{font-size:var(--sy-reading-subtitle);}
   .about-intro-row,.about-brand-row,.about-visit-row{grid-template-columns:minmax(0,1fr);gap:var(--sy-space-gutter-lg);}
   .about-ways{grid-template-columns:minmax(0,1fr);}
+  .about-number{line-height:1.15;}
+  .about-ways li:first-child p:lang(en){min-block-size:3lh;}
+  .about-terms p{min-block-size:4lh;}
+  .about-terms p:lang(zh){min-block-size:3lh;}
+  .about-ways:lang(ar) li:not(:nth-child(2)) p{min-block-size:4lh;}
+  .about-catalog span:lang(ar){min-block-size:2lh;}
   .about-catalog{grid-template-columns:repeat(2,minmax(0,1fr));}
   .about-intro-image{block-size:calc((var(--sy-layout-mobile) - 2 * var(--sy-space-gutter-mobile)) * 1.25);max-block-size:125vw;}
   .about-brand-images{max-inline-size:calc(var(--sy-layout-mobile) - 2 * var(--sy-space-gutter-mobile));}
@@ -100,5 +110,9 @@ const catalog = [['tees', 'apparel'], ['graphic', 'apparel'], ['hoodies', 'cotto
  }
  @media(651px <= width <= 900px){
   .about-section{padding-inline:var(--sy-space-gutter-lg);}
+  .about-terms > div:last-child p{min-block-size:2lh;}
+ }
+ @media(max-width:650px){
+  .about-catalog{row-gap:var(--sy-space-0);}
  }
 </style>

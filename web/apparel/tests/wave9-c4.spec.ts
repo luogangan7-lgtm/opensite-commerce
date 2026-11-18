@@ -44,6 +44,13 @@ for (const locale of ['en', 'ar', 'zh']) for (const width of [390, 768, 1440]) {
     if (locale === 'zh') await expect(page.locator('footer a[href$="/oem-odm/"]')).toHaveText('OEM / ODM');
     await page.goto(base + 'oem-odm/');
     await page.evaluate(() => document.fonts.ready);
+    const matrix = page.locator('.matrix-band');
+    await expect(matrix).toHaveCSS('border-radius', '0px');
+    await expect(matrix.locator('.capability-panel')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    if (width < 1440) {
+      await expect(page.locator('main h1')).toHaveCSS('font-size', width === 390 ? '26px' : '36px');
+      await expect(page.locator('.workflow h3').first()).toHaveCSS('font-size', width === 390 ? '20px' : '24px');
+    }
     await expectAligned(page.locator('[data-techniques]'), 'figure', ['img', 'h3', 'p']);
     await expectAligned(page.locator('.workflow'), 'article', ['img', 'h3', 'p']);
     await page.goto(base + (locale === 'en' ? '404.html' : '404/'));
