@@ -4,7 +4,7 @@
 import type { Product } from './catalog';
 export const shopFacets = ['category', 'colour', 'fit', 'fabric', 'fleece'] as const;
 export type ShopFacet = typeof shopFacets[number];
-export const pageSize = 24;
+export const pageSize = 8;
 export type Family = 'black'|'white'|'cream'|'grey'|'charcoal'|'navy'|'blue'|'green'|'brown'|'beige'|'red'|'pink'|'purple';
 // Every raw front-colour annotation in the catalog collapses to one customer-facing family.
 export const colourFamily: Record<string,Family> = {

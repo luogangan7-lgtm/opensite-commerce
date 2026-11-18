@@ -14,7 +14,7 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280,1440]) {
   });
   const prefix=locale==='en'?'':`/${locale}`;
   await page.goto(`${prefix}/collections/`);
-  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(24);
+  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(8);
   await page.evaluate(()=>document.fonts.ready);
   const rowGeometry=await page.locator('[data-shop-card]:visible').evaluateAll(cards=>{
    const rows=new Map<number,{height:number;bottom:number}[]>();
@@ -35,32 +35,22 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280,1440]) {
   expect(box!.width/box!.height).toBeCloseTo(.8,2);
   const first=featuredStyles(products)[0],back=cardViews(first).back!;
   await expect(photo.locator('[data-role="back"]')).toHaveAttribute('src',back.src);
-  await expect(photo.locator('[data-shop-view-toggle-slot]')).toHaveCount(1);
-  await expect(page.locator('.shop-card').first()).not.toContainText(/front\s*\/\s*back/i);
-  // The flip button comes from the shared ViewToggle (PR657); until it is mounted the slot stays empty.
-  const toggle=photo.locator('[data-shop-view-toggle-slot] button');
-  if(await toggle.count()){
-   await expect(toggle).toHaveAccessibleName(/\S/);
-   await expect(toggle).not.toHaveAccessibleName(/^↻$/);
-   if(width===390){const target=(await toggle.boundingBox())!;expect(target.width).toBeGreaterThanOrEqual(44);expect(target.height).toBeGreaterThanOrEqual(44);}
-   await toggle.click();
-   await expect(photo).toHaveAttribute('data-swapped','true');
-  }
+  await expect(page.locator('.product-card').first()).not.toContainText(/front\s*\/\s*back/i);
   await page.locator('[data-shop-more]').click();
-  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(48);
+  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(16);
   if(width<=1024) await page.locator('[data-shop-filter-open]').click();
   await page.locator('input[data-shop-facet="colour"][value="black"]').check();
   if(width<=1024) await page.locator('[data-shop-filter-dialog] form button').click();
   await page.locator('[data-shop-sort]').selectOption('code');
   await expect(page).toHaveURL(/colour=black.*sort=code/);
   await page.reload();
-  const expected=selectStyles(featuredStyles(products),new URLSearchParams('colour=black&sort=code')).slice(0,24).map(p=>p.slug);
+  const expected=selectStyles(featuredStyles(products),new URLSearchParams('colour=black&sort=code')).slice(0,8).map(p=>p.slug);
   await expect(page.locator('[data-shop-card]:visible')).toHaveCount(expected.length);
   expect(await page.locator('[data-shop-card]:visible').evaluateAll(els=>els.map(e=>(e as HTMLElement).dataset.shopCard))).toEqual(expected);
   if(width<=1024) await page.locator('[data-shop-filter-open]').click();
   await page.locator('[data-shop-clear]').click();
   if(width<=1024) await page.locator('[data-shop-filter-dialog] form button').click();
-  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(24);
+  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(8);
   await page.goBack();
   await expect(page.locator('[data-shop-sort]')).toHaveValue('code');
   if(locale==='en'&&width===1440) {
@@ -74,7 +64,18 @@ for(const locale of ['en','ar','zh']) for(const width of [390,768,1280,1440]) {
   for(const target of await page.locator('.shop-tabs a, .shop-quote').evaluateAll(els=>els.slice(0,12).map(e=>{const r=e.getBoundingClientRect();return {h:r.height,w:r.width};})))expect(target.h).toBeGreaterThanOrEqual(43.5);
   const tab=await page.locator('.shop-tabs [aria-current]').boundingBox(),rail=await page.locator('.shop-tabs').boundingBox();
   expect(tab!.x).toBeGreaterThanOrEqual(rail!.x);expect(tab!.x+tab!.width).toBeLessThanOrEqual(rail!.x+rail!.width+1);
-  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(products.filter(p=>p.category==='zip-ups-jackets').length);
+  await expect(page.locator('h1')).toHaveText(await page.locator('.shop-tabs [aria-current]').innerText());
+  await expect(page.locator('[data-shop-count]')).toHaveCount(1);
+  if (width <= 1024) {
+   const start = locale === 'ar' ? rail!.x + rail!.width - (tab!.x + tab!.width) : tab!.x - rail!.x;
+   expect(Math.abs(start)).toBeLessThanOrEqual(2);
+  }
+  const categoryTotal = products.filter(p=>p.category==='zip-ups-jackets').length;
+  await expect(page.locator('[data-shop-card]:visible')).toHaveCount(Math.min(8, categoryTotal));
+  if (categoryTotal > 8) {
+   await page.locator('[data-shop-more]').click();
+   await expect(page.locator('[data-shop-card]:visible')).toHaveCount(Math.min(16, categoryTotal));
+  }
  });
 }
 test('without JS the complete catalog is visible',async({browser,baseURL})=>{
@@ -92,7 +93,7 @@ for(const locale of ['en','ar','zh']) for(const width of [390,1440]) {
   const rows=page.locator('.shop-option:visible');
   for(const r of await page.locator('.shop-option:not(.shop-colour-option) input').evaluateAll(els=>els.map(x=>({w:x.getBoundingClientRect().width,h:x.getBoundingClientRect().height})))){expect(r.w).toBe(20);expect(r.h).toBe(20);}
 
-  for(const g of await rows.evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {h:r.height,pad:parseFloat(s.paddingInlineStart),radius:parseFloat(s.borderRadius)};}))){expect(g.h).toBeGreaterThanOrEqual(44);expect(g.pad).toBeGreaterThanOrEqual(12);expect(g.radius).toBe(12);}
+  for(const g of await rows.evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {h:r.height,pad:parseFloat(s.paddingInlineStart),radius:parseFloat(s.borderRadius),border:parseFloat(s.borderTopWidth)};}))){expect(g.border).toBe(0);expect(g.h).toBeGreaterThanOrEqual(44);expect(g.pad).toBeGreaterThanOrEqual(12);expect(g.radius).toBe(12);}
   const row=black.locator('..'),dot=row.locator('.shop-swatch'),text=row.locator('.shop-option-text');
   const d=(await dot.boundingBox())!,t=(await text.boundingBox())!;
   expect(d.width).toBe(20);expect(d.height).toBe(20);

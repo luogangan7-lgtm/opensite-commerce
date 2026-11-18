@@ -61,13 +61,21 @@ for (const file of files(root)) {
     // Owner-authorized MOQ is admitted only in the three PDP contexts and four About ways.
     // Replace only validated values with quote text before the unchanged commercial checks.
     let commercialText = text;
-    if (parts[0] === 'collections') {
-      const expected = shopReadyMoq(locale).replaceAll('&', '&amp;');
-      const card = /<p\b[^>]*class="shop-moq"[^>]*>([^<]*)<\/p>/g;
-      const cards = [...commercialText.matchAll(card)];
+    const expected = shopReadyMoq(locale).replaceAll('&', '&amp;');
+    const card = /<article\b[^>]*data-product-card="[^"]+"[^>]*>[\s\S]*?<\/article>/g;
+    const moq = /<p\b[^>]*class="shop-moq"[^>]*>([^<]*)<\/p>/g;
+    const cards = [...commercialText.matchAll(card)];
+    const listing = parts[0] === 'collections';
+    if (listing) {
       const count = products.filter(p => parts.length === 2 || p.category === parts[1]).length;
-      if (cards.length !== count || cards.some(m => m[1] !== expected)) throw Error('Owner listing MOQ changed');
-      commercialText = commercialText.replace(card, `<p>${dictionaries[locale].quote}</p>`);
+      if (cards.length !== count) throw Error('Owner listing MOQ context changed');
+    }
+    for (const [tile] of cards) {
+      const quantities = [...tile.matchAll(moq)];
+      if (quantities.length !== 1 || quantities[0][1] !== expected) throw Error('Owner card MOQ changed');
+      commercialText = commercialText.replace(tile, tile.replace(moq, `<p>${dictionaries[locale].quote}</p>`));
+    }
+    if (listing) {
       for (const [name,value] of [['ready', expected], ['custom', shopCustomMoq(locale).replaceAll('&','&amp;')]]) {
         const paragraph = new RegExp(`<p\\b[^>]*class="shop-owner-${name}"[^>]*>([^<]*)<\\/p>`, 'g');
         const matches = [...commercialText.matchAll(paragraph)];

@@ -1,5 +1,5 @@
 /** Collection facets read explicit catalog descriptions; unknown weights never match a bucket.
- * Used by CollectionResults in the browser and contract tests; no inferred composition facts.
+ * Used by collection filter contract tests; no inferred composition facts.
  */
 import type { Product } from './catalog';
 export function matchesFilters(product: Pick<Product,'fabric_weight_fit'>, query: URLSearchParams): boolean {

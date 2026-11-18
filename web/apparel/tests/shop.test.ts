@@ -53,7 +53,7 @@ test('URL roundtrip preserves unrelated state, encoded colour and default remova
  expect(selectStyles(products,round)).toEqual(selectStyles(products,q));
 });
 test('each swap comes from a SHA-bound back role of the same colour',()=>{
- expect(pageSize).toBe(24);
+ expect(pageSize).toBe(8);
  for(const p of products) {const {front,back}=cardViews(p);expect(front.role).toBe('front');expect(back).toBeDefined();expect(back!.role).toBe('back');expect(back!.colour).toBe(front.colour);expect(back!.sha256_16||back!.web_sha256).toBeTruthy();expect(p.images).toContain(back!);}
 });
 

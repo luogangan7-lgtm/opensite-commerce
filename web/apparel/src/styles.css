@@ -78,12 +78,7 @@ picture img { width: 100%; }
 .language-switcher [aria-current] { color: var(--sy-color-accent); text-decoration: underline; }
 .quote-float { position: static; z-index: 2; max-width: 100%; }
 .category-links { display: flex; flex-wrap: wrap; gap: var(--sy-space-grid-x); margin-block: var(--sy-space-grid-y); }
-.product-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sy-space-group); }
-.tile { text-decoration: none; min-width: 0; background: var(--sy-color-surface); border-radius: var(--sy-radius-card); box-shadow: var(--sy-shadow-card); }
-.tile img { width: 100%; aspect-ratio: 5 / 6; object-fit: cover; transition: filter .2s ease; }
-.tile:hover img { filter: brightness(.96); }
-.tile h3 { font-family: var(--sy-font-body); font-weight: var(--sy-weight-label); font-size: var(--sy-text-tile); line-height: 1.5; margin-block: .5rem; }
-.tile p { font-size: var(--sy-text-small); margin-block-end: 0; }
+.product-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sy-space-sm) var(--sy-space-grid-x); }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sy-space-split); align-items: start; }
 .split > * { min-width: 0; }
 .steps article { border-block-start: var(--sy-space-hair) solid var(--sy-color-hairline); padding-block: var(--sy-space-grid-x); }
@@ -136,12 +131,11 @@ footer { padding-block-end: var(--sy-space-section-sm); }
  .contact-intro > .rfq { order: 2; }
  .header-inner > .button { font-size: var(--sy-text-eyebrow); }
  .language-switcher { margin-inline-start: auto; }
- .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-grid-y) .75rem; }
- .tile h3 { font-family: var(--sy-font-body); font-weight: var(--sy-weight-label); font-size: var(--sy-text-tile); }
+ .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--sy-space-grid-x); }
  .strip .wrap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); font-size: var(--sy-text-eyebrow); }
  .footer { grid-template-columns: minmax(0, 1fr); }
 }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .tile img { transition: none; } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
 [dir="rtl"] body { font-family: var(--sy-font-body); }
 [dir="rtl"] h1, [dir="rtl"] h2, [dir="rtl"] h3 { font-family: inherit; line-height: 1.45; }

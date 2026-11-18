@@ -150,11 +150,13 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) 
         ['/products/apparel-59043/', 'apparel-70171'],
       ]) {
         await page.goto(`${prefix}${origin}`);
-        // Frozen Home product cards are .home-card-grid links with a <strong> title; related cards keep .tile/h3.
-        const home = origin === '/', card = page.locator(`${home ? '.home-card-grid a' : '.tile'}[href="${prefix}/products/${sku}/"]`);
-        await expect(card).toHaveCount(1);
-        // Home shows the frozen short Figma labels (dictionary-backed); related cards show the full identity title.
-        if (home) await expect(card.locator('strong')).not.toBeEmpty(); else await expect(card.locator('h3')).toHaveText(cardTitle(locale, sku));
+        const tile = page.locator(`[data-product-card="${sku}"]`);
+        await expect(tile).toHaveCount(1);
+        const card = tile.locator('.product-card-title a');
+        await expect(card).toHaveAttribute('href', `${prefix}/products/${sku}/`);
+        await expect(card).toHaveAttribute('title', cardTitle(locale, sku));
+        if (origin === '/') await expect(card).not.toBeEmpty();
+        else await expect(card).toHaveText(cardTitle(locale, sku));
         await card.click();
         await expect(page).toHaveURL(`${prefix}/products/${sku}/`);
         await expect(page.locator('h1')).toHaveText(cardTitle(locale, sku));

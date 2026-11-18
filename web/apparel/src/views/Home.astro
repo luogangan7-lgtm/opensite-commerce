@@ -5,6 +5,7 @@
 import Shell from '../layouts/Shell.astro';
 import HomeHero from '../components/HomeHero.astro';
 import HomeMedia from '../components/HomeMedia.astro';
+import ProductCard from '../components/ProductCard.astro';
 import RFQ from '../components/RFQ.astro';
 import { products } from '../data/catalog';
 import { digitalAlt } from '../data/imagery';
@@ -22,7 +23,7 @@ const product = (slug: string) => {
 // Fixed identities from the frozen Figma Home category tiles and product cards.
 // Set tile is the accepted full-silhouette model-03 (complete top + trousers), not images[0] (FD1 report).
 const categories = [['apparel-59043', 'apparel', 3], ['cotton430-hoodie-58065', 'cotton430-hoodie', 5], ['crew-fleece-8900-38', 'crew-fleece', 7], ['hoodie-set-k01-0256-tz2800-10', 'hoodie-set', 9, 'digital-model-03']] as const;
-const cards = [['apparel-59043', 2, 3], ['cotton430-hoodie-58065', 4, 5, 6], ['apparel-70171', 2, 7], ['crew-fleece-8900-38', 8, 9]] as const;
+const cards = [['apparel-59043', 2], ['cotton430-hoodie-58065', 0], ['apparel-70171', 2], ['crew-fleece-8900-38', 8]] as const;
 const benefits = [2, 5, 8, 11].map(n => [c('benefits', n), c('benefits', n + 1), c('benefits', n + 2)]);
 const steps = [3, 6, 9].map(n => [c('process', n), c('process', n + 1), c('process', n + 2)]);
 const terms = [3, 5, 7, 9, 11].map(n => [c('terms', n), c('terms', n + 1)]);
@@ -40,16 +41,15 @@ const image = (slug: string, file?: string) => {
 <div class="secondary-models">{['private', 'custom'].map(model => <article class="home-model" data-home-model={model}><div class="model-copy"><h3>{bm(`${model}-title`)}</h3><p>{bm(`${model}-benefit`)}</p><p>{bm(`${model}-get`)}</p><a class="button" href={model === 'private' ? href('/collections/') + '?intent=private-label' : href('/oem-odm/')}>{bm(`${model}-cta`)} <span aria-hidden="true">→</span></a></div></article>)}</div>
 </div></section>
 <section class="home-section home-categories"><div class="home-heading"><p class="home-eyebrow">{c('categories', 0)}</p><h2>{c('categories', 1)}</h2><p class="home-lead">{bm('category-body')}</p></div>
-<ul class="home-category-grid" data-home-categories>{categories.map(([slug, category, n, file], index) => {
+<ul class="home-category-grid" data-home-categories>{categories.map(([slug, category, n, file]) => {
   const img = image(slug, file);
-  return <li><a data-home-category href={href(`/collections/${category}/`)}><img src={img.src} alt={digitalAlt(img.src, locale) || c('categories', n)} width="600" height="720" loading="lazy" decoding="async" /><h3>{c('categories', n)}</h3><p>{c('categories', n + 1)}</p></a>{index === 3 && <p class="home-dye">{c('categories', 11)}</p>}</li>;
+  return <li><a data-home-category href={href(`/collections/${category}/`)}><img src={img.src} alt={digitalAlt(img.src, locale) || c('categories', n)} width="600" height="720" loading="lazy" decoding="async" /><h3>{c('categories', n)}</h3><p>{c('categories', n + 1)}</p></a></li>;
 })}</ul></section>
-<section class="home-section home-products"><div class="home-heading"><p class="home-eyebrow">{c('products', 0)}</p><h2>{c('products', 1)}</h2></div>
-<ul class="home-card-grid">{cards.map(([slug, title, code, note]) => {
-  const img = image(slug);
-  return <li><a href={href(`/products/${slug}/`)}><img src={img.src} alt={digitalAlt(img.src, locale) || c('products', title)} width="600" height="720" loading="lazy" decoding="async" /><strong>{c('products', title)}</strong><span class="home-code"><bdi>{c('products', code)}</bdi></span></a>{note && <p class="home-dye">{c('products', note)}</p>}</li>;
-})}</ul>
-<div class="home-promo"><h3>{c('products', 10)}</h3><p>{c('products', 11)}</p></div></section>
+<section class="home-section home-products"><div class="home-heading"><h2>{c('products', 1)}</h2></div>
+<div class="home-card-grid product-grid">{cards.map(([slug, title]) =>
+  <ProductCard product={product(slug)} shortName={title ? c('products', title) : undefined} />
+)}</div>
+</section>
 <section class="home-section home-band"><div class="home-heading"><p class="home-eyebrow">{c('benefits', 0)}</p><h2>{c('benefits', 1)}</h2></div>
 <ol class="home-benefits">{benefits.map(([number, title, body]) => <li><span class="home-number">{number}</span><h3>{title}</h3><p>{body}</p></li>)}</ol></section>
 <section class="home-section home-process sand"><div class="home-heading"><p class="home-eyebrow">{c('process', 0)}</p><h2>{c('process', 1)}</h2><p class="home-lead">{c('process', 2)}</p></div>
@@ -100,12 +100,11 @@ const image = (slug: string, file?: string) => {
  .home-steps h3{margin:0 0 var(--sy-space-xs);font-size:var(--sy-text-lead);}
  .home-steps p{margin:0;color:var(--sy-color-muted);max-width:none;}
  /* Categories */
- .home-category-grid,.home-card-grid{list-style:none;margin:var(--sy-space-2xl) auto 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);align-items:start;}
- .home-category-grid a,.home-card-grid a{display:block;text-decoration:none;color:inherit;}
+ .home-category-grid{list-style:none;margin:var(--sy-space-2xl) auto 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);align-items:start;}
+ .home-category-grid a{display:block;text-decoration:none;color:inherit;}
  .home-category-grid img{width:100%;aspect-ratio:4 / 5;object-fit:cover;border-radius:var(--sy-radius-image);}
  .home-category-grid h3{margin:var(--sy-space-sm) 0 var(--sy-space-2xs);font-size:var(--sy-text-lead);}
- .home-category-grid p,.home-card-grid .home-code{margin:0;color:var(--sy-color-muted);}
- .home-dye{margin:var(--sy-space-sm) 0 0;color:var(--sy-color-accent);}
+ .home-category-grid p{margin:0;color:var(--sy-color-muted);}
  /* Fabric split */
  .home-fabric{display:grid;grid-template-columns:5fr 4fr;padding:0;background:var(--sy-color-surface-alt);color:var(--sy-color-ink);}
  .home-fabric>*{min-width:0;max-width:none;margin:0;}
@@ -117,14 +116,12 @@ const image = (slug: string, file?: string) => {
  .home-fabric-media :global(picture),.home-fabric-media :global(img){width:100%;height:100%;}
  .home-fabric-media :global(img){object-fit:cover;}
  /* Products */
- .home-card-grid{gap:var(--sy-space-group);}
- .home-card-grid a{background:var(--sy-color-surface);border-radius:var(--sy-radius-card);box-shadow:var(--sy-shadow-card);}
- .home-card-grid img{width:100%;aspect-ratio:4 / 5;object-fit:cover;border-radius:var(--sy-radius-image);}
- .home-card-grid strong{display:block;margin-block:var(--sy-space-sm) var(--sy-space-2xs);}
+ .home-products{padding-inline:var(--sy-space-gutter-lg)}
+ .home-products > *{max-width:calc(var(--sy-layout-desktop) - 2 * var(--sy-space-gutter-lg))}
+ .home-products > .home-heading{margin-inline-start:auto}
+ @media(max-width:1024px){.home-products{padding-inline:var(--sy-space-gutter-md)}}
+ @media(max-width:600px){.home-products{padding-inline:var(--sy-space-gutter-mobile)}}
  .home-disclosure{display:block;color:var(--sy-color-muted);font-size:var(--sy-text-eyebrow);}
- .home-promo{margin-block-start:var(--sy-space-lg);padding:var(--sy-space-2xl);background:var(--sy-color-surface-alt);}
- .home-promo h3{margin:0 0 var(--sy-space-sm);font-size:var(--sy-text-h3);font-weight:var(--sy-weight-heading);}
- .home-promo p{margin:0;color:var(--sy-color-muted);max-width:none;}
  /* Terms */
  .home-terms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-section);background:var(--sy-color-surface);align-items:start;}
  .home-terms>*{max-width:none;margin:0;}
@@ -148,7 +145,7 @@ const image = (slug: string, file?: string) => {
   .wholesale{grid-template-columns:minmax(0,1fr);}
   .wholesale-photo{height:300px;}
   .home-benefits{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-xl) var(--sy-space-xl);margin-block-start:var(--sy-space-2xl);}
-  .home-category-grid,.home-card-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-grid-y) var(--sy-space-lg);}
+  .home-category-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-grid-y) var(--sy-space-lg);}
   .home-fabric{grid-template-columns:416fr 352fr;}
   .home-fabric-copy{padding:var(--sy-space-section-sm) var(--sy-space-gutter-lg);}
   .home-fabric-media{min-height:520px;}
@@ -162,11 +159,10 @@ const image = (slug: string, file?: string) => {
   .secondary-models{grid-template-columns:minmax(0,1fr);}
   .wholesale-photo{height:240px;}
   .home-benefits{grid-template-columns:minmax(0,1fr);gap:var(--sy-space-lg);}
-  .home-category-grid,.home-card-grid{gap:var(--sy-space-xl) var(--sy-space-md);}
+  .home-category-grid{gap:var(--sy-space-xl) var(--sy-space-md);}
   .home-fabric{grid-template-columns:minmax(0,1fr);}
   .home-fabric-media{order:-1;min-height:320px;}
   .home-fabric-copy{padding:var(--sy-space-section-sm) var(--sy-space-gutter-mobile);}
-  .home-promo{padding:var(--sy-space-lg);}
   .home-terms-list div{grid-template-columns:minmax(0,1fr);gap:var(--sy-space-2xs);}
  }
 </style>
