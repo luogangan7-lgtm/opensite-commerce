@@ -61,7 +61,7 @@ const relatedCards = isFeaturedHoodie
     </div>
   </div>
 </section>
-<section class="wrap split pdp-details"><div><h2>{t.pdpDetails}</h2><p>{isFeaturedHoodie ? t.pdp58065Description : text.name}</p><p>{isFeaturedHoodie ? t.pdp58065Order : text.fabric_weight_fit}</p><p>{isFeaturedHoodie ? t.pdp58065SpecNote : text.colourway_note}</p></div><table data-full-spec><caption>{t.pdpSpecs}</caption><tbody>{fullSpecs.map(([label,value]) => <tr><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table></section>
+<section class="wrap split pdp-details"><div class="pdp-details-copy"><h2>{t.pdpDetails}</h2><p>{isFeaturedHoodie ? t.pdp58065Description : text.name}</p><p>{isFeaturedHoodie ? t.pdp58065Order : text.fabric_weight_fit}</p><p>{isFeaturedHoodie ? t.pdp58065SpecNote : text.colourway_note}</p></div><table data-full-spec><caption>{t.pdpSpecs}</caption><tbody>{fullSpecs.map(([label,value]) => <tr><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table></section>
 {chart && <section class="wrap" id="size-chart"><h2>{t.sizeChart}</h2><p>{t.pdpMeasurements} · {t.pdpLengthUnit}{'weight_jin' in chart.rows && <> / {weightUnit}</>}{tolerance && <> · <bdi>{tolerance}</bdi> {t.pdpLengthUnit}</>}</p><div class="size-table-scroll" role="region" aria-label={t.sizeChart} tabindex="0"><table data-size-table><caption class="sr-only">{t.sizeChart}</caption><thead><tr><th scope="col">{t.pdpSize}</th>{Object.keys(chart.rows).map(key => <th scope="col" data-measurement={key}>{t[measurements[key]]}</th>)}</tr></thead><tbody>{visibleChartSizes(chart).map(({size,index}) => <tr><th scope="row"><bdi>{size}</bdi></th>{Object.entries(chart.rows).map(([key,values]) => <td data-measurement={key}>{key === 'weight_jin' && values[index] != null ? <><bdi>{chartWeight(String(values[index]), locale)}</bdi>{locale !== 'zh' && <> {weightUnit}</>}</> : <bdi>{values[index] ?? '—'}</bdi>}</td>)}</tr>)}</tbody></table></div><div class="size-swipe" aria-hidden="true"><p>{t.pdpSwipe}</p><span></span></div></section>}
 <section class="wrap pdp-related"><h2>{t.pdpRelated}</h2><div class="product-grid">{relatedCards.map(product => <ProductCard product={product} />)}</div></section>
 </Shell>
@@ -70,8 +70,8 @@ const relatedCards = isFeaturedHoodie
 <style>
 .pdp-related { padding-block: var(--sy-space-2xl) var(--sy-space-lg); width: min(100% - 2 * var(--sy-space-gutter-lg), calc(var(--sy-layout-desktop) - 2 * var(--sy-space-gutter-lg))); }
 .pdp-related h2 { margin-block-end: var(--sy-space-2xl); }
-@media (max-width: 1024px) { .pdp-related { padding-block-start: var(--sy-space-xl); } .pdp-related h2 { margin-block-end: var(--sy-space-xl); } }
-@media (max-width: 650px) { .pdp-related { padding-block: var(--sy-space-2xl) var(--sy-space-lg); width: calc(100% - 2 * var(--sy-space-gutter-mobile)); } }
+@media (max-width: 1024px) { .pdp-related { padding-block-start: var(--sy-space-lg); } .pdp-related h2 { font-size: var(--sy-text-h2-mobile); line-height: 1.2; margin-block-end: var(--sy-space-md); } }
+@media (max-width: 650px) { .pdp-related { width: calc(100% - 2 * var(--sy-space-gutter-mobile)); } }
   .pdp-section, .pdp-details, #size-chart { width: min(calc(100% - 2 * var(--sy-space-gutter-lg)), calc(var(--sy-layout-desktop) - 2 * var(--sy-space-gutter-lg))); }
   .pdp-section { padding-block: var(--sy-space-gutter-lg); }
   .pdp-breadcrumb, .product-info p { font-size: var(--sy-text-small); }
@@ -79,13 +79,18 @@ const relatedCards = isFeaturedHoodie
   .pdp { grid-template-columns: minmax(0, 760fr) minmax(0, 528fr); gap: var(--sy-space-split); margin-block-start: var(--sy-space-xl); }
   .product-info { display: flex; flex-direction: column; gap: var(--sy-space-lg); }
   .product-info h1 { font-size: var(--sy-text-h3); font-weight: var(--sy-weight-body); }
+  .product-info p { line-height: 20px; }
   .pdp-details h2, #size-chart h2 { font-size: var(--sy-text-h4); font-weight: var(--sy-weight-body); }
   .product-info .actions { display: grid; margin: 0; }
   .product-info p, .product-info h1, .product-info h2, .product-info table { margin: var(--sy-space-0); }
   [data-full-spec] { table-layout: fixed; align-self: start; margin: 0; }
+  .pdp-details-copy { display: grid; gap: var(--sy-space-lg); }
+  .pdp-details-copy > * { margin: 0; }
+  .pdp-details-copy h2 { line-height: 1.2; }
+  .pdp-details-copy p { line-height: 22px; }
   [data-full-spec] th { width: 40%; }
-  [data-full-spec] th, [data-full-spec] td { padding-block: var(--sy-space-sm); }
-  @media (min-width: 1025px) { [data-full-spec] caption { padding-block-end: var(--sy-space-md); } }
+  [data-full-spec] th, [data-full-spec] td { height: calc(var(--sy-space-2xl) + var(--sy-space-2xs)); padding-block: var(--sy-space-2xs); font-size: var(--sy-text-small); }
+  [data-full-spec] caption { padding-block-end: var(--sy-space-sm); }
   .pdp-details { padding-block: var(--sy-space-section) var(--sy-space-2xl); border-block-start: var(--sy-space-hair) solid var(--sy-color-hairline); }
   #size-chart { padding-block: var(--sy-space-2xl); }
   @media (min-width: 769px) { #size-chart > h2 { margin-block-end: var(--sy-space-grid-y); } }
@@ -111,7 +116,8 @@ const relatedCards = isFeaturedHoodie
   @media (max-width: 1024px) { .pdp, .pdp-details { grid-template-columns: minmax(0, 1fr); gap: var(--sy-space-xl); } }
   @media (max-width: 768px) {
     .pdp-section { padding-block: var(--sy-space-gutter-mobile); }
-    .pdp-details { padding-block: var(--sy-space-section-sm) var(--sy-space-gutter-mobile); }
+    .pdp-details { gap: var(--sy-space-2xl); padding-block: calc(var(--sy-space-section-sm) + var(--sy-space-xs)) var(--sy-space-gutter-mobile); }
+    .product-info h1 { font-size: var(--sy-text-h3-mobile); }
   }
   @media (max-width: 650px) {
     .pdp-section, .pdp-details, #size-chart { width: calc(100% - 2 * var(--sy-space-gutter-mobile)); }

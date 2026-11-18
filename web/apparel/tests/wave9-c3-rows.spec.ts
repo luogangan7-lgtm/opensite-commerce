@@ -32,8 +32,11 @@ for (const width of [390, 768, 1440]) for (const locale of ['en', 'ar', 'zh']) {
       expect.soft(delta(tileParts.map(part => part.height)), `category ${selector} height`).toBeLessThanOrEqual(2);
     }
     const panels = await boxes(page.locator('[data-home-model]'));
+    const textBlocks = await boxes(page.locator('[data-home-model] .model-copy'));
     const buttons = await boxes(page.locator('[data-home-model] .button'));
     expect(panels).toHaveLength(3);
+    expect(textBlocks).toHaveLength(3);
+    expect.soft(delta(textBlocks.map(block => block.height)), 'ways to buy text block height').toBeLessThanOrEqual(2);
     expect.soft(delta(panels.map(panel => panel.height)), 'ways to buy panel height').toBeLessThanOrEqual(2);
     expect.soft(delta(buttons.map((button, i) => panels[i].y + panels[i].height - button.y - button.height)), 'ways to buy CTA inset').toBeLessThanOrEqual(2);
     if (width <= 768) {
