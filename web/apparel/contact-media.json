@@ -34,5 +34,15 @@
     "width": 1672,
     "height": 941,
     "authority": "Frozen Figma Contact 69:2131 imageHash 6025094ef499aecb4acc6c3698200b743e5150c4"
+  },
+  {
+    "id": "factory",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave9/assets/factory-owner-20261117/IMG_2614.jpg",
+    "sha256": "5407ca905cc41af50935a5453d22f3ad74f984313cf3c8ce2b2fc468a1829f1d",
+    "src": "/img/contact/factory.webp",
+    "width": 3359,
+    "height": 2576,
+    "authority": "WAVE9 F3 approved owner selection IMG_2614",
+    "rights": "owner-supplied factory photo"
   }
 ]

@@ -680,10 +680,10 @@
   "cp-shop/figma-0053": "已显示 8 / 115 款",
   "cp-shop/figma-0054": "加载更多",
   "cp-shop/figma-0055": "为您的下一笔订单做好准备。",
-  "cp-shop/figma-0056": "100 件起订 / 定制 1,000 件起 / 样品 / EXW 或 FOB",
+  "cp-shop/figma-0056": "50 件起订 / 定制 1,000 件起 / 样品 / EXW 或 FOB",
   "cp-shop/figma-0057": "颜色供应、价格和交期以报价确认为准。",
   "cp-shop/figma-0058": "筛选",
-  "cp-shop/figma-0059": "100 件起订 / 定制 1,000 件起 / 样品 / EXW 或 FOB",
+  "cp-shop/figma-0059": "50 件起订 / 定制 1,000 件起 / 样品 / EXW 或 FOB",
   "cp-shop/figma-0060": "筛选 · 关闭",
   "cp-shop/figma-0061": "清除筛选",
   "cp-shop/figma-0062": "全部款式",
@@ -721,5 +721,6 @@
   "cp-shop/colours-two": "{n} 种颜色",
   "cp-shop/colours-few": "{n} 种颜色",
   "cp-shop/colours-many": "{n} 种颜色",
-  "cp-shop/colours-other": "{n} 种颜色"
+  "cp-shop/colours-other": "{n} 种颜色",
+  "wave9.contact.languageAnswer": "提交询盘时，请注明您希望使用的语言。"
 }

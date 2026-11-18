@@ -680,10 +680,10 @@
   "cp-shop/figma-0053": "8 sur 115 modèles affichés",
   "cp-shop/figma-0054": "Voir plus",
   "cp-shop/figma-0055": "Prêts pour votre prochaine commande.",
-  "cp-shop/figma-0056": "Minimum de commande : 100 pièces / Personnalisation dès 1,000 pièces / Échantillons / EXW ou FOB",
+  "cp-shop/figma-0056": "Minimum de commande : 50 pièces / Personnalisation dès 1,000 pièces / Échantillons / EXW ou FOB",
   "cp-shop/figma-0057": "Confirmez les couleurs disponibles, le prix et le délai dans votre devis.",
   "cp-shop/figma-0058": "Filtres",
-  "cp-shop/figma-0059": "Minimum de commande : 100 pièces / Personnalisation dès 1,000 pièces / Échantillons / EXW ou FOB",
+  "cp-shop/figma-0059": "Minimum de commande : 50 pièces / Personnalisation dès 1,000 pièces / Échantillons / EXW ou FOB",
   "cp-shop/figma-0060": "Filtres · Fermer",
   "cp-shop/figma-0061": "Effacer les filtres",
   "cp-shop/figma-0062": "Tous les modèles",
@@ -721,5 +721,6 @@
   "cp-shop/colours-two": "{n} couleurs",
   "cp-shop/colours-few": "{n} couleurs",
   "cp-shop/colours-many": "{n} couleurs",
-  "cp-shop/colours-other": "{n} couleurs"
+  "cp-shop/colours-other": "{n} couleurs",
+  "wave9.contact.languageAnswer": "Indiquez la langue que vous préférez en envoyant votre demande."
 }

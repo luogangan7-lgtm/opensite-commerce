@@ -680,10 +680,10 @@
   "cp-shop/figma-0053": "Showing 8 of 115 styles",
   "cp-shop/figma-0054": "Load more",
   "cp-shop/figma-0055": "Built for your next order.",
-  "cp-shop/figma-0056": "MOQ 100 pcs / Custom from 1,000 pcs / Samples / EXW or FOB",
+  "cp-shop/figma-0056": "MOQ 50 pcs / Custom from 1,000 pcs / Samples / EXW or FOB",
   "cp-shop/figma-0057": "Confirm colour availability, price and lead time in your quote.",
   "cp-shop/figma-0058": "Filters",
-  "cp-shop/figma-0059": "MOQ 100 pcs / Custom from 1,000 pcs / Samples / EXW or FOB",
+  "cp-shop/figma-0059": "MOQ 50 pcs / Custom from 1,000 pcs / Samples / EXW or FOB",
   "cp-shop/figma-0060": "Filters · Close",
   "cp-shop/figma-0061": "Clear filters",
   "cp-shop/figma-0062": "All styles",
@@ -721,5 +721,6 @@
   "cp-shop/colours-two": "{n} colours",
   "cp-shop/colours-few": "{n} colours",
   "cp-shop/colours-many": "{n} colours",
-  "cp-shop/colours-other": "{n} colours"
+  "cp-shop/colours-other": "{n} colours",
+  "wave9.contact.languageAnswer": "Tell us which language you prefer when you send your request."
 }

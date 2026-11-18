@@ -57,8 +57,8 @@ test('each swap comes from a SHA-bound back role of the same colour',()=>{
  for(const p of products) {const {front,back}=cardViews(p);expect(front.role).toBe('front');expect(back).toBeDefined();expect(back!.role).toBe('back');expect(back!.colour).toBe(front.colour);expect(back!.sha256_16||back!.web_sha256).toBeTruthy();expect(p.images).toContain(back!);}
 });
 
-test('every rendered listing MOQ line uses the owner 100-piece fact in all eight locales',()=>{
- expect(ownerMoq.ready).toBe(100);
+test('every rendered listing MOQ line uses the owner 50-piece fact in all eight locales',()=>{ // owner 2026-11-18: "最低50件起订"
+ expect(ownerMoq.ready).toBe(50);
  for(const locale of locales) {
   const html=readFileSync(`web/apparel/dist/${locale==='en'?'':locale+'/'}collections/index.html`,'utf8');
   const lines=[...html.matchAll(/<p\b[^>]*class="shop-moq"[^>]*>(.*?)<\/p>/g)].map(m=>m[1]);

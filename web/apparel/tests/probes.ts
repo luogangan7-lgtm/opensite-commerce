@@ -10,8 +10,8 @@ for (const [name, mutation] of [['brand', '<p>mgoo</p>'], ['owner-input', '<p>OW
     else if (name === 'pdp-moq-50') {
       const file = join(dir, 'products/hoodie-set-k02/index.html');
       const original = readFileSync(file, 'utf8');
-      if (!original.includes('MOQ 100 pcs')) throw Error('MOQ probe target missing');
-      writeFileSync(file, original.replace('MOQ 100 pcs', 'MOQ 50 pcs'));
+      if (!original.includes('MOQ 50 pcs')) throw Error('MOQ probe target missing');
+      writeFileSync(file, original.replace('MOQ 50 pcs', 'MOQ 60 pcs'));
     }
     else if (name === 'about-moq-50') {
       const file = join(dir, 'about-us/index.html');
