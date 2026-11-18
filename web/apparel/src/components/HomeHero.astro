@@ -49,7 +49,9 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
    hero!.querySelector('[data-hero-cta-label]')!.textContent=slides[active].dataset.cta!;
    hero!.querySelector<HTMLAnchorElement>('[data-hero-cta]')!.href=slides[active].dataset.href!;counter.textContent=String(active+1);schedule();
   }
-  dots.forEach((dot,i)=>{dot.addEventListener('click',()=>select(i));dot.addEventListener('mouseenter',()=>select(i));dot.addEventListener('focus',()=>select(i));});
+  // Moving the pointer onto a dot should preview it. Dismissing an overlay can
+  // dispatch mouseenter without pointer movement when it uncovers a dot.
+  dots.forEach((dot,i)=>{dot.addEventListener('click',()=>select(i));dot.addEventListener('pointermove',event=>{if(event.pointerType==='mouse'&&active!==i)select(i);});dot.addEventListener('focus',()=>select(i));});
   hero.addEventListener('mouseenter',()=>{hover=true;schedule();});
   hero.addEventListener('mouseleave',()=>{hover=false;schedule();});
   hero.addEventListener('focusin',()=>{focused=true;schedule();});
