@@ -1,0 +1,43 @@
+/** WAVE9 C4 rendered row geometry at the three F3 viewport widths. */
+import { expect, test, type Locator } from '@playwright/test';
+
+async function expectAligned(group: Locator, item: string, parts: string[]) {
+  const rows = await group.locator(item).evaluateAll((elements, selectors) => {
+    const rows = new Map<number, DOMRect[][]>();
+    for (const element of elements) {
+      const rect = element.getBoundingClientRect();
+      const key = Math.round(rect.top);
+      const row = rows.get(key) ?? [];
+      row.push(selectors.map(selector => element.querySelector(selector)!.getBoundingClientRect()));
+      rows.set(key, row);
+    }
+    return [...rows.values()].flatMap(row => row[0].flatMap((_, i) => {
+      const rects = row.map(item => item[i]);
+      return [rects.map(rect => rect.top), rects.map(rect => rect.bottom)];
+    }));
+  }, parts);
+  expect(rows.length).toBeGreaterThan(0);
+  for (const edges of rows) expect(Math.max(...edges) - Math.min(...edges)).toBeLessThanOrEqual(2);
+}
+
+for (const locale of ['en', 'ar', 'zh']) for (const width of [390, 768, 1440]) {
+  test(`C4 sibling rows and shell · ${locale} ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const base = locale === 'en' ? '/' : `/${locale}/`;
+    await page.goto(base + 'about-us/');
+    await page.evaluate(() => document.fonts.ready);
+    await expectAligned(page.locator('.about-catalog'), 'a', ['img', 'span']);
+    await expectAligned(page.locator('.about-ways'), 'li', ['h3', 'p']);
+    await expectAligned(page.locator('.about-terms'), '.about-copy', ['h3', 'p']);
+    await expect(page.locator('.quote-float')).toHaveCount(0);
+    if (width === 390) await expect(page.locator('[data-menu-toggle]').filter({ hasText: '≡' })).toBeVisible();
+    if (width === 1440) await expect(page.locator('.header-inner > .button')).toContainText(locale === 'ar' ? '←' : '→');
+    if (locale === 'zh') await expect(page.locator('footer a[href$="/oem-odm/"]')).toHaveText('OEM / ODM');
+    await page.goto(base + 'oem-odm/');
+    await page.evaluate(() => document.fonts.ready);
+    await expectAligned(page.locator('[data-techniques]'), 'figure', ['img', 'h3', 'p']);
+    await expectAligned(page.locator('.workflow'), 'article', ['img', 'h3', 'p']);
+    await page.goto(base + (locale === 'en' ? '404.html' : '404/'));
+    await expectAligned(page.locator('.recovery-grid'), 'a', ['span', 'p']);
+  });
+}

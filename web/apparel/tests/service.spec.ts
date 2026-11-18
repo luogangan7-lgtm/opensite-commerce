@@ -46,8 +46,8 @@ for(const locale of locales) for(const kind of ['oem-odm','sampling','shipping']
     expect(delta).toBeLessThan(1);
    }
    if(kind==='oem-odm') {
-    const delta=await view.locator('.brief-panel').evaluate(n=>{const p=n.getBoundingClientRect(),a=n.firstElementChild!.getBoundingClientRect(),b=n.lastElementChild!.getBoundingClientRect();return Math.abs((a.top-p.top)-(p.bottom-b.bottom));});
-    expect(delta).toBeLessThan(1);
+    const tops = await view.locator('.matrix > div > .eyebrow').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
+    expect(Math.abs(tops[0] - tops[1])).toBeLessThanOrEqual(2);
    }
   }
   if(kind==='oem-odm'&&width===1440) {

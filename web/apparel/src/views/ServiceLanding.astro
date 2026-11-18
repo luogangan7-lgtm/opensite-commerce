@@ -3,6 +3,7 @@
  * Route inventory calls this view; Shell and ServiceMedia own shared chrome/media.
  * Copy is locale-bound; capabilities match owner scope and RFQ preserves existing query enums. */
 import Shell from '../layouts/Shell.astro';
+import HomeMedia from '../components/HomeMedia.astro';
 import ServiceMedia from '../components/ServiceMedia.astro';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { dictionaries, pageLocale, type Key } from '../i18n';
@@ -29,11 +30,11 @@ const photographs = ['catalog-hoodie', 'catalog-green', 'catalog-crew'];
 <section><div class="svc-wrap"><p class="eyebrow">{c(817)}</p><h2>{c(818)}</h2><div class="three">{[819,822,825].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{c(n+2)}</p></article>)}</div></div></section>
 <section><div class="svc-wrap matrix"><div class="capability-panel"><p class="eyebrow">{cap(950)}</p><h2>{cap(951)}</h2>{groups.map(n => <article data-capability-group={n}><h3>{capHeading(n)}</h3><p class="lines">{cap(n+1)}</p></article>)}</div><div class="brief-panel inverse"><p class="eyebrow">{cap(960)}</p><h2>{cap(961)}</h2>{[962,964,966,968].map(n => <article><h3>{capHeading(n)}</h3><p>{cap(n+1)}</p></article>)}</div></div></section>
 <section class="inverse"><div class="svc-wrap"><p class="eyebrow">{c(832)}</p><h2>{c(833)}</h2><div class="three workflow">{[834,837,840].map((n,i) => <article><ServiceMedia id={photographs[i]} alt="" /><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{c(n+2)}</p></article>)}</div></div></section>
-<section><div class="svc-wrap split assurance"><ServiceMedia id="catalog-green" alt="" /><div><h3>{c(843)}</h3><p>{c(844)}</p><p>{c(845)}</p></div></div></section>
+<section><div class="svc-wrap split assurance"><HomeMedia scope="about" id="factory-floor" alt="" /><div><h3>{c(843)}</h3><p>{c(844)}</p><p>{c(845)}</p></div></div></section>
 <section><div class="svc-wrap"><p class="eyebrow">{cap(970)}</p><h2>{cap(971)}</h2><p>{cap(972)}</p><div class="techniques" data-techniques>{media.filter(image => image.kind === 'technique').map(image => <figure data-technique={image.id}><ServiceMedia id={image.id} alt={t[image.altKey as Key]} /><h3 class="technique-label" data-technique-label>{t[image.altKey as Key]}</h3><p class="technique-description" data-technique-description>{cap(Number(image.altKey.split('/').pop()) + 1)}</p></figure>)}</div></div></section>
 </> : <>
 {sample && <section class="capabilities-strip"><div class="svc-wrap"><p class="eyebrow">{cap(1005)}</p><h3>{cap(1006)}</h3><div class="four">{groups.map((n,i) => <article data-capability-group={n}><h3>{capHeading(i===3 ? 1010 : n)}</h3><p>{cap(i===3 ? 1011 : 1007+i)}</p></article>)}</div></div></section>}
-{phases.map(([kicker,number,heading,body], i) => <section class:list={{inverse:i===1,phase:true}}><div class="svc-wrap"><p class="eyebrow phase-kicker">{c(kicker)}</p><div class:list={{split:true,reverse:i===1}}><div class="phase-copy"><p class="step-number">{c(number)}</p><h2>{c(heading)}</h2><p class="lead">{c(body)}</p></div><ServiceMedia id={photographs[i]} alt="" /></div></div></section>)}
+{phases.map(([kicker,number,heading,body], i) => <section class:list={{inverse:i===1,phase:true}}><div class="svc-wrap"><div class:list={{split:true,reverse:i===1}}><div class="phase-copy"><p class="eyebrow">{c(kicker)}</p><p class="step-number">{c(number)}</p><h2>{c(heading)}</h2><p class="lead">{c(body)}</p></div><ServiceMedia id={photographs[i]} alt="" /></div></div></section>)}
 {sample ? <section><div class="svc-wrap"><p class="eyebrow">{c(865)}</p><h2>{c(866)}</h2><p class="lead">{c(867)}</p></div></section> : <section><div class="svc-wrap"><p class="eyebrow">{c(881)}</p><h2>{c(882)}</h2><div class="three">{[883,886,889].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{n===889 ? <a href="mailto:sales@sourcyowear.com"><bdi>{c(n+2)}</bdi></a> : c(n+2)}</p></article>)}</div></div></section>}
 </>}
 <section class="inverse quote"><div class="svc-wrap"><p class="eyebrow">{c(848)}</p><h2>{c(oem ? 849 : sample ? 868 : 892)}</h2><p class="lead">{c(850)}</p><a class="button" data-service-rfq href={href}>{t.shellRequest} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a></div></section>
@@ -66,12 +67,15 @@ p { max-inline-size: none; margin: 0; }
 .svc-page :global([data-service-media^="catalog-"] img) { object-position: 50% 0%; }
 .opening :global(img) { block-size: 540px; object-fit: cover; }
 .capability-panel,.capabilities-strip { background: var(--sy-color-surface-alt); }
-.capability-panel,.brief-panel { padding: var(--sy-space-lg); align-self: stretch; }
-.brief-panel { justify-content: center; }
+.capability-panel,.brief-panel { padding: var(--sy-space-xl) var(--sy-space-lg); align-self: stretch; }
+.capability-panel { display: grid; grid-template-rows: auto auto repeat(4, 1fr); }
+.capability-panel article,.brief-panel article { gap: var(--sy-space-sm); }
+.brief-panel { justify-content: flex-start; }
 .capability-panel h2,.brief-panel h2 { font-size: var(--sy-text-h3); }
 .lines { white-space: pre-line; }
 .inverse { background: var(--sy-color-surface-alt); color: var(--sy-color-ink); }
-.workflow :global(img) { block-size: 280px; object-fit: cover; }
+.workflow article { display: grid; grid-template-rows: subgrid; grid-row: span 4; }
+.workflow :global(img) { block-size: 280px; inline-size: 100%; object-fit: cover; border-radius: var(--sy-radius-image); }
 .split :global(img) { block-size: 400px; object-fit: cover; }
 .assurance :global(img) { block-size: 480px; }
 .assurance { gap: var(--sy-space-lg); }
@@ -80,11 +84,11 @@ p { max-inline-size: none; margin: 0; }
 .techniques figure { display: grid; grid-template-rows: subgrid; grid-row: span 3; gap: var(--sy-space-sm); margin: 0; min-inline-size: 0; }
 .technique-label { font: var(--sy-weight-body) var(--sy-text-lead)/1.25 var(--sy-font-body); }
 .technique-description { font-size: var(--sy-text-small); }
-.phase-kicker { text-align: center; }
+.intro h1 { white-space: pre-line; }
 .phase-copy h2 { font-size: var(--sy-text-h3); }
 .step-number { font: var(--sy-weight-heading) var(--sy-text-h2)/1.2 var(--sy-font-heading); }
 .reverse .phase-copy { order: 1; }
-.capabilities-strip { padding-block: var(--sy-space-lg); }
+.capabilities-strip { padding-block: var(--sy-space-section-sm); }
 @media(max-width:900px) {
  .svc-wrap { margin-inline: var(--sy-space-gutter-mobile); }
  section { padding-block: var(--sy-space-section-sm); }

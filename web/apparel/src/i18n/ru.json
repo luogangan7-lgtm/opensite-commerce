@@ -717,5 +717,6 @@
   "cp-shop/colours-few": "{n} цвета",
   "cp-shop/colours-many": "{n} цветов",
   "cp-shop/colours-other": "{n} цвета",
-  "wave9.contact.languageAnswer": "При отправке заявки укажите, на каком языке вам удобнее общаться."
+  "wave9.contact.languageAnswer": "При отправке заявки укажите, на каком языке вам удобнее общаться.",
+  "about.factory-caption": "Фабрика"
 }

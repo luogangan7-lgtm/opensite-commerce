@@ -8,9 +8,9 @@ import { aboutWays, aboutMoqCopy } from '../src/data/owner-facts';
 import { digitalDelivery } from '../image-plan';
 import media from '../about-media.json';
 
-test('About media are seven SHA-bound masters with only packaged 1024/640 delivery paths', () => {
-  expect(media).toHaveLength(7);
-  expect(new Set(media.map(image => image.src)).size).toBe(7);
+test('About media are eleven SHA-bound masters with only packaged 1024/640 delivery paths', () => {
+  expect(media).toHaveLength(11);
+  expect(new Set(media.map(image => image.src)).size).toBe(media.length);
   for (const image of media) {
     expect(image.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(image.source.startsWith('/') || image.source.split('/').includes('..')).toBe(false);

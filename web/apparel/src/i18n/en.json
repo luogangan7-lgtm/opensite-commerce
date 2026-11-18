@@ -717,5 +717,6 @@
   "cp-shop/colours-few": "{n} colours",
   "cp-shop/colours-many": "{n} colours",
   "cp-shop/colours-other": "{n} colours",
-  "wave9.contact.languageAnswer": "Tell us which language you prefer when you send your request."
+  "wave9.contact.languageAnswer": "Tell us which language you prefer when you send your request.",
+  "about.factory-caption": "Factory"
 }

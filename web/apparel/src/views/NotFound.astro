@@ -1,35 +1,35 @@
 ---
 /** Locale recovery template; static routes and native Pages 404.html share these exact bytes. */
 import Shell from '../layouts/Shell.astro';
-import { pageLocale, productText } from '../i18n';
+import { pageLocale } from '../i18n';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import copy from '../content/legal-ui.json';
-import { products } from '../data/catalog';
-import { digitalAlt } from '../data/imagery';
 const locale = pageLocale(Astro.url), t = copy[locale];
-const thumbnails = ['apparel-59043', 'cotton430-hoodie-58065', 'crew-fleece-8900-38', 'apparel-59043'].map(slug => products.find(p => p.slug === slug)!);
-const destinations = ['collections/', `products/${thumbnails[1].slug}/`, 'oem-odm/', 'contact/'];
+const destinations = ['collections/', 'products/cotton430-hoodie-58065/', 'oem-odm/', 'contact/'];
+const arrow = locale === 'ar' ? '←' : '→';
 const labels = [t.collections, t.details, t.oem, t.quote];
 ---
 <Shell title={t.title}>
   <section class="recovery" data-not-found>
     <p class="error-code" aria-hidden="true">404</p><h1>{t.title}</h1><p>{t.intro}</p>
-    <div class="recovery-grid">{destinations.map((path, i) => <a class="recovery-card" data-recovery-card href={getRelativeLocaleUrl(locale, path)}><div><img src={thumbnails[i].images[0].src} alt={digitalAlt(thumbnails[i].images[0].src, locale) || productText[locale][thumbnails[i].slug].name} width="64" height="72" /><span>{labels[i]} <bdi aria-hidden="true">→</bdi></span></div><p>{t.descriptions[i]}</p></a>)}</div>
+    <div class="recovery-grid">{destinations.map((path, i) => <a class="recovery-card" data-recovery-card href={getRelativeLocaleUrl(locale, path)}><span>{labels[i]} <span aria-hidden="true">{arrow}</span></span><p>{t.descriptions[i]}</p></a>)}</div>
     <a class="button" href={getRelativeLocaleUrl(locale, '/')}>{t.home}</a>
   </section>
 </Shell>
 <style>
-  /* The approved 404 display number stays 88px at every viewport. */
-  .recovery { --sy-text-h1: 88px; --sy-text-h3: 36px; --sy-text-h4: 24px; padding: var(--sy-space-section-sm) var(--sy-space-gutter-lg); text-align: center; border: var(--sy-space-0); }
-  .error-code { font-family: var(--sy-font-heading); font-size: var(--sy-text-h1); line-height: 1.2; margin: 0; }
-  .recovery > p { max-inline-size: 768px; margin-inline: auto; }
+  .recovery { display: grid; justify-items: center; gap: var(--sy-space-lg); padding: var(--sy-space-section-sm) var(--sy-space-gutter-lg); text-align: center; border: 0; }
+  .recovery > * { margin: 0; }
+  .error-code { font: var(--sy-weight-heading) 88px/1.2 var(--sy-font-heading); }
   .recovery h1 { font-weight: var(--sy-weight-body); font-size: var(--sy-text-h3); }
-  .recovery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-grid-x); max-inline-size: 768px; margin: var(--sy-space-grid-x) auto; }
-  .recovery-card { display: flex; flex-direction: column; gap: var(--sy-space-grid-x); padding: var(--sy-space-grid-x); background: var(--sy-color-surface-alt); text-align: start; text-decoration: none; }
-  .recovery-card > div { display: flex; gap: var(--sy-space-grid-x); align-items: center; }
-  .recovery-card span { min-inline-size: 0; overflow-wrap: anywhere; }
-  .recovery-card img { inline-size: 64px; block-size: 72px; object-fit: cover; flex-shrink: 0; }
+  .recovery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-lg); width: min(100%, 768px); }
+  .recovery-card { display: grid; grid-template-rows: subgrid; grid-row: span 2; gap: var(--sy-space-sm); padding-block: var(--sy-space-xs); text-align: start; text-decoration: none; }
+  .recovery-card > span { display: flex; justify-content: space-between; align-items: center; gap: var(--sy-space-sm); border-block-end: var(--sy-space-hair) solid var(--sy-color-hairline); }
+  .recovery-card:hover > span { text-decoration: underline; }
   .recovery-card p { margin: 0; }
-  @media (max-width: 600px) { /* The approved 404 display number stays 88px at every viewport. */
-  .recovery { --sy-text-h1: 88px; --sy-text-h3: 36px; --sy-text-h4: 24px; padding: var(--sy-space-section-sm) var(--sy-space-gutter-mobile); } .recovery-grid { grid-template-columns: minmax(0, 1fr); } .recovery h1 { font-size: var(--sy-text-h4); } }
+
+  @media (max-width: 650px) {
+    .recovery { padding-block: var(--sy-space-lg); padding-inline: var(--sy-space-gutter-mobile); }
+    .recovery-grid { grid-template-columns: minmax(0, 1fr); }
+    .recovery .button { width: 100%; }
+  }
 </style>

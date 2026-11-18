@@ -61,5 +61,52 @@
     "authority": "Figma Home scene_home_fabric imageHash bd87eac7130384b0fdb2848d1afd2fbbe68e4a7b; owner pick 2026-11-15",
     "width": 1536,
     "height": 1024
+  },
+  {
+    "id": "factory-portrait",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave9/assets/factory-owner-20261117/IMG_2614.jpg",
+    "sha256": "5407ca905cc41af50935a5453d22f3ad74f984313cf3c8ce2b2fc468a1829f1d",
+    "src": "/img/about/factory-portrait.webp",
+    "authority": "WAVE9 F3 owner selection IMG_2614.jpg",
+    "width": 3359,
+    "height": 2576,
+    "rights": "owner-supplied factory photo"
+  },
+  {
+    "id": "factory-floor",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave9/assets/factory-owner-20261117/IMG_2611.jpg",
+    "sha256": "38749f24c6fb41fc086b84147a36239ad1caa237114c002fd0f8e84bf30c18e4",
+    "src": "/img/about/factory-floor.webp",
+    "authority": "WAVE9 F3 owner selection IMG_2611.jpg",
+    "width": 1425,
+    "height": 950,
+    "rights": "owner-supplied factory photo",
+    "crop": {
+      "left": 1258,
+      "top": 780,
+      "width": 1425,
+      "height": 950
+    },
+    "warmGrade": true
+  },
+  {
+    "id": "factory-stitch",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave9/assets/factory-owner-20261117/IMG_2615.jpg",
+    "sha256": "c7ab6484fcbb842eb39d1ad42caf09d0f424ec5d907064f31b6e415c1b18f877",
+    "src": "/img/about/factory-stitch.webp",
+    "authority": "WAVE9 F3 owner selection IMG_2615.jpg",
+    "width": 2355,
+    "height": 2664,
+    "rights": "owner-supplied factory photo"
+  },
+  {
+    "id": "factory-operator",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave9/assets/factory-owner-20261117/IMG_2610-gpt-clean.png",
+    "sha256": "1222dd88fbb58f838b4b5a268d7809432288dfb7084cfb56fb1c9b804be2cbf0",
+    "src": "/img/about/factory-operator.webp",
+    "authority": "WAVE9 F3 owner selection IMG_2610-gpt-clean.png; owner-authorized ChatGPT watermark cleanup, small tile only",
+    "width": 1149,
+    "height": 1369,
+    "rights": "owner-supplied factory photo"
   }
 ]
