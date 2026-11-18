@@ -41,11 +41,13 @@ const relatedCards = (featuredRelated ? [featuredRelated, ...related.filter(p =>
 </div></section>
 {chart && <section class="wrap" id="size-chart"><h2>{t.sizeChart}</h2><div class="size-table-scroll" role="region" aria-label={t.sizeChart} tabindex="0"><table data-size-table><caption>{t.sizeChart} · {chart.unit}</caption><thead><tr><th scope="col">{t.pdpSize}</th>{Object.keys(chart.rows).map(key => <th scope="col" data-measurement={key}>{t[measurements[key]]}</th>)}</tr></thead><tbody>{visibleChartSizes(chart).map(({size,index}) => <tr><th scope="row"><bdi>{size}</bdi></th>{Object.entries(chart.rows).map(([key,values]) => <td data-measurement={key}><bdi>{values[index] ?? '—'}</bdi></td>)}</tr>)}</tbody></table></div></section>}
 <section class="wrap split" id="inquiry"><div><h2>{t.makeYours}</h2><p>{t.briefText}</p></div><RFQ product={product.style_codes.join(' / ')} /></section>
-<section class="wrap"><div class="section-heading"><h2>{t.pdpRelated}</h2><a href={getRelativeLocaleUrl(locale, `/collections/${product.category}/`)}>{t.viewCollection}</a></div><div class="product-grid">{relatedCards.map(product => <ProductCard product={product} />)}</div></section>
+<section class="wrap pdp-related"><h2>{t.pdpRelated}</h2><div class="product-grid">{relatedCards.map(product => <ProductCard product={product} />)}</div></section>
 </Shell>
 
 
 <style>
+.pdp-related { width: min(100% - 2 * var(--sy-space-gutter-lg), calc(var(--sy-layout-desktop) - 2 * var(--sy-space-gutter-lg))); }
+@media (max-width: 650px) { .pdp-related { width: calc(100% - 2 * var(--sy-space-gutter-mobile)); } }
   /* FD1 Gallery G-detail variants; existing tokens, primary-colour media only. */
   .pdp-detail-card { margin: var(--sy-space-0); }
   .pdp-media-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-grid-x); align-items: start; }

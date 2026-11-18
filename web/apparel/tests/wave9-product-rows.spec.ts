@@ -31,7 +31,7 @@ for (const locale of ['en', 'ar', 'zh']) for (const width of [390, 768, 1440]) {
       return [...rows.values()];
     });
     await info.attach('row-boxes', { body: JSON.stringify(rows), contentType: 'application/json' });
-    expect(rows.some(row => row.length > 1)).toBe(true);
+    expect(rows[0]?.length, 'first-row columns').toBe(width === 1440 ? 4 : 2);
     for (const [index, row] of rows.entries()) {
       for (const positions of row) expect(positions, `row ${index + 1} needs photo, body and CTA`).toHaveLength(9);
       // Width matters for the photos; text and CTA widths follow their localized copy.
