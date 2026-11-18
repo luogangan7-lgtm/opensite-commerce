@@ -20,7 +20,7 @@ const t = dictionaries[pageLocale(Astro.url)];
 <style>
 .quote-section { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--sy-space-split); padding: var(--sy-space-2xl) var(--sy-space-gutter-lg); }
 .quote-contact { display: grid; gap: var(--sy-space-grid-x); justify-items: start; }
-.quote-contact :global(img) { display: block; width: 75%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--sy-radius-image); }
+.quote-contact :global(img) { display: block; width: 75%; aspect-ratio: 4 / 5; object-fit: cover; object-position: right center; border-radius: var(--sy-radius-image); }
 .rfq-contact-links { display: grid; justify-items: start; font-size: var(--sy-text-body); overflow-wrap: anywhere; }
 .rfq-contact-links a { text-decoration: none; }
 .rfq-contact-links a:hover { text-decoration: underline; }
