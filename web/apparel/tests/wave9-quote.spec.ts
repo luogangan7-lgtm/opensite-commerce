@@ -5,6 +5,7 @@ import ar from '../src/i18n/ar.json' with { type: 'json' };
 import zh from '../src/i18n/zh.json' with { type: 'json' };
 
 const dictionaries = { en, ar, zh };
+const quoteTerms = { en: 'Confirmed in quote', ar: 'يُؤكَّد في عرض السعر', zh: '以报价单为准' };
 
 async function box(locator: Locator) {
   await expect(locator).toBeVisible();
@@ -19,6 +20,11 @@ for (const locale of ['en', 'ar', 'zh'] as const) for (const width of [390, 768,
       await page.goto(`${locale === 'en' ? '' : '/' + locale}${route}`);
       await page.evaluate(() => document.fonts.ready);
       const row = page.locator(route === '/' ? '.home-closing' : '.contact-form');
+      await expect(row.locator('h2')).toHaveCSS('font-weight', '400');
+      if (route === '/contact/') {
+        const label = await page.locator('.quote-note').innerText();
+        expect(label.normalize()).toBe(quoteTerms[locale].normalize());
+      }
       const photo = await box(row.locator('[data-contact-media=factory]'));
       const copy = await box(row.locator('.rfq-contact-links'));
       const card = await box(row.locator('.rfq'));

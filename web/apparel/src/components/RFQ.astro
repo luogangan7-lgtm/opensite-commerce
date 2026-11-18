@@ -123,7 +123,45 @@ const messages = { ...abuseMessages[locale], ...Object.fromEntries(Object.entrie
 .rfq [aria-invalid="true"] { border-color: var(--sy-color-error); }
 @media (max-width: 767px) { .rfq { padding: var(--sy-space-lg); } .rfq h2 { font-size: var(--sy-text-h3-mobile); } .rfq .form-pair { grid-template-columns: minmax(0, 1fr); } }
 
+/* Scope the Regular Latin, Cyrillic and 获取报价 glyphs to the F3 form heading. */
+@font-face {
+  font-family: 'RFQ Display';
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/literata/files/literata-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF;
+}
+@font-face {
+  font-family: 'RFQ Display';
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/literata/files/literata-cyrillic-400-normal.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'RFQ Display';
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/noto-serif-sc/files/noto-serif-sc-116-400-normal.woff2') format('woff2');
+  unicode-range: U+83B7;
+}
+@font-face {
+  font-family: 'RFQ Display';
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/noto-serif-sc/files/noto-serif-sc-117-400-normal.woff2') format('woff2');
+  unicode-range: U+53D6, U+4EF7;
+}
+@font-face {
+  font-family: 'RFQ Display';
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/noto-serif-sc/files/noto-serif-sc-118-400-normal.woff2') format('woff2');
+  unicode-range: U+62A5;
+}
 .quote-rfq { box-shadow: none; }
+.quote-rfq h2 { font-family: 'RFQ Display', var(--sy-font-heading); font-weight: var(--sy-weight-heading); }
+.quote-rfq h2:lang(ar) { font-weight: var(--sy-weight-body); }
 .quote-rfq .form-pair { column-gap: var(--sy-space-md); align-items: start; }
 .quote-rfq input, .quote-rfq textarea { border-color: var(--sy-color-hairline); padding-inline: var(--sy-space-sm); }
 .quote-rfq [aria-invalid="true"] { border-color: var(--sy-color-error); }
