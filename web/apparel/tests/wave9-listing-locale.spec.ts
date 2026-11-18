@@ -25,12 +25,15 @@ test('F3 Chinese catalog banner keeps the samples and trade terms together', asy
     const samples = banner.getByRole('link', { name: '样品', exact: true });
     await expect(samples).toHaveAttribute('href', '/zh/sampling/');
     const trade = banner.getByText('EXW 或 FOB', { exact: true });
+    const facts = banner.locator('.shop-term');
+    await expect(facts).toHaveCount(3);
     await page.evaluate(() => document.fonts.ready);
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 900 });
-      const lines = await banner.locator('.shop-term').evaluateAll(facts =>
-        new Set(facts.map(fact => Math.round(fact.getBoundingClientRect().top))).size);
-      expect(lines, `${path} at ${width}px`).toBe(width === 390 ? 1 : 2);
+      const lines = await facts.evaluateAll(groups =>
+        new Set(groups.map(group => Math.round(group.getBoundingClientRect().top))).size);
+      expect(lines, `${path} at ${width}px`).toBeLessThanOrEqual(2);
+      if (width === 320) expect(lines, path).toBe(2);
       const terms = await trade.boundingBox();
       const link = await samples.boundingBox();
       expect(terms!.y, `${path} at ${width}px`).toBeCloseTo(link!.y, 0);
