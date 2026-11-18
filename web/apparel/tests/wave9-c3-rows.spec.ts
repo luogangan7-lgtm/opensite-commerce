@@ -40,6 +40,12 @@ for (const width of [390, 768, 1440]) for (const locale of ['en', 'ar', 'zh']) {
     expect.soft(delta(panels.map(panel => panel.height)), 'ways to buy panel height').toBeLessThanOrEqual(2);
     expect.soft(delta(buttons.map((button, i) => panels[i].y + panels[i].height - button.y - button.height)), 'ways to buy CTA inset').toBeLessThanOrEqual(2);
     if (width <= 768) {
+      const overlay = page.locator('.header-over-image .header-inner');
+      const headerBox = await overlay.boundingBox();
+      const heroBox = await page.locator('.home-hero').boundingBox();
+      expect.soft(headerBox!.y - heroBox!.y, 'Home overlay top inset').toBe(16);
+      await expect.soft(overlay.locator('.menu-toggle > span')).toHaveCSS('font-family', /Noto Sans SC/);
+      if (width === 390) await expect.soft(overlay).toHaveCSS('box-shadow', 'none');
       const dots = await page.locator('.hero-dots').boundingBox();
       expect(dots).not.toBeNull();
       expect(Math.abs(dots!.x + dots!.width / 2 - width / 2)).toBeLessThanOrEqual(2);
