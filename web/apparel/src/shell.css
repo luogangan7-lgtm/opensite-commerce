@@ -39,8 +39,7 @@ footer .footer { grid-template-columns: repeat(4, minmax(0, 1fr)); padding-block
 .footer > div p { margin-block: var(--sy-space-sm) 0; font-size: var(--sy-text-small); line-height: 1.5; color: var(--sy-color-on-inverse-muted); }
 .footer > div p:lang(ar) { font-size: var(--sy-text-body); line-height: 1.625; }
 .footer nav { margin: 0; gap: var(--sy-space-sm); align-content: start; }
-.footer nav h2 { font: var(--sy-weight-label) var(--sy-text-eyebrow)/1.3333 var(--sy-font-body); text-transform: uppercase; letter-spacing: var(--sy-tracking-eyebrow); color: var(--sy-color-canvas); margin: 0; }
-.footer nav h2:lang(en) { white-space: nowrap; }
+.footer nav h2 { font: var(--sy-weight-label) var(--sy-text-eyebrow)/1.3 var(--sy-font-body); text-transform: uppercase; letter-spacing: 0.12em; color: var(--sy-color-canvas); margin: 0; }
 .footer nav h2:lang(ar) { font-size: var(--sy-text-body); font-weight: var(--sy-weight-title); line-height: 1.375; letter-spacing: normal; }
 .footer nav a { display: flex; align-items: center; min-height: calc(var(--sy-space-xl) + var(--sy-space-sm)); font: var(--sy-weight-body) var(--sy-text-small)/1.5 var(--sy-font-body); color: var(--sy-color-on-inverse-muted); text-decoration: none; }
 .footer-legal { display: flex; justify-content: flex-start; gap: var(--sy-space-lg); margin-block-start: var(--sy-space-2xl); font-size: var(--sy-text-small); line-height: 1.5; color: var(--sy-color-on-inverse-muted); }
