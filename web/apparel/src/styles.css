@@ -12,6 +12,7 @@ button, input, textarea { font: inherit; }
 input::placeholder, textarea::placeholder { color: var(--sy-color-muted); opacity: 1; }
 body { overflow-wrap: break-word; }
 [hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 img { border-radius: var(--sy-radius-image); display: block; max-width: 100%; height: auto; background: var(--sy-color-placeholder); }
 h1, h2, h3 { font-family: var(--sy-font-heading); font-weight: var(--sy-weight-heading); line-height: 1.15; overflow-wrap: anywhere; }
 h1, h2, h3, h4 { text-wrap: balance; }

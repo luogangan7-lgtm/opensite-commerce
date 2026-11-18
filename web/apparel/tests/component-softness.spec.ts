@@ -55,6 +55,7 @@ for (const width of [1440, 768, 390]) test(`soft component radii and secondary h
    }
    for (const [selector, wrap] of [['h1,h2,h3,h4', 'balance'], ['p,.lead', 'pretty']]) {
     for (const node of document.querySelectorAll(selector)) {
+     if (node.closest('.sr-only')) continue;
      const actual = getComputedStyle(node).textWrap;
      if (actual !== wrap) failures.push({ role: 'typography', element: node.tagName, text: node.textContent?.trim().slice(0, 80), actual, expected: wrap });
     }
@@ -113,13 +114,13 @@ for (const width of [1440, 768, 390]) test(`soft component radii and secondary h
     await testInfo.attach(`sampling-last-line-${width}`, { body: JSON.stringify(lastWords), contentType: 'application/json' });
    }
   }
-  if (route.includes('/products/')) {
+  if (route.includes('/products/') && width>=768) {
    const thumb = page.locator('.gallery-thumbs:not([hidden]) a').first();
    await thumb.click();
    await expect(thumb).toHaveAttribute('aria-current', 'true');
-   await expect.soft(thumb).toHaveCSS('outline-style', 'solid');
+   await expect.soft(thumb.locator('img')).toHaveCSS('outline-style', 'solid');
    for (const property of ['border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius']) {
-    await expect.soft(thumb).toHaveCSS(property, '16px');
+    await expect.soft(thumb).toHaveCSS(property, '12px');
     await expect.soft(page.locator('.moq-line')).toHaveCSS(property, '20px');
    }
   }

@@ -1,0 +1,26 @@
+---
+/** Shared SOFT-B ViewToggle; consumed by ProductGallery and (after PR657) store cards.
+ * segmented: labels={pair,side,details}, label=localized group name, controls=panel id.
+ * icon: side='front'|'back', label=localized 'Show back'/'Show front', target=consumer id.
+ * Emits data-view-toggle/data-view-target/data-side; consumer owns view state and updates
+ * side plus aria-label atomically. Icon uses logical top/end; parent image must be positioned.
+ * Desktop hover swap stays in the card consumer; this component is an explicit tap target.
+ */
+type Props = {variant?: 'segmented'; labels: {pair:string;side:string;details:string};label:string;controls?:string}
+ | {variant:'icon';side:'front'|'back';label:string;target:string};
+const props=Astro.props;
+---
+{props.variant==='icon' ? <button type="button" class="view-toggle view-toggle-icon" data-view-toggle="icon" data-view-target={props.target} data-side={props.side} aria-controls={props.target} aria-label={props.label} aria-pressed={props.side==='back'?'true':'false'}>
+ <span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.55-1.55L20 8M4 16l2.35 2.55A7 7 0 0 0 17.9 17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+</button> : <div class="view-toggle view-toggle-segmented" data-view-toggle="segmented" role="tablist" aria-label={props.label}>
+ {(['pair','side','details'] as const).map((view,i)=><button type="button" role="tab" id={`view-${view}`} aria-controls={props.controls||'gallery-panel'} aria-selected={i===0?'true':'false'} tabindex={i===0?0:-1} data-gallery-view={view}>{props.labels[view]}</button>)}
+</div>}
+<style>
+ .view-toggle-segmented{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sy-space-xs);width:100%}
+ .view-toggle-segmented button{min-width:0;min-height:44px;padding-inline:var(--sy-space-sm);background:var(--sy-color-surface-alt);color:var(--sy-color-ink);border:0;border-radius:var(--sy-radius-control);font-weight:var(--font-weight-normal)}
+ .view-toggle-segmented [aria-selected=true]{background:var(--sy-color-accent);color:var(--sy-color-on-accent)}
+ .view-toggle-icon{position:absolute;inset-block-start:var(--sy-space-xs);inset-inline-end:var(--sy-space-xs);width:44px;height:44px;min-width:44px;min-height:44px;padding:var(--sy-space-2xs);border:0;background:transparent;color:var(--sy-color-ink);border-radius:var(--sy-radius-control)}
+ .view-toggle-icon span{display:flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;background:var(--sy-color-surface);border-radius:var(--sy-radius-control);box-shadow:var(--sy-shadow-card)}
+ .view-toggle-icon:hover{background:transparent;color:var(--sy-color-accent)}
+ @media(max-width:767px){.view-toggle-segmented button{font-size:var(--sy-text-eyebrow)}}
+</style>

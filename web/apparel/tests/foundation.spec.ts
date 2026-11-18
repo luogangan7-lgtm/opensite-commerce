@@ -99,6 +99,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   expect(modelProduct, 'requires a catalog style with an approved W3 turn view').toBeDefined();
   await page.goto(`/zh/products/${modelProduct!.slug}/`);
   await expect(page.locator('[data-gallery-main]')).toHaveAttribute('alt', /正面/);
+  await page.setViewportSize({width:1440,height:1000});
   const turn = page.locator('.gallery-thumbs a[href$="digital-turn.webp"]');
   await turn.click();
   await expect(page.locator('[data-gallery-main]')).toHaveAttribute('alt', /侧转/);

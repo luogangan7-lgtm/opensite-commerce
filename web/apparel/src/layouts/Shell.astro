@@ -27,7 +27,6 @@ import { pageLocale, pagePath, dictionaries, locales, languageNames } from '../i
 import { isProduction } from '../../seo/mode';
 import { seoOrigin, publishedPaths } from '../../seo/published';
 import { page } from '../../seo/contract';
-import { imageSrcset, heroSizes } from '../data/imagery';
 interface Props { title: string; lcpImage?: string; lcpMobile?: string }
 const { title, lcpImage, lcpMobile } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale], path = pagePath(Astro.url);
@@ -43,7 +42,6 @@ const canonical = new URL(getRelativeLocaleUrl(locale, path), origin).href;
 {lcpMobile && <link rel="preload" as="image" href={lcpMobile} media="(max-width: 767px)" fetchpriority="high" />}
 <link rel="canonical" href={canonical} /><meta property="og:title" content={`${title} | Sourcyo Apparel`} /><meta property="og:description" content={t.heroText} /><meta property="og:type" content={seo?.structuredData ? 'product' : 'website'} /><meta property="og:url" content={canonical} /><meta property="og:site_name" content="Sourcyo Apparel" />
 {seo?.structuredData && <script type="application/ld+json" set:html={JSON.stringify(seo.structuredData)} />}
-{path === '/' && <link rel="preload" as="image" fetchpriority="high" type="image/avif" imagesrcset={imageSrcset('home/hero', 'avif')} imagesizes={heroSizes} />}
 {locales.map(lang => <link rel="alternate" hreflang={lang === 'zh' ? 'zh-Hans' : lang} href={new URL(getRelativeLocaleUrl(lang, path), origin)} />)}<link rel="alternate" hreflang="x-default" href={new URL(getRelativeLocaleUrl('en', path), origin)} />{gaSource && <script is:inline set:html={gaSource} />}</head>
 <body><a class="skip" href="#content">{t.skip}</a>
 <header class:list={{ 'header-over-image': path === '/' }}><div class="wrap header-inner"><a class="brand" href={href('/')} aria-label={t.brandName}><BrandLogo variant={path === '/' ? 'reverse' : 'primary'} /></a><nav aria-label={t.mainNav}><a href={href('/')}>{t.shellHome}</a><a href={href('/collections/')}>{t.shellCollections}</a><a href={href('/oem-odm/')}>{t.navOem}</a><details class="about-navigation"><summary>{t.shellAboutGroup}<span class="nav-caret" aria-hidden="true"></span></summary><div class="about-dropdown"><a href={href('/about-us/')} aria-current={path === '/about-us/' ? 'page' : undefined}>{t.shellAboutUs}</a><a href={href('/about/')} aria-current={path === '/about/' ? 'page' : undefined}>{t.shellFactory}</a></div></details><a href={href('/contact/')}>{t.shellContact}</a></nav><a class="button" href={href('/contact/')}>{t.shellRequest}</a>

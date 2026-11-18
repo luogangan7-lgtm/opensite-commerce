@@ -17,7 +17,7 @@ import { packageDetails, readDetailLedger, copyFallbackImage } from './detail-im
 import { digitalDelivery, assertDetailDigest, imageDimensions, type DetailSource } from './image-plan';
 import { assertSingleRelease, assertDigitalDigest, imagePlan, publishSlotMarkup, assertSlotReferences, type Review, type Approved } from './image-plan';
 import { activeSlotInput, staticImages } from './image-plan';
-import { packagingGate, htmlFiles } from './packaging-gate';
+import { packagingGate, htmlFiles, imageReferences } from './packaging-gate';
 import { widths, imageBase } from './src/data/imagery';
 import { packageDigital } from './digital-images';
 const sharp = createRequire(import.meta.resolve('astro/package.json'))('sharp');
@@ -126,7 +126,10 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) for (cons
 for (const file of html) for (const match of readFileSync(file, 'utf8').matchAll(/<img\b[^>]*\bsrc="([^"]+)"/g)) {
   if (!existsSync(join(destination, match[1]))) throw Error(`Missing packaged image: ${relative(destination, file)} ${match[1]}`);
 }
-console.log(`PASS: ${html.length} HTML files; 0 missing <img> files`);
+for (const file of html) for (const src of imageReferences(readFileSync(file,'utf8'))) {
+ if (!existsSync(join(destination,src))) throw Error(`Missing packaged image reference: ${relative(destination,file)} ${src}`);
+}
+console.log(`PASS: ${html.length} HTML files; 0 missing <img> files; 0 missing srcset/data/JS image references`);
 const receipt = (image: Approved) => ({ id: image.id, slug: image.slug, role: image.id ? 'illustrative' : image.role, src: image.src, sha256: image.sha256, w: image.w, h: image.h, rights: image.rights });
 const manifest = { schema: 1, sha: build.sha, buildRunId: build.runId, buildReceiptSha256: process.env.APPAREL_BUILD_RECEIPT_SHA256, packagerSha, details: plan.details.map(({slug, role, colour, src, sha256}) => ({slug, role, colour, src, sha256, rights: 'ai-generated-illustrative', ...dimensions.get(src)})), slots: plan.slots.map(receipt), slotReviews: plan.slotReviews, packshots: plan.packshots.map(receipt), digital: plan.digital.map(image => ({slug:image.slug,role:image.role,src:image.src,sha256:image.sha256,rights:'ai-generated-illustrative',...dimensions.get(image.src),derivatives:digitalDelivery(image).map(({src,sourceSha256}) => ({src,sourceSha256,...dimensions.get(src)}))})), aboutMedia: aboutMedia.map(image => ({id:image.id,src:image.src,sha256:image.sha256,derivatives:digitalDelivery(image).map(({src,sourceSha256}) => ({src,sourceSha256,...dimensions.get(src)}))})), contactMedia: contactMedia.map(image => ({id:image.id,src:image.src,sha256:image.sha256})), serviceMedia: serviceMedia.map(image => ({id:image.id,src:image.src,sha256:image.sha256,derivatives:digitalDelivery(image).map(({src,sourceSha256}) => ({src,sourceSha256,...dimensions.get(src)}))})), homeMedia: homeMedia.map(image => ({id:image.id,src:image.src,sha256:image.sha256,derivatives:digitalDelivery(image).map(({src,sourceSha256}) => ({src,sourceSha256,...dimensions.get(src)}))})), files };
 writeFileSync(join(destination, 'deploy-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');

@@ -12,7 +12,7 @@ import serviceMedia from '../service-media.json';
 import { digitalDelivery } from '../image-plan';
 import products from '../src/data/products.json';
 import { dictionaries, locales, type Locale } from '../src/i18n';
-import { pdpMoq, aboutWays, aboutMoqCopy, shopCustomMoq, shopReadyMoq } from '../src/data/owner-facts';
+import { pdpMoq, pdpMoqValue, aboutWays, aboutMoqCopy, shopCustomMoq, shopReadyMoq } from '../src/data/owner-facts';
 import { imageBase, widths } from '../src/data/imagery';
 const root = process.env.APPAREL_DIST || 'web/apparel/dist';
 const policy = JSON.parse(readFileSync(join(root, 'rfq-policy.json'), 'utf8'));
@@ -76,7 +76,7 @@ for (const file of files(root)) {
       }
     }
     if (parts[0] === 'products') {
-      const expected = pdpMoq[locale].replaceAll('&', '&amp;');
+      const expected = pdpMoq[locale].replaceAll('&', '&amp;'), expectedValue = pdpMoqValue[locale].replaceAll('&', '&amp;');
       const summary = /<p\b[^>]*class="moq-line"[^>]*>([^<]*)<\/p>/g;
       const summaries = [...commercialText.matchAll(summary)];
       if (summaries.length !== 1 || summaries[0][1] !== expected) throw Error('Owner MOQ summary changed');
@@ -88,7 +88,7 @@ for (const file of files(root)) {
         let count = 0;
         const checked = tables[0][0].replace(/<tr\b[^>]*>\s*<th\b[^>]*>([^<]*)<\/th>\s*<td\b[^>]*>([^<]*)<\/td>\s*<\/tr>/g, (row, label, value) => {
           if (label !== dictionaries[locale].moq) return row;
-          if (value !== expected) throw Error('Owner MOQ spec changed');
+          if (value !== expectedValue) throw Error('Owner MOQ spec changed');
           count++;
           return row.replace(value, dictionaries[locale].quote);
         });
