@@ -5,9 +5,9 @@ import { test, expect } from '@playwright/test';
 const classes = {
  button: '.button, button, .shop-quote',
  card: '.card, .home-model, .home-form, .rfq, .cookie-banner, .success-card, .recovery-card, .pdp-detail-card',
- 'image-card': '.image-card, .gallery > picture, .wholesale-photo',
+ 'image-card': '.image-card, .gallery > picture, .home-factory-photo img',
  thumb: '.gallery-thumbs a, .gallery-colours button',
- 'info-box': '.info-box, .moq-line, .home-promo, .collection-promo, .capability-panel, .brief-panel, .capabilities-strip, .form-status',
+ 'info-box': '.info-box, .home-promo, .collection-promo, .capability-panel, .brief-panel, .capabilities-strip, .form-status',
  input: 'input:not([type=hidden]), textarea',
  tab: '[role=tab], .tab, .category-links a, .shop-tabs a',
  chip: '.chip, .facet, .home-badge, [data-shop-facet]',
@@ -73,14 +73,10 @@ for (const width of [1440, 768, 390]) test(`soft component radii and secondary h
    await expect.soft(secondary, `${route}: secondary focus stays transparent`).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   }
   if (route === '/') {
-   const photo = page.locator('.wholesale-photo'), grid = page.locator('.home-category-grid');
-   const box = (await photo.boundingBox())!, alignment = (await grid.boundingBox())!;
-   expect.soft(box.x, 'wholesale photo follows the content grid').toBeCloseTo(alignment.x, 0);
-   expect.soft(box.x).toBeGreaterThan(0);
-   for (const property of ['border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius']) {
-    await expect.soft(photo).toHaveCSS(property, '20px');
-    await expect.soft(photo.locator('img')).toHaveCSS(property, '20px');
-   }
+   const photo = page.locator('.home-factory-photo img');
+   const box = (await photo.boundingBox())!;
+   expect.soft(box.x, 'factory photo follows the content inset').toBeGreaterThan(0);
+   expect.soft(box.width / box.height).toBeCloseTo(3 / 2, 1);
    const cards = await page.locator('.home-models .home-model').evaluateAll(els => els.map(el => {
     const r = el.getBoundingClientRect();
     return { model: (el as HTMLElement).dataset.homeModel, x: r.x, y: r.y, width: r.width, height: r.height };
@@ -93,9 +89,13 @@ for (const width of [1440, 768, 390]) test(`soft component radii and secondary h
     gaps.push({ pair: [a.model, b.model], gap });
     expect.soft(gap, `${a.model} / ${b.model}: separate rounded cards`).toBeGreaterThanOrEqual(16);
    }
-   if (width >= 768) {
-    expect.soft(cards[0].width).toBeGreaterThan(cards[1].width);
+   for (const card of cards) expect.soft(Math.abs(card.width - cards[0].width)).toBeLessThanOrEqual(2);
+   if (width > 768) {
+    expect.soft(cards[0].y).toBeCloseTo(cards[1].y, 0);
     expect.soft(cards[1].y).toBeCloseTo(cards[2].y, 0);
+   } else {
+    expect.soft(cards[0].x).toBeCloseTo(cards[1].x, 0);
+    expect.soft(cards[1].x).toBeCloseTo(cards[2].x, 0);
    }
    await testInfo.attach(`home-card-gaps-${width}`, { body: JSON.stringify({ cards, gaps }, null, 2), contentType: 'application/json' });
    for (const copy of await page.locator('.home-models .model-copy').all()) {
