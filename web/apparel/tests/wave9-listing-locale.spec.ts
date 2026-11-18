@@ -14,6 +14,24 @@ const allowed = new Set([
   ...products.flatMap(product => product.style_codes),
 ].map(value => value.toLowerCase()));
 
+test('F3 catalog banner fills the viewport and aligns its content with the listing grid', async ({ page }) => {
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const path of ['/zh/collections/', '/zh/collections/cotton430-hoodie/']) {
+      await page.goto(path);
+      const banner = page.locator('.shop-b2b');
+      await expect(banner).toHaveCSS('border-radius', '0px');
+      const box = await banner.boundingBox();
+      expect(box!.x, path).toBeCloseTo(0);
+      expect(box!.width, path).toBeCloseTo(width);
+      const grid = await page.locator('.shop').boundingBox();
+      const content = await banner.locator('.shop-b2b-inner').boundingBox();
+      expect(content!.x, path).toBeCloseTo(grid!.x);
+      expect(content!.width, path).toBeCloseTo(grid!.width);
+    }
+  }
+});
+
 test('F3 Chinese catalog banner keeps the samples and trade terms together', async ({ page }) => {
   const custom = ownerMoq.custom.toLocaleString('en-US');
   for (const path of ['/zh/collections/', '/zh/collections/cotton430-hoodie/']) {
@@ -54,7 +72,8 @@ for (const locale of ['ar', 'zh']) test(`localized catalog copy ${locale}`, asyn
     expect(labels.length).toBeGreaterThan(0);
     // All styles renders the rest of the catalog for progressive enhancement and pagination.
     if (path === '/collections/') expect(labels).toHaveLength(products.length);
-    const copy = [await scope.innerText(), ...labels].join(' ');
+    const banner = path.startsWith('/collections/') ? await page.locator('.shop-b2b').innerText() : '';
+    const copy = [await scope.innerText(), banner, ...labels].join(' ');
     // The approved Chinese T-shirt label contains a Latin T in this exact phrase.
     const prose = locale === 'zh' ? copy.replace(/(?<!\p{Script=Latin})T[ \u00a0]恤/gu, '') : copy;
     const words = prose.match(/[\p{Script=Latin}][\p{Script=Latin}\d.-]*/gu) ?? [];
