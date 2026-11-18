@@ -68,9 +68,15 @@
     "sha256": "5407ca905cc41af50935a5453d22f3ad74f984313cf3c8ce2b2fc468a1829f1d",
     "src": "/img/about/factory-portrait.webp",
     "authority": "WAVE9 F3 owner selection IMG_2614.jpg",
-    "width": 3359,
-    "height": 2576,
-    "rights": "owner-supplied factory photo"
+    "width": 2050,
+    "height": 2562,
+    "rights": "owner-supplied factory photo",
+    "crop": {
+      "left": 1100,
+      "top": 10,
+      "width": 2050,
+      "height": 2562
+    }
   },
   {
     "id": "factory-floor",
@@ -95,9 +101,15 @@
     "sha256": "c7ab6484fcbb842eb39d1ad42caf09d0f424ec5d907064f31b6e415c1b18f877",
     "src": "/img/about/factory-stitch.webp",
     "authority": "WAVE9 F3 owner selection IMG_2615.jpg",
-    "width": 2355,
-    "height": 2664,
-    "rights": "owner-supplied factory photo"
+    "width": 1760,
+    "height": 2200,
+    "rights": "owner-supplied factory photo",
+    "crop": {
+      "left": 250,
+      "top": 200,
+      "width": 1760,
+      "height": 2200
+    }
   },
   {
     "id": "factory-operator",

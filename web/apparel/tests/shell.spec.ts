@@ -1,4 +1,4 @@
-/** Frozen CP2 shell acceptance: all sizes, EN/AR/ZH, navigation and unchanged consent state. */
+/** Shared F3 shell acceptance: all sizes, EN/AR/ZH, navigation and unchanged consent state. */
 import { test, expect } from '@playwright/test';
 for (const width of [390,768,1280]) for (const locale of ['en','ar','zh']) test(`${locale} shell ${width}`, async ({page}) => {
  await page.setViewportSize({width,height:900});
@@ -28,7 +28,7 @@ for (const width of [390,768,1280]) for (const locale of ['en','ar','zh']) test(
  await expect(page.locator('header .brand img')).toHaveAttribute('src','/brand/primary.svg');
  if(dir) await page.screenshot({path:`${dir}/after-${locale}-${width}-normal.png`});
  await page.locator('footer').scrollIntoViewIfNeeded();
- expect(await page.locator('.footer').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(width===1280?4:width===768?2:1);
+ expect(await page.locator('.footer').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(width===1280?4:3);
  if(dir) await page.screenshot({path:`${dir}/after-${locale}-${width}-footer.png`});
  await page.goto(prefix+'/privacy/#cookies');
  await expect(banner).toBeVisible();

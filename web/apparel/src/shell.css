@@ -46,6 +46,10 @@ footer .footer { grid-template-columns: repeat(4, minmax(0, 1fr)); padding-block
  .footer > div { grid-column: 1 / -1; }
  .footer-legal { margin-block-start: var(--sy-space-lg); }
 }
+@media (651px <= width <= 1100px) {
+ footer .footer { grid-template-columns: minmax(98px, max-content) minmax(98px, max-content) minmax(114px, max-content); gap: var(--sy-space-md); }
+ .footer-legal { flex-direction: column; }
+}
 @media (max-width: 650px) {
  header .header-inner { padding-block: var(--sy-space-md); }
  .header-over-image .header-inner { padding: var(--sy-space-xs) var(--sy-space-md); }

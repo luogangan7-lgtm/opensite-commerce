@@ -75,7 +75,7 @@ p { max-inline-size: none; margin: 0; }
 .lines { white-space: pre-line; }
 .inverse { background: var(--sy-color-surface-alt); color: var(--sy-color-ink); }
 .workflow article { display: grid; grid-template-rows: subgrid; grid-row: span 4; }
-.workflow :global(img) { block-size: 280px; inline-size: 100%; object-fit: cover; border-radius: var(--sy-radius-image); }
+.workflow :global(img) { block-size: 280px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--sy-radius-image); }
 .split :global(img) { block-size: 400px; object-fit: cover; }
 .assurance :global(img) { block-size: 480px; }
 .assurance { gap: var(--sy-space-lg); }
@@ -103,6 +103,7 @@ p { max-inline-size: none; margin: 0; }
  /* The formal tablet crop is720x320 (9:4). Preserve that source window at
     the900px breakpoint too, so a wider slot cannot cut the bottom of a head. */
  .opening :global(img),.workflow :global(img),.split :global(img) { block-size: auto; min-block-size: 320px; aspect-ratio: 9 / 4; }
+ .workflow :global(img) { inline-size: 100%; aspect-ratio: 9 / 4; }
  .reverse .phase-copy { order: 0; }
 }
 </style>
