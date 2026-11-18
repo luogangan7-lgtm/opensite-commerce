@@ -15,9 +15,9 @@ Pixel difference counts pixels with a change greater than 10 in any RGB channel.
 | 404 | zh | 390 | 15.64% | 1.78% | **4.04%** | 1.98% | 1.57% |
 | 404 | zh | 768 | 15.47% | 0.90% | **2.56%** | 1.01% | 0.93% |
 | 404 | zh | 1440 | 4.50% | **3.58%** | 1.01% | 3.98% | 0.67% |
-| about-us | ar | 390 | 26.64% | 1.67% | **4.74%** | 1.86% | 3.77% |
-| about-us | ar | 768 | 27.61% | 0.85% | **2.72%** | 0.94% | 1.89% |
-| about-us | ar | 1440 | 36.97% | **3.28%** | **2.29%** | 3.65% | 1.12% |
+| about-us | ar | 390 | 26.60% | 1.67% | **4.74%** | 1.86% | 3.77% |
+| about-us | ar | 768 | 27.59% | 0.85% | **2.72%** | 0.94% | 1.89% |
+| about-us | ar | 1440 | 36.96% | **3.28%** | **2.29%** | 3.65% | 1.12% |
 | about-us | en | 390 | 26.38% | 1.75% | **5.37%** | 1.95% | 4.10% |
 | about-us | en | 768 | 19.93% | 0.88% | **2.31%** | 0.98% | 1.46% |
 | about-us | en | 1440 | 14.92% | **3.25%** | 1.74% | 3.62% | 1.11% |
@@ -42,7 +42,7 @@ Pixel difference counts pixels with a change greater than 10 in any RGB channel.
 | privacy | zh | 390 | 18.52% | 1.78% | **2.73%** | 1.98% | 1.57% |
 | privacy | zh | 768 | 12.08% | 0.91% | 1.86% | 1.02% | 0.92% |
 | privacy | zh | 1440 | 8.23% | **3.57%** | 1.02% | 3.97% | 0.67% |
-| sampling | ar | 390 | 36.40% | 1.67% | **3.92%** | 1.86% | 2.62% |
+| sampling | ar | 390 | 6.71% | 1.67% | **3.84%** | 1.86% | 2.55% |
 | sampling | ar | 768 | 15.94% | 0.85% | **2.45%** | 0.94% | 1.46% |
 | sampling | ar | 1440 | 7.83% | **2.90%** | **2.19%** | 3.23% | 1.05% |
 | sampling | en | 390 | 31.51% | 1.75% | **4.00%** | 1.94% | 2.50% |
@@ -115,7 +115,6 @@ The table separates vertical insets from the interior so residual differences ar
 | oem-odm/zh/390 | 07 / Sixteen root-approved technique studies (1472:262859) | 2451.0 | 2291.3 | -6.5% | +0.0 | -159.7 |
 | oem-odm/zh/768 | 07 / Sixteen root-approved technique studies (1493:221695) | 2463.0 | 2291.3 | -7.0% | +0.0 | -171.7 |
 | privacy/ar/1440 | MGOO / single reading surface (1472:268147) | 1405.0 | 1448.2 | +3.1% | +0.0 | +43.2 |
-| sampling/ar/390 | Capabilities / Sample your finishing details (1472:265632) | 397.0 | 507.3 | +27.8% | +0.0 | +110.3 |
 | sampling/ar/768 | 01 / Centered process opening (1493:222747) | 266.0 | 253.7 | -4.6% | +0.0 | -12.3 |
 | sampling/ar/768 | Capabilities / Sample your finishing details (1493:222770) | 402.0 | 435.9 | +8.4% | +32.0 | +1.9 |
 | sampling/ar/768 | 05 / Seasonal planning (1493:222841) | 294.0 | 281.6 | -4.2% | +0.0 | -12.4 |
