@@ -590,5 +590,18 @@
   "cp-svc/capabilities/984": "Textura de estampado en relieve.",
   "cp-svc/capabilities/990": "Efectos por eliminación del tinte.",
   "cp-svc/capabilities/998": "Formas de tela cosidas.",
-  "cp-svc/capabilities/1002": "Etiquetas colgantes y embalaje."
+  "cp-svc/capabilities/1002": "Etiquetas colgantes y embalaje.",
+  "galleryPair": "Frente y espalda",
+  "gallerySide": "Lateral",
+  "galleryDetails": "Detalles",
+  "galleryFront": "Frente",
+  "galleryBack": "Espalda",
+  "galleryConstruction": "Confección",
+  "galleryFabric": "Tejido",
+  "galleryUnavailable": "Vista no disponible en este color",
+  "galleryPrevious": "Vista anterior",
+  "galleryNext": "Vista siguiente",
+  "galleryShowBack": "Mostrar espalda",
+  "galleryShowFront": "Mostrar frente",
+  "galleryColour": "Color"
 }

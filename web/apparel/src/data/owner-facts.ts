@@ -15,6 +15,17 @@ export const pdpMoq: Record<Locale, string> = {
   ru: `Минимальный заказ: ${ownerMoq.ready} шт. · можно сочетать цвета и размеры`,
   ar: `الحد الأدنى للطلب ${ownerMoq.ready} قطعة · يمكن مزج الألوان والمقاسات`,
 };
+/** Spec-row value: the row's own label already says MOQ, so only the quantity and mixing rule appear. */
+export const pdpMoqValue: Record<Locale, string> = {
+  en: `${ownerMoq.ready} pcs · mix colours & sizes`,
+  zh: `${ownerMoq.ready} 件 · 同款可混色混码`,
+  es: `${ownerMoq.ready} piezas · combina colores y tallas`,
+  fr: `${ownerMoq.ready} pièces · couleurs et tailles panachées`,
+  de: `${ownerMoq.ready} Stück · Farben und Größen kombinierbar`,
+  pt: `${ownerMoq.ready} peças · combine cores e tamanhos`,
+  ru: `${ownerMoq.ready} шт. · можно сочетать цвета и размеры`,
+  ar: `${ownerMoq.ready} قطعة · يمكن مزج الألوان والمقاسات`,
+};
 export const aboutWays = ['01', '02', '03', '04'] as const;
 const grouping: Record<Locale, string> = { en: ',', zh: ',', es: '.', fr: ' ', de: '.', pt: '.', ru: ' ', ar: ',' };
 export function aboutMoqCopy(locale: Locale, way: typeof aboutWays[number]): string {

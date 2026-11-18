@@ -1,10 +1,11 @@
 /** Browser regression for §6.2/6.3: served PDP interaction, disclosure and uncropped details. */
 import { test, expect } from '@playwright/test';
+test.beforeEach(async({page})=>{await page.setViewportSize({width:1440,height:1000})});
 for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) test(`gallery details ${locale}`, async ({ page }) => {
  await page.goto(`${locale === 'en' ? '' : '/' + locale}/products/crew-fleece-8900-31/`);
  const links = page.locator('.gallery-thumbs:not([hidden]) a');
  const roles = await links.evaluateAll(nodes => nodes.map(n => (n as HTMLElement).dataset.role));
- const rank: Record<string, number> = {front:0,turn:1,back:2,garment:3,print:4,structure:5,fabric:6};
+ const rank: Record<string, number> = {front:0,back:1,turn:2,garment:3,print:4,structure:5,fabric:6};
  const known = roles.filter(r => r && r in rank).map(r => rank[r!]);
  expect(known).toEqual([...known].sort((a,b)=>a-b));
  const detail = page.locator('.gallery-thumbs a[data-role="fabric"]');
@@ -16,7 +17,7 @@ for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) test(`gallery de
  const box = await main.boundingBox(); expect(box!.width / box!.height).toBeCloseTo(4/5, 2);
  await expect(page.locator('[data-digital-label]')).toHaveCount(0);
  await expect(main).toHaveAttribute('alt', /.+/);
- await page.locator('[data-gallery-zoom]').click();
+ await main.click();
  await expect(page.locator('dialog')).toBeVisible();
  await expect(page.locator('dialog')).toHaveAttribute('aria-label', await main.getAttribute('alt') || '');
  await expect(page.locator('dialog img')).toHaveCSS('object-fit', 'contain');

@@ -2,7 +2,7 @@
 import { dictionaries, locales, type Locale } from '../i18n';
 export type GalleryRole = 'front' | 'turn' | 'back' | 'garment' | 'print' | 'structure' | 'fabric';
 export interface GalleryImage { src: string; role?: string; colour?: string }
-const order: Record<GalleryRole, number> = { front: 0, turn: 1, back: 2, garment: 3, print: 4, structure: 5, fabric: 6 };
+const order: Record<GalleryRole, number> = { front: 0, back: 1, turn: 2, garment: 3, print: 4, structure: 5, fabric: 6 };
 export const isDetail = (image: GalleryImage) => ['structure', 'fabric', 'print'].includes(image.role || '');
 export const isGeneratedDetail = (image: GalleryImage) => ['structure', 'fabric'].includes(image.role || '');
 export const primaryColour = (images: GalleryImage[]) => images.find(image => image.role === 'front' && image.colour)?.colour;

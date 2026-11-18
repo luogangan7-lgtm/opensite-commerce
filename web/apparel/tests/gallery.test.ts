@@ -17,7 +17,7 @@ test('primary slots are ordered, other colours require selection, unknown roles 
  const rows=['fabric','print','garment','back','structure','turn','front'].map(role=>({src:role,role,colour:'cream'}));
  const all=[{src:'black-front',role:'front',colour:'black'},...rows,{src:'unknown',role:'overview',colour:'cream'},{src:'no-colour',role:'fabric'}];
  const before=JSON.stringify(all);
- expect(orderedGallery(all,'cream','cream').map(i=>i.src)).toEqual(['front','turn','back','garment','print','structure','fabric']);
+ expect(orderedGallery(all,'cream','cream').map(i=>i.src)).toEqual(['front','back','turn','garment','print','structure','fabric']);
  expect(orderedGallery(all,'black','cream').map(i=>i.src)).toEqual(['black-front']);
  expect(JSON.stringify(all)).toBe(before);
  for(const role of ['print','fabric','structure']) expect(isDetail({src:'x',role})).toBe(true);

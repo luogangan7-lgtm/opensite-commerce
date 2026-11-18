@@ -11,19 +11,28 @@ import service from './service-media.json';
 import contact from './contact-media.json';
 import frozen from './design/collection-frozen.json';
 import { slotInventory, staticImages, assertSlotReferences, digitalDelivery } from './image-plan';
-import { imageBase, digitalAlt } from './src/data/imagery';
+import { imageBase, digitalAlt, widths } from './src/data/imagery';
 import { dictionaries, productText, locales, type Locale } from './src/i18n';
 import { orderedGallery } from './src/data/gallery';
 export function htmlFiles(dir: string): string[] {
  return readdirSync(dir, {withFileTypes:true}).flatMap(e => e.isDirectory() ? htmlFiles(join(dir,e.name)) : e.name.endsWith('.html') ? [join(dir,e.name)] : []);
 }
 const escape = (s: string) => s.replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+// Includes every srcset candidate, data-* value and literal JS URL; gallery JS also derives mobile URLs.
+export function imageReferences(html: string): Set<string> {
+ const refs = new Set([...html.matchAll(/\/img\/[^\s"'<>`,;()\\]+?\.(?:webp|avif)/g)].map(m=>m[0]));
+ for (const m of html.matchAll(/<a\b[^>]*>/g)) {
+  const href=m[0].match(/\bhref="(\/img\/[^"]+\.webp)"/)?.[1];
+  if (href && /\bdata-role="/.test(m[0]) && !/\bdata-fit="contain"/.test(m[0])) refs.add(href.replace(/\.webp$/, '-640.webp'));
+ }
+ return refs;
+}
 export function packagingGate(root: string) {
  const planned = new Set([
   ...products.flatMap(p => [...p.images.map(i=>i.src), ...p.size_chart]),
   ...[...digital, ...home, ...about, ...service, ...contact, ...frozen.assets].flatMap(i=>digitalDelivery(i).map(d=>d.src)),
   ...details.map(i=>i.src),
-  ...Object.entries(slotInventory).flatMap(([page,slots])=>slots.map(slot=>`${imageBase(`${page}/${slot}`)}-1024.webp`)),
+  ...Object.entries(slotInventory).flatMap(([page,slots])=>slots.flatMap(slot=>widths.flatMap(width=>['webp','avif'].map(format=>`${imageBase(`${page}/${slot}`)}-${width}.${format}`)))),
  ]);
  const errors: string[] = []; let images=0;
  for (const file of htmlFiles(root)) {
@@ -48,6 +57,9 @@ export function packagingGate(root: string) {
    const translated=digitalAlt(src,locale);
    if (alt===undefined || !(alt==='' && decorative) && !localized.has(alt) && !(translated && alt===escape(translated))) errors.push(`${route}: missing or unlocalized alt ${src}`);
   }
+  // Every other image reference (srcset, href, data-*, and the -640 URLs gallery JS derives from thumbnail hrefs)
+  // is fetched by the browser too; an <img src>-only gate misses them.
+  for (const ref of imageReferences(html)) if (!planned.has(ref) && !staticImages[ref]) errors.push(`${route}: unplanned image reference ${ref}`);
   if (/(?:^|\/)products\/[^/]+\/index.html$/.test(route)) {
    try { assertSlotReferences(html,slotInventory.pdp.map(slot=>({id:`pdp/${slot}`})),'pdp'); } catch(e) { errors.push(`${route}: ${e}`); }
   }

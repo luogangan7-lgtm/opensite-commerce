@@ -590,5 +590,18 @@
   "cp-svc/capabilities/984": "Объёмная текстура печати.",
   "cp-svc/capabilities/990": "Эффекты печати с вытравкой красителя.",
   "cp-svc/capabilities/998": "Пришитые тканевые элементы.",
-  "cp-svc/capabilities/1002": "Навесные ярлыки и упаковка."
+  "cp-svc/capabilities/1002": "Навесные ярлыки и упаковка.",
+  "galleryPair": "Спереди и сзади",
+  "gallerySide": "Сбоку",
+  "galleryDetails": "Детали",
+  "galleryFront": "Спереди",
+  "galleryBack": "Сзади",
+  "galleryConstruction": "Конструкция",
+  "galleryFabric": "Ткань",
+  "galleryUnavailable": "Этот ракурс недоступен в данном цвете",
+  "galleryPrevious": "Предыдущий ракурс",
+  "galleryNext": "Следующий ракурс",
+  "galleryShowBack": "Показать вид сзади",
+  "galleryShowFront": "Показать вид спереди",
+  "galleryColour": "Цвет"
 }

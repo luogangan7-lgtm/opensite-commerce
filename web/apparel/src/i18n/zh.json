@@ -590,5 +590,18 @@
   "cp-svc/capabilities/984": "凸起的印花质感。",
   "cp-svc/capabilities/990": "通过拔染形成印花效果。",
   "cp-svc/capabilities/998": "缝制的布料造型。",
-  "cp-svc/capabilities/1002": "吊牌与包装。"
+  "cp-svc/capabilities/1002": "吊牌与包装。",
+  "galleryPair": "正面与背面",
+  "gallerySide": "侧面",
+  "galleryDetails": "细节",
+  "galleryFront": "正面",
+  "galleryBack": "背面",
+  "galleryConstruction": "结构",
+  "galleryFabric": "面料",
+  "galleryUnavailable": "此颜色暂无该视图",
+  "galleryPrevious": "上一视图",
+  "galleryNext": "下一视图",
+  "galleryShowBack": "显示背面",
+  "galleryShowFront": "显示正面",
+  "galleryColour": "颜色"
 }
