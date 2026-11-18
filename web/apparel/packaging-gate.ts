@@ -34,6 +34,12 @@ export function packagingGate(root: string) {
   ...details.map(i=>i.src),
   ...Object.entries(slotInventory).flatMap(([page,slots])=>slots.flatMap(slot=>widths.flatMap(width=>['webp','avif'].map(format=>`${imageBase(`${page}/${slot}`)}-${width}.${format}`)))),
  ]);
+ const cardSlugs = new Map<string, Set<string>>();
+ for (const p of products) for (const { src } of p.images) {
+  const names = cardSlugs.get(src) ?? new Set<string>();
+  names.add(p.slug);
+  cardSlugs.set(src, names);
+ }
  const errors: string[] = []; let images=0;
  for (const file of htmlFiles(root)) {
   const route=relative(root,file), prefix=route.split('/')[0];
@@ -55,7 +61,9 @@ export function packagingGate(root: string) {
    const decorative=[...service.filter(i=>i.kind==='catalog'),...home,...about,...frozen.assets,...contact.filter(i=>i.id!=='pattern')].some(i=>i.src===src)
     || /(?:^|\/)contact\/index.html$/.test(route) && digital.some(i=>i.src===src && i.wave==='W1' && ['apparel-59043','cotton430-hoodie-58065'].includes(i.slug));
    const translated=digitalAlt(src,locale);
-   if (alt===undefined || !(alt==='' && decorative) && !localized.has(alt) && !(translated && alt===escape(translated))) errors.push(`${route}: missing or unlocalized alt ${src}`);
+   const cardAlt = translated && [...(cardSlugs.get(src) ?? [])].some(slug =>
+    alt === escape(`${productText[locale][slug].name} — ${translated}`));
+   if (alt===undefined || !(alt==='' && decorative) && !localized.has(alt) && !(translated && alt===escape(translated)) && !cardAlt) errors.push(`${route}: missing or unlocalized alt ${src}`);
   }
   // Every other image reference (srcset, href, data-*, and the -640 URLs gallery JS derives from thumbnail hrefs)
   // is fetched by the browser too; an <img src>-only gate misses them.

@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 
 const classes = {
  button: '.button, button, .shop-quote',
- card: '.card, .tile, .home-card-grid a, .home-model, .home-form, .rfq, .cookie-banner, .success-card, .recovery-card, .pdp-detail-card',
+ card: '.card, .home-model, .home-form, .rfq, .cookie-banner, .success-card, .recovery-card, .pdp-detail-card',
  'image-card': '.image-card, .gallery > picture, .wholesale-photo',
  thumb: '.gallery-thumbs a, .gallery-colours button',
  'info-box': '.info-box, .moq-line, .home-promo, .collection-promo, .form-status',

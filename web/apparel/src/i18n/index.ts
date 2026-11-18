@@ -1,24 +1,35 @@
 /** Build-time dictionaries only; pages/forms consume keys, product facts stay in the catalog. */
-import en from './en.json';
-import zh from './zh.json';
-import es from './es.json';
-import fr from './fr.json';
-import de from './de.json';
-import pt from './pt.json';
-import ru from './ru.json';
-import ar from './ar.json';
-import productsEn from './products.en.json';
-import productsZh from './products.zh.json';
-import productsEs from './products.es.json';
-import productsFr from './products.fr.json';
-import productsDe from './products.de.json';
-import productsPt from './products.pt.json';
-import productsRu from './products.ru.json';
-import productsAr from './products.ar.json';
+import en from './en.json' with { type: 'json' };
+import zh from './zh.json' with { type: 'json' };
+import es from './es.json' with { type: 'json' };
+import fr from './fr.json' with { type: 'json' };
+import de from './de.json' with { type: 'json' };
+import pt from './pt.json' with { type: 'json' };
+import ru from './ru.json' with { type: 'json' };
+import ar from './ar.json' with { type: 'json' };
+import productsEn from './products.en.json' with { type: 'json' };
+import productsZh from './products.zh.json' with { type: 'json' };
+import productsEs from './products.es.json' with { type: 'json' };
+import productsFr from './products.fr.json' with { type: 'json' };
+import productsDe from './products.de.json' with { type: 'json' };
+import productsPt from './products.pt.json' with { type: 'json' };
+import productsRu from './products.ru.json' with { type: 'json' };
+import productsAr from './products.ar.json' with { type: 'json' };
 export const locales = ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const;
 export type Locale = typeof locales[number];
 export type Key = keyof typeof en;
 export const dictionaries: Record<Locale, Record<Key, string>> = { en, zh, es, fr, de, pt, ru, ar };
+export function categoryCountForms(locale: Locale): Record<Intl.LDMLPluralRule, string> {
+  const t = dictionaries[locale];
+  return {
+    zero: t['cp-shop/category-count-zero'],
+    one: t['cp-shop/category-count-one'],
+    two: t['cp-shop/category-count-two'],
+    few: t['cp-shop/category-count-few'],
+    many: t['cp-shop/category-count-many'],
+    other: t['cp-shop/category-count-other'],
+  };
+}
 export const languageNames: Record<Locale, string> = { en: 'English', zh: '中文', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português', ru: 'Русский', ar: 'العربية' };
 type Translation = { name: string; fabric_weight_fit: string; colourway_note: string };
 export const productText: Record<Locale, Record<string, Translation>> = { en: productsEn, zh: productsZh, es: productsEs, fr: productsFr, de: productsDe, pt: productsPt, ru: productsRu, ar: productsAr };
