@@ -2,6 +2,21 @@
  * Native built Home; clock control checks exact 6s timing without wall-clock sleeps. */
 import {test, expect} from '@playwright/test';
 const hero = '[data-home-carousel]';
+for (const width of [390, 768, 1440]) test(`carousel dot sizes match across locales at ${width}px`, async ({page}) => {
+ await page.setViewportSize({width, height:900});
+ await page.emulateMedia({reducedMotion:'reduce'});
+ for (const prefix of ['', '/ar', '/zh']) {
+  await page.goto(`${prefix}/`);
+  await page.evaluate(() => document.fonts.ready);
+  const dots=page.locator(`${hero} [data-slide-to] span`);
+  await expect(dots).toHaveCount(3);
+  const sizes=await dots.evaluateAll(items=>items.map(item=>{
+   const {width,height}=item.getBoundingClientRect();
+   return [width,height];
+  }));
+  expect.soft(sizes, prefix || 'en').toEqual([[16,16],[16,16],[16,16]]);
+ }
+});
 test('carousel timing, hover/focus pause, persistent pause and keyboard', async ({page}) => {
  test.setTimeout(60000);
  await page.clock.install(); await page.goto('/');

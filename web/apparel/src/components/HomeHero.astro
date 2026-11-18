@@ -18,9 +18,11 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
   {slides.map((id,i)=><div class:list={['hero-photo',{'is-active':i===0,'factory-slide':id==='factory-floor'}]} data-slide data-title={models[i].title} data-eyebrow={models[i].eyebrow} data-body={models[i].body} data-cta={models[i].cta} data-href={models[i].href} aria-hidden="true"><HomeMedia id={id} alt="" hero={i===0} class="hero-picture" /></div>)}
   <div class="hero-shade"></div>
   <div class="hero-content"><p class="eyebrow" data-hero-eyebrow>{models[0].eyebrow}</p><h1 data-hero-title>{models[0].title}</h1><p class="hero-sub" data-hero-body>{models[0].body}</p><a class="button secondary" data-hero-cta href={models[0].href}><span data-hero-cta-label>{models[0].cta}</span><span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a></div>
-  <div class="hero-dots" role="group" aria-label={bm("ways-kicker")}>{slides.map((_,i)=><button type="button" data-slide-to={i} aria-label={models[i].title.replaceAll('\n',' ')} aria-pressed={i===0}><span aria-hidden="true">{i===0?'●':'○'}</span></button>)}</div>
-  <p class="hero-counter" aria-live="polite" aria-atomic="true"><bdi><span data-slide-counter>1</span> / 3</bdi></p>
-  <button class="hero-playback" type="button" data-playback>{text(16)}</button>
+  <div class="hero-dots" role="group" aria-label={bm("ways-kicker")}>{slides.map((_,i)=><button type="button" data-slide-to={i} aria-label={models[i].title.replaceAll('\n',' ')} aria-pressed={i===0}><span aria-hidden="true"></span></button>)}</div>
+  <div class="hero-controls">
+   <button class="hero-playback" type="button" data-playback>{text(16)}</button>
+   <p class="hero-counter" aria-live="polite" aria-atomic="true"><bdi><span data-slide-counter>1</span> / 3</bdi></p>
+  </div>
  </div>
  <dl class="hero-facts">{[7,9,11,13].map(n=><div><dt>{text(n)}</dt><dd dir={n===13?'ltr':undefined}>{text(n+1)}</dd></div>)}</dl>
 </section>
@@ -40,14 +42,16 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
   function select(index:number){
    active=(index+slides.length)%slides.length; hero!.dataset.active=String(active);
    slides.forEach((slide,i)=>slide.classList.toggle('is-active',i===active));
-   dots.forEach((dot,i)=>{dot.setAttribute('aria-pressed',String(i===active));dot.firstElementChild!.textContent=i===active?'●':'○';});
+   dots.forEach((dot,i)=>dot.setAttribute('aria-pressed',String(i===active)));
    title.textContent=slides[active].dataset.title!;
    hero!.querySelector('[data-hero-eyebrow]')!.textContent=slides[active].dataset.eyebrow!;
    hero!.querySelector('[data-hero-body]')!.textContent=slides[active].dataset.body!;
    hero!.querySelector('[data-hero-cta-label]')!.textContent=slides[active].dataset.cta!;
    hero!.querySelector<HTMLAnchorElement>('[data-hero-cta]')!.href=slides[active].dataset.href!;counter.textContent=String(active+1);schedule();
   }
-  dots.forEach((dot,i)=>{dot.addEventListener('click',()=>select(i));dot.addEventListener('mouseenter',()=>select(i));dot.addEventListener('focus',()=>select(i));});
+  // Moving the pointer onto a dot should preview it. Dismissing an overlay can
+  // dispatch mouseenter without pointer movement when it uncovers a dot.
+  dots.forEach((dot,i)=>{dot.addEventListener('click',()=>select(i));dot.addEventListener('pointermove',event=>{if(event.pointerType==='mouse'&&active!==i)select(i);});dot.addEventListener('focus',()=>select(i));});
   hero.addEventListener('mouseenter',()=>{hover=true;schedule();});
   hero.addEventListener('mouseleave',()=>{hover=false;schedule();});
   hero.addEventListener('focusin',()=>{focused=true;schedule();});
@@ -85,8 +89,9 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
  .secondary:hover,.secondary:focus-visible,.secondary:active{background:transparent;color:inherit;border-color:currentColor;}
  .hero-playback:hover{background:var(--sy-color-ink);}
  .hero-dots{position:absolute;inset-inline-end:var(--sy-space-md);top:calc(50% - var(--home-control) * 1.5);display:grid;}
- .hero-dots button{min-height:var(--home-control);width:var(--home-control);padding:0;background:transparent;color:inherit;border:var(--sy-space-0);border-radius:var(--sy-radius-pill);}
- .hero-dots span{font-size:var(--sy-text-h4);}
+ .hero-dots button{display:grid;place-items:center;min-height:var(--home-control);width:var(--home-control);padding:0;background:transparent;color:inherit;border:var(--sy-space-0);border-radius:var(--sy-radius-pill);}
+ .hero-dots span{box-sizing:border-box;width:var(--sy-space-md);height:var(--sy-space-md);border:var(--sy-space-hair) solid currentColor;border-radius:var(--sy-radius-pill);}
+ .hero-dots [aria-pressed="true"] span{background:currentColor;}
  .hero-counter,.hero-playback{position:absolute;bottom:var(--sy-space-section-sm);}
  .hero-counter{inset-inline-end:var(--home-gutter);margin:0;padding-block:var(--sy-space-sm);font-size:var(--sy-text-eyebrow);}
  .hero-playback{inset-inline-start:var(--home-gutter);min-height:var(--home-control);min-width:var(--sy-space-section);padding:var(--sy-space-xs) var(--sy-space-md);}
@@ -101,14 +106,15 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
  @media(max-width:768px){
   .home-hero{--home-photo-height:560px;--home-facts-height:122px;--home-copy-top:176px;--home-gutter:var(--sy-space-gutter-mobile);}
   /* Long locale copy must grow the hero instead of covering carousel controls. */
-  .hero-visual{height:auto;min-height:var(--home-photo-height);}
-  .hero-content{position:relative;inset-inline-start:auto;top:auto;max-width:none;margin-inline:var(--home-gutter);padding-block:var(--home-copy-top) var(--sy-space-section);}
+  .hero-visual{height:auto;min-height:var(--home-photo-height);display:flex;flex-direction:column;}
+  .hero-content{position:relative;inset-inline-start:auto;top:auto;max-width:none;margin-inline:var(--home-gutter);padding-block:var(--home-copy-top) var(--sy-space-grid-y);}
   h1{font-size:var(--sy-text-h1-mobile);}
   .hero-sub{font-size:var(--sy-text-body);}
   .hero-content:lang(ar) .button{display:flex;width:fit-content;margin-inline-start:auto;flex-direction:row-reverse;}
   .hero-dots{inset-inline-end:auto;left:50%;top:auto;bottom:var(--sy-space-lg);transform:translateX(-50%);display:flex;direction:ltr;}
-  .hero-playback{min-width:80px;bottom:calc(var(--sy-space-section-sm) + var(--sy-space-md));}
-  .hero-counter{bottom:calc(var(--sy-space-section-sm) + var(--sy-space-md));}
+  .hero-controls{display:flex;align-items:center;justify-content:space-between;margin:auto var(--home-gutter) calc(var(--sy-space-section-sm) + var(--sy-space-md));}
+  .hero-playback,.hero-counter{position:static;}
+  .hero-playback{min-width:80px;}
   .hero-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding-block:var(--sy-space-md);gap:var(--sy-space-md);}
   .hero-photo:nth-child(3) :global(img){position:absolute;max-width:none;width:146.285714%;height:146.285714%;inset-inline-start:-38.74%;top:0;object-position:83.6935% 0;}
  }
