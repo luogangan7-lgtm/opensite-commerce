@@ -1,0 +1,37 @@
+---
+/** F3 quote section shared by Home and Contact; RFQ owns fields and submission. */
+import ContactMedia from './ContactMedia.astro';
+import RFQ from './RFQ.astro';
+import { dictionaries, pageLocale } from '../i18n';
+const { contact = false } = Astro.props;
+const t = dictionaries[pageLocale(Astro.url)];
+---
+<section class:list={['quote-section', contact ? 'contact-form' : 'home-closing']} id={contact ? undefined : 'home-inquiry'}>
+  <div class:list={['quote-contact', { 'quote-contact-inline': contact }]}>
+    <ContactMedia id="factory" />
+    <div class="rfq-contact-links">
+      <a href={`mailto:${t['cp5.address']}`}><bdi>{t['cp5.address']}</bdi></a>
+      <a href="tel:+85270227648"><bdi>{t['cp5.phone']}</bdi></a>
+    </div>
+  </div>
+  <RFQ quoteSection />
+</section>
+
+<style>
+.quote-section { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--sy-space-split); padding: var(--sy-space-2xl) var(--sy-space-gutter-lg); }
+.quote-contact { display: grid; gap: var(--sy-space-grid-x); justify-items: start; }
+.quote-contact :global(img) { display: block; width: 75%; aspect-ratio: 4 / 5; object-fit: cover; object-position: right center; border-radius: var(--sy-radius-image); }
+.rfq-contact-links { display: grid; justify-items: start; font-size: var(--sy-text-body); overflow-wrap: anywhere; }
+.rfq-contact-links a { text-decoration: none; }
+.rfq-contact-links a:hover { text-decoration: underline; }
+@media (max-width: 1023px) {
+  .quote-section { grid-template-columns: minmax(0, 1fr); gap: var(--sy-space-grid-x); }
+  .quote-contact :global(img) { width: 100%; }
+  .quote-contact-inline { grid-template-columns: minmax(0, calc(var(--sy-space-section) + var(--sy-space-split))) minmax(0, 1fr); align-items: center; gap: var(--sy-space-md); }
+  .quote-contact-inline .rfq-contact-links { font-size: var(--sy-text-small); }
+}
+@media (max-width: 767px) {
+  .quote-section { padding: var(--sy-space-gutter-mobile); }
+  .quote-contact:not(.quote-contact-inline) :global(img) { aspect-ratio: 1 / 1; }
+}
+</style>

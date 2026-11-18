@@ -1,23 +1,48 @@
 ---
-/** Contact/Sent composes frozen RFQ and locale copy; Shell owns consent and lead analytics. */
+/** Contact/Sent composes the F3 quote section and locale copy; Shell owns consent and lead analytics. */
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import Shell from '../layouts/Shell.astro';
-import RFQ from '../components/RFQ.astro';
+import QuoteSection from '../components/QuoteSection.astro';
 import ContactMedia from '../components/ContactMedia.astro';
-import digital from '../../digital-sources.json';
-const scenes = ['apparel-59043', 'cotton430-hoodie-58065'].map(slug => digital.find(row => row.slug === slug && row.wave === 'W1')!);
 import { dictionaries, pageLocale, type Key } from '../i18n';
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 ---
 <Shell title={t.contact}>
 <section class="contact-sent" data-rfq-success hidden tabindex="-1" role="status" aria-live="polite"><div class="success-card"><h1>{t.rfqReceived}</h1><p>{t.rfqSuccess}</p><a class="button" href={getRelativeLocaleUrl(locale, "/collections/")}>{t.backToProducts}</a></div></section>
-<section class="contact-hero contact-heading"><div class="contact-hero-copy"><p class="eyebrow">{t.contactEyebrow}</p><h1>{t.contactTitle}</h1><p class="lead">{t.contactText}</p></div><div class="contact-image"><ContactMedia id="pattern" alt={t['alt.contact.banner']} hero /></div></section>
-<section class="contact-rfq contact-form"><div class="request-copy"><p class="eyebrow">{t.rfqEyebrow}</p><h2>{t.yourRequest}</h2><p class="lead">{t.firstReply}</p><div><p class="eyebrow">{t['cp5.whatsapp']}</p><a href="https://wa.me/85270227648" dir="ltr">{t['cp5.phone']}</a></div><div><p class="eyebrow">{t['cp5.email']}</p><a href="mailto:sales@sourcyowear.com">{t['cp5.address']}</a></div><div class="contact-scenes">{scenes.map(image => <img src={image.src} width="1122" height="1402" alt="" loading="lazy" />)}</div></div><RFQ /></section>
-<section class="contact-next"><p class="eyebrow">{t.nextEyebrow}</p><h2>{t.nextTitle}</h2><div class="next-grid">{[['nextReview','nextReviewText'],['nextQuote','nextQuoteText'],['nextSample','nextSampleText']].map(([title,text],i)=><article><span aria-hidden="true">{new Intl.NumberFormat(locale,{minimumIntegerDigits:2}).format(i+1)}</span><h3>{t[title as Key]}</h3><p>{t[text as Key]}</p></article>)}</div></section>
-<section class="contact-terms"><div><p class="eyebrow">{t.quote}</p><h2>{t['cp5.quoteTitle']}</h2><p class="lead">{t['cp5.quoteText']}</p><div class="contact-cutouts"><ContactMedia id="terms-one" /><ContactMedia id="terms-two" /></div></div><div class="terms-grid">{[0,2,4,6,8].map(i=><article><h3>{t[`cp5.term${i}` as Key]}</h3><p>{t[`cp5.term${i+1}` as Key]}</p></article>)}</div></section>
-<section class="contact-faq"><div><h2>{t['cp5.faq']}</h2><ContactMedia id="faq" /></div><div><details open><summary>{t['cp5.techQuestion']}</summary><p>{t['cp5.techAnswer']}</p></details><details><summary>{t['cp5.sampleQuestion']}</summary><p>{t.sampleText}</p></details><details><summary>{t['cp5.languageQuestion']}</summary></details></div></section>
+<section class="contact-hero contact-heading">
+  <div class="contact-hero-copy"><p class="eyebrow">{t.contactEyebrow}</p><h1>{t.contactTitle}</h1></div>
+  <div class="contact-image"><ContactMedia id="pattern" alt={t['alt.contact.banner']} hero /></div>
+</section>
+<QuoteSection contact />
+<section class="contact-next">
+  <p class="eyebrow">{t.nextEyebrow}</p>
+  <h2>{t.nextTitle}</h2>
+  <ol class="next-grid">{[['nextReview','nextReviewText'],['nextQuote','nextQuoteText'],['nextSample','nextSampleText']].map(([title,text],i) =>
+    <li><span aria-hidden="true">{String(i + 1).padStart(2, '0')}</span><div><h3>{t[title as Key]}</h3><p>{t[text as Key]}</p></div></li>
+  )}</ol>
+</section>
+<section class="contact-terms">
+  <div>
+    <p class="quote-note">{t['home.terms.0']}</p>
+    <h2>{t['cp5.quoteTitle']}</h2>
+    <p>{t['cp5.quoteText']}</p>
+    <div class="contact-cutouts"><ContactMedia id="terms-one" /><ContactMedia id="terms-two" /></div>
+  </div>
+  <dl class="terms-grid">{[0,2,4,6,8].map(i =>
+    <div><dt>{t[`cp5.term${i}` as Key]}</dt><dd>{t[`cp5.term${i+1}` as Key]}</dd></div>
+  )}</dl>
+</section>
+<section class="contact-faq">
+  <div><h2>{t['cp5.faq']}</h2><ContactMedia id="faq" /></div>
+  <div>
+    <details name="contact-faq" open><summary>{t['cp5.techQuestion']}</summary><p>{t['cp5.techAnswer']}</p></details>
+    <details name="contact-faq"><summary>{t['cp5.sampleQuestion']}</summary><p>{t.nextSampleText}</p></details>
+    <details name="contact-faq"><summary>{t['cp5.languageQuestion']}</summary><p>{t['wave9.contact.languageAnswer']}</p></details>
+  </div>
+</section>
 </Shell>
 <script>
+  if (matchMedia('(max-width: 1023px)').matches) document.querySelector('.contact-faq details[open]')?.removeAttribute('open');
   if (new URLSearchParams(window.location.search).get('sent') === '1') {
     const confirmation = document.querySelector<HTMLElement>('[data-rfq-success]')!;
     confirmation.hidden = false;
@@ -27,50 +52,68 @@ const locale = pageLocale(Astro.url), t = dictionaries[locale];
   }
 </script>
 <style>
-.contact-hero { display: grid; grid-template-columns: 17fr 13fr; padding: 0; background: var(--sy-color-inverse); color: var(--sy-color-on-inverse); }
-.contact-hero-copy { padding: var(--sy-space-section); display: grid; align-content: center; gap: var(--sy-space-grid-x); }
+:global(body:has(.contact-heading) .quote-dock) { display: none; }
+.contact-hero { display: grid; grid-template-columns: 17fr 13fr; padding: 0; background: var(--sy-color-surface-alt); }
+.contact-hero-copy { padding: var(--sy-space-section); display: grid; align-content: center; gap: var(--sy-space-group); }
 .contact-hero h1, .contact-hero p { margin: 0; }
-.contact-hero .eyebrow { color: var(--sy-color-label-accent); }
-.eyebrow { font-size: var(--sy-text-eyebrow); font-weight: var(--sy-weight-title); text-transform: uppercase; }
-.contact-image { min-width: 0; }
-.contact-image :global(picture), .contact-image :global(img) { height: 100%; width: 100%; object-fit: cover; }
-.contact-rfq { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: var(--sy-space-section); padding: var(--sy-space-section); }
-.request-copy { display: grid; gap: var(--sy-space-grid-x); }
-.request-copy p, .request-copy h2 { margin: 0; }
-.request-copy .eyebrow { margin-block-end: var(--sy-space-xs); }
-.contact-next, .contact-terms, .contact-faq { padding: var(--sy-space-section); }
-.contact-next { background: var(--sy-color-surface-alt); color: var(--sy-color-ink); }
-.next-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sy-space-grid-x); margin-block-start: var(--sy-space-split); }
-.next-grid article { border-block-start: var(--sy-space-hair) solid var(--sy-color-hairline); padding-block-start: var(--sy-space-grid-x); }
+.eyebrow { font-size: var(--sy-text-eyebrow); font-weight: var(--sy-weight-label); letter-spacing: var(--sy-tracking-eyebrow); text-transform: uppercase; }
+.contact-image { min-width: 0; aspect-ratio: 1; }
+.contact-image :global(img) { display: block; height: 100%; width: 100%; object-fit: cover; border-radius: var(--sy-radius-image); }
+.contact-next, .contact-terms, .contact-faq { padding: var(--sy-space-section) var(--sy-space-gutter-lg); }
+.contact-next { background: var(--sy-color-surface-alt); }
+.contact-next h2, .contact-terms h2, .contact-faq h2 { margin: 0; }
+.next-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sy-space-grid-x); list-style: none; padding: 0; margin: var(--sy-space-2xl) 0 0; }
+.next-grid li { border-block-start: var(--sy-space-hair) solid var(--sy-color-hairline); padding-block-start: var(--sy-space-grid-x); }
 .next-grid span { font-family: var(--sy-font-heading); font-size: var(--sy-text-h3); }
+.next-grid h3 { margin: 0; font-size: var(--sy-text-h4); }
+.next-grid p { margin: var(--sy-space-sm) 0 0; }
 .contact-terms, .contact-faq { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-section); }
-.contact-scenes, .contact-cutouts { display: flex; gap: var(--sy-space-sm); }
-.contact-scenes img, .contact-cutouts :global(img) { width: calc(50% - var(--sy-space-sm)); min-width: 0; height: auto; object-fit: contain; }
-.contact-faq :global(img) { max-width: 100%; height: auto; }
-.terms-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sy-space-grid-x); margin-block-start: var(--sy-space-split); }
-.terms-grid article { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-md); border-block-end: var(--sy-space-hair) solid var(--sy-color-hairline); padding-block: var(--sy-space-md); }
-.terms-grid h3, .terms-grid p { font: inherit; margin: 0; }
 .contact-terms { background: var(--sy-color-surface); }
-.next-grid span, .contact-next .eyebrow { color: var(--sy-color-ink); }
-.contact-sent { padding: var(--sy-space-section) var(--sy-space-section); }
-.success-card { display: grid; gap: var(--sy-space-md); padding: var(--sy-space-xl); background: var(--sy-color-surface); border: var(--sy-space-0); box-shadow: var(--sy-shadow-card); border-radius: var(--sy-radius-card); }
+.contact-terms h2 { font-size: var(--sy-text-h3); }
+.quote-note { color: var(--sy-color-muted); font-size: var(--sy-text-small); margin: 0 0 var(--sy-space-md); }
+.contact-cutouts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-sm); padding: var(--sy-space-md); }
+.contact-cutouts :global(img), .contact-faq :global(img) { display: block; width: 100%; height: auto; border-radius: var(--sy-radius-image); }
+.terms-grid { margin: 0; }
+.terms-grid div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--sy-space-md); padding-block: var(--sy-space-sm); }
+.terms-grid dt { color: var(--sy-color-muted); font-size: var(--sy-text-small); }
+.terms-grid dd { margin: 0; min-width: 0; }
+.contact-faq h2 { margin-block-end: var(--sy-space-sm); }
+.contact-faq :global(img) { aspect-ratio: 12 / 5; object-fit: cover; }
+.contact-faq details { padding: var(--sy-space-md) var(--sy-space-sm); }
+.contact-faq summary { display: flex; justify-content: space-between; gap: var(--sy-space-md); }
+.contact-faq summary::after { content: '+' / ''; }
+.contact-faq details[open] summary::after { content: '−' / ''; }
+.contact-faq details p { margin-block-end: 0; }
+.contact-sent { padding: var(--sy-space-section); }
+.success-card { display: grid; gap: var(--sy-space-md); padding: var(--sy-space-xl); background: var(--sy-color-surface); box-shadow: var(--sy-shadow-card); border-radius: var(--sy-radius-card); }
 .success-card h1 { font-size: var(--sy-text-h3); margin: 0; }
 .success-card p { margin: 0; }
 .success-card .button { justify-self: start; }
 @media (max-width: 1023px) {
-.contact-hero { grid-template-columns: minmax(0, 1fr); }
-.contact-hero-copy, .contact-rfq, .contact-next, .contact-terms, .contact-faq { padding: var(--sy-space-section-sm) var(--sy-space-gutter-md); }
-.contact-terms, .contact-faq { grid-template-columns: minmax(0, 1fr); }
-.contact-image { max-height: calc(var(--sy-space-section) * 5); }
-.contact-rfq { grid-template-columns: minmax(0, 1fr); gap: var(--sy-space-grid-y); }
-.terms-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.contact-sent { padding: var(--sy-space-section-sm) var(--sy-space-gutter-md); }
+  :global(body:has(.contact-heading) footer .footer) { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: var(--sy-space-sm); }
+  :global(body:has(.contact-heading) footer .footer > div) { grid-column: 1 / -1; }
+  :global(body:has(.contact-heading) footer .footer > div p) { max-inline-size: calc(var(--sy-space-section) * 2 + var(--sy-space-2xl)); }
+  .contact-hero, .contact-terms, .contact-faq { grid-template-columns: minmax(0, 1fr); }
+  .contact-image { order: -1; aspect-ratio: auto; block-size: calc(var(--sy-space-section) + var(--sy-space-section-sm)); }
+  .contact-hero-copy, .contact-next, .contact-terms, .contact-faq, .contact-sent { padding: var(--sy-space-gutter-md) var(--sy-space-gutter-lg); }
+  .contact-hero-copy { padding-inline: var(--sy-space-gutter-mobile); }
+  .contact-terms, .contact-faq { gap: var(--sy-space-grid-x); }
+  .next-grid { grid-template-columns: minmax(0, 1fr); gap: 0; margin-block-start: var(--sy-space-md); }
+  .next-grid li { display: grid; grid-template-columns: calc(var(--sy-space-2xl) + var(--sy-space-2xs)) minmax(0, 1fr); padding-block: var(--sy-space-grid-x); }
+  .next-grid p { margin: 0; }
+  .next-grid span { font-size: var(--sy-text-h4); }
+  .terms-grid div { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: var(--sy-space-md) var(--sy-space-sm); }
+  .contact-faq :global(img) { aspect-ratio: 10 / 3; }
 }
 @media (max-width: 767px) {
-.contact-hero-copy, .contact-rfq, .contact-next, .contact-terms, .contact-faq { padding: var(--sy-space-section-sm) var(--sy-space-gutter-mobile); }
-.next-grid, .terms-grid { grid-template-columns: minmax(0, 1fr); }
-.contact-sent { padding: var(--sy-space-section-sm) var(--sy-space-gutter-mobile); }
-.success-card { padding: var(--sy-space-lg); }
-.success-card h1 { font-size: var(--sy-text-h3-mobile); }
+  .contact-hero-copy, .contact-next, .contact-terms, .contact-faq, .contact-sent { padding: var(--sy-space-gutter-mobile); }
+  .contact-hero-copy { gap: var(--sy-space-xl); }
+  :global(body:has(.contact-heading) footer .footer-legal) { flex-direction: column; }
+  .contact-hero h1 { font-size: var(--sy-text-h1-mobile); letter-spacing: calc(var(--sy-space-hair) / -2); }
+  .contact-next h2, .contact-faq h2 { font-size: var(--sy-text-h2-mobile); }
+  .contact-terms h2, .success-card h1 { font-size: var(--sy-text-h3-mobile); }
+  .next-grid h3 { font-size: var(--sy-text-h4-mobile); }
+  .contact-faq :global(img) { aspect-ratio: 17 / 10; }
+  .success-card { padding: var(--sy-space-lg); }
 }
 </style>

@@ -133,7 +133,7 @@
   "footerWhatsapp": "واتساب",
   "footerEmail": "البريد الإلكتروني",
   "footerContactForm": "نموذج الاتصال",
-  "footerNotice": "صور توضيحية. صور المصنع متاحة عند الطلب.",
+  "footerNotice": "صور المنتجات توضيحية، وصور المصنع حقيقية.",
   "navOem": "تصنيع OEM / ODM",
   "menuClose": "إغلاق",
   "footerCopyright": "© 2026 Sourcyo Apparel",
@@ -716,5 +716,6 @@
   "cp-shop/colours-two": "لونان",
   "cp-shop/colours-few": "{n} ألوان",
   "cp-shop/colours-many": "{n} لونًا",
-  "cp-shop/colours-other": "{n} لون"
+  "cp-shop/colours-other": "{n} لون",
+  "wave9.contact.languageAnswer": "اذكر اللغة التي تفضلها عند إرسال طلبك."
 }

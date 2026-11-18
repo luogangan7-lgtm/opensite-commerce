@@ -1,11 +1,11 @@
 ---
 /** Home composition bound to frozen Figma Home / Desktop 1440 (30:560), Tablet 768 (30:806) and Mobile 390 (30:1039).
- * Calls HomeHero/HomeMedia/RFQ; all copy comes from dictionaries (home.* keys), product facts from the catalog.
+ * Calls HomeHero/HomeMedia/QuoteSection; all copy comes from dictionaries (home.* keys), product facts from the catalog.
  * Invariant: sections keep the HOME-BM order; no repeated factory photo, no product-tail quote CTA, no duplicate browse-all. */
 import Shell from '../layouts/Shell.astro';
 import HomeHero from '../components/HomeHero.astro';
 import HomeMedia from '../components/HomeMedia.astro';
-import RFQ from '../components/RFQ.astro';
+import QuoteSection from '../components/QuoteSection.astro';
 import { products } from '../data/catalog';
 import { digitalAlt } from '../data/imagery';
 import { dictionaries, pageLocale, type Key } from '../i18n';
@@ -55,10 +55,9 @@ const image = (slug: string, file?: string) => {
 <section class="home-section home-process sand"><div class="home-heading"><p class="home-eyebrow">{c('process', 0)}</p><h2>{c('process', 1)}</h2><p class="home-lead">{c('process', 2)}</p></div>
 <ol class="home-steps">{steps.map(([number, title, body]) => <li><span class="home-number">{number}</span><div><h3>{title}</h3><p>{body}</p></div></li>)}</ol></section>
 <section class="home-section home-fabric"><div class="home-fabric-copy"><p class="home-eyebrow">{c('fabric', 0)}</p><h2>{c('fabric', 1)}</h2><p class="home-lead">{c('fabric', 2)}</p><a class="button secondary" href={href('/contact/') + '?subject=fabric-photos'}>{c('fabric', 3)}<span aria-hidden="true">{c('fabric', 4)}</span></a></div><div class="home-fabric-media"><HomeMedia id="fabric" alt="" /></div></section>
-<section class="home-section home-terms"><div class="home-terms-copy"><p class="home-badge">{c('terms', 0)}</p><h2>{c('terms', 1)}</h2><p class="home-lead">{c('terms', 2)}</p><div class="home-terms-media"><HomeMedia id="terms-one" alt="" /><HomeMedia id="terms-two" alt="" /></div></div>
+<section class="home-section home-terms"><div class="home-terms-copy"><p class="home-terms-note">{c('terms', 0)}</p><h2>{c('terms', 1)}</h2><p class="home-lead">{c('terms', 2)}</p><div class="home-terms-media"><HomeMedia id="terms-one" alt="" /><HomeMedia id="terms-two" alt="" /></div></div>
 <dl class="home-terms-list">{terms.map(([label, value]) => <div><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
-<section class="home-section home-closing" id="home-inquiry"><div class="home-closing-copy"><p class="home-eyebrow">{c('closing', 0)}</p><h2>{c('closing', 1)}</h2><p class="home-lead">{c('closing', 2)}</p></div>
-<div class="home-form"><h3>{c('closing', 3)}</h3><p>{c('closing', 4)}</p><RFQ /><p class="home-fine">{c('closing', 19)}</p></div></section>
+<QuoteSection />
 </Shell>
 <style>
  /* Geometry binds the frozen frames (section padding 96/64, 1248 grid, 24 gutters); colour, type and space are project tokens. */
@@ -128,20 +127,13 @@ const image = (slug: string, file?: string) => {
  /* Terms */
  .home-terms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-section);background:var(--sy-color-surface);align-items:start;}
  .home-terms>*{max-width:none;margin:0;}
- .home-badge{display:inline-block;margin:0 0 var(--sy-space-md);padding:var(--sy-space-2xs) var(--sy-space-sm);background:var(--sy-color-accent);color:var(--sy-color-on-accent);font-size:var(--sy-text-small);border-radius:var(--sy-radius-pill);}
+ .home-terms-note{margin:0 0 var(--sy-space-md);color:var(--sy-color-muted);font-size:var(--sy-text-small);}
  .home-terms-media{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-sm);margin-block-start:var(--sy-space-xl);}
  .home-terms-media :global(img){width:100%;aspect-ratio:266 / 224;object-fit:cover;}
  .home-terms-list{margin:0;}
  .home-terms-list div{display:grid;grid-template-columns:180px minmax(0,1fr);gap:var(--sy-space-lg);padding:var(--sy-space-sm);border-block-end:var(--sy-space-hair) solid var(--sy-color-hairline);}
  .home-terms-list dt{color:var(--sy-color-muted);}
  .home-terms-list dd{margin:0;}
- /* Closing */
- .home-closing{display:grid;grid-template-columns:592px minmax(0,560px);justify-content:space-between;gap:var(--sy-space-section);align-items:start;}
- .home-closing>*{max-width:none;margin:0;}
- .home-form{padding:var(--sy-space-xl);background:var(--sy-color-surface);border:var(--sy-space-0);box-shadow:var(--sy-shadow-card);border-radius:var(--sy-radius-card);}
- .home-form h3{margin:0 0 var(--sy-space-sm);font-size:var(--sy-text-h3);font-weight:var(--sy-weight-heading);}
- .home-form>p{color:var(--sy-color-muted);}
- .home-fine{margin:var(--sy-space-lg) 0 0;font-size:var(--sy-text-small);}
  @media(max-width:1023px){
   .home-section{--pad:var(--sy-space-section-sm);--side:var(--sy-space-gutter-md);}
   .home-tiles>.home-heading{margin-inline-start:var(--sy-space-gutter-md);}
@@ -152,8 +144,7 @@ const image = (slug: string, file?: string) => {
   .home-fabric{grid-template-columns:416fr 352fr;}
   .home-fabric-copy{padding:var(--sy-space-section-sm) var(--sy-space-gutter-lg);}
   .home-fabric-media{min-height:520px;}
-  .home-terms,.home-closing{grid-template-columns:minmax(0,1fr);gap:var(--sy-space-xl);}
-  .home-closing-copy{max-width:672px;}
+  .home-terms{grid-template-columns:minmax(0,1fr);gap:var(--sy-space-xl);}
  }
  @media(max-width:650px){
   .home-section{--side:var(--sy-space-gutter-mobile);}
