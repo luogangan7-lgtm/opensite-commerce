@@ -133,7 +133,7 @@
   "footerWhatsapp": "WhatsApp",
   "footerEmail": "邮箱",
   "footerContactForm": "询盘表单",
-  "footerNotice": "图片为示意图。可按需提供工厂照片。",
+  "footerNotice": "产品图为示意图，工厂照片为实拍。",
   "navOem": "OEM / ODM（代工与设计代工）",
   "menuClose": "关闭",
   "footerCopyright": "© 2026 Sourcyo Apparel",
@@ -716,5 +716,6 @@
   "cp-shop/colours-two": "{n} 色",
   "cp-shop/colours-few": "{n} 色",
   "cp-shop/colours-many": "{n} 色",
-  "cp-shop/colours-other": "{n} 色"
+  "cp-shop/colours-other": "{n} 色",
+  "wave9.contact.languageAnswer": "提交询盘时，请注明您希望使用的语言。"
 }
