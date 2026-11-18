@@ -4,10 +4,10 @@
  */
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { products, categories } from '../data/catalog';
-import { shopFacts, shopFacets, featuredStyles, colourFamilies, colourHex, type Family } from '../data/shop';
+import { shopFacts, shopFacets, featuredStyles, colourFamilies, colourHex, formatCategoryCount, type Family } from '../data/shop';
 import { shopCustomMoq, shopReadyMoq } from '../data/owner-facts';
 import ProductCard from './ProductCard.astro';
-import { dictionaries, pageLocale, type Key } from '../i18n';
+import { categoryCountForms, dictionaries, pageLocale, type Key } from '../i18n';
 interface Props { category?: string }
 const { category } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
@@ -15,6 +15,9 @@ const catalog = featuredStyles(products);
 const items = category ? products.filter(p => p.category === category) : catalog;
 const choices: Record<string,string[]> = Object.fromEntries(shopFacets.map(key => [key, [...new Set(items.flatMap(p => shopFacts(p)[key]))].sort()]));
 const label = (key: string) => t[`cp-shop/${key}` as Key];
+const countForms = category ? categoryCountForms(locale) : undefined;
+const initialCount = countForms ? formatCategoryCount(locale, items.length, countForms)
+  : label('count').replace('{shown}', String(items.length)).replace('{total}', String(items.length));
 const categoryKeys:Record<string,Key>={apparel:'cp-shop/figma-0033','cotton430-hoodie':'cp-shop/figma-0034','crew-fleece':'cp-shop/figma-0035','hoodie-set':'cp-shop/figma-0036','zip-ups-jackets':'cp-shop/figma-0037'};
 // Both navigation and checkbox options use the catalog category source and reviewed copy.
 choices.category = Object.keys(categories);
@@ -24,7 +27,7 @@ const categoryLabel=(value:string)=>t[categoryKeys[value] || value as Key];
 const colourLabel=(family:string)=>t[`cp-shop/colour-${family}` as Key];
 const facetLabel = (key: string, value: string) => t[`cp-shop/${key}-${value}` as Key] || value;
 ---
-<div class="shop" data-shop data-products={JSON.stringify(items)} data-count-template={label(category ? 'category-count' : 'count')}>
+<div class="shop" data-shop data-products={JSON.stringify(items)} data-count-template={category ? undefined : label('count')} data-category-count-forms={countForms && JSON.stringify(countForms)}>
  <div class="shop-title"><p>{t['cp-shop/figma-0022']}</p><h1>{category ? categoryLabel(category) : label('all')}</h1>{!category && <p>{t['cp-shop/figma-0024']}</p>}</div>
  <nav class="shop-tabs" aria-label={t.collections}>
   <a href={getRelativeLocaleUrl(locale, '/collections/')} aria-current={!category ? 'page' : undefined}>{label('any')}</a>
@@ -40,7 +43,7 @@ const facetLabel = (key: string, value: string) => t[`cp-shop/${key}-${value}` a
  <p>{t['cp-shop/figma-0050']}</p><div class="shop-facet-actions"><button type="button" data-shop-clear>{t['cp-shop/figma-0061']}</button><button type="button" class="shop-all-styles" data-shop-all-styles>{label('all')}</button></div></div>
  </details>
  <div class="shop-results">
- <div class="shop-toolbar"><p data-shop-count role="status" aria-live="polite">{label(category ? 'category-count' : 'count').replace('{shown}',String(items.length)).replace('{total}',String(items.length))}</p><div class="shop-toolbar-controls"><button type="button" class="shop-filter-open" data-shop-filter-open hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 10h8M8 15h4" /></svg><span>{label('filters')}</span><span class="shop-filter-count" data-shop-filter-count hidden>0</span></button><label class="shop-sort"><span>{label('sort')}</span><select data-shop-sort aria-label={label('sort')}><option value="featured">{locale==='en'?label('featured'):t['cp-shop/figma-0052']}</option><option value="code">{label('code')}</option></select><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5" /></svg></label></div></div>
+ <div class="shop-toolbar"><p data-shop-count role="status" aria-live="polite">{initialCount}</p><div class="shop-toolbar-controls"><button type="button" class="shop-filter-open" data-shop-filter-open hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 10h8M8 15h4" /></svg><span>{label('filters')}</span><span class="shop-filter-count" data-shop-filter-count hidden>0</span></button><label class="shop-sort"><span>{label('sort')}</span><select data-shop-sort aria-label={label('sort')}><option value="featured">{locale==='en'?label('featured'):t['cp-shop/figma-0052']}</option><option value="code">{label('code')}</option></select><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5" /></svg></label></div></div>
  <div class="shop-grid">{items.map(product => <ProductCard product={product} listing />)}</div>
  <div data-shop-empty hidden><h2>{t['cp6.copy/no-styles-match-these-filters']}</h2><p>{t['cp6.copy/try-removing-a-filter-or-request-a-style-tha']}</p></div>
  {!category && <p class="shop-shown" data-shop-shown role="status" hidden />}
@@ -49,10 +52,11 @@ const facetLabel = (key: string, value: string) => t[`cp-shop/${key}-${value}` a
  <aside class="shop-b2b"><div><h2>{t['cp-shop/figma-0055']}</h2><p>{t['cp-shop/figma-0057']}</p><div class="shop-terms"><p class="shop-owner-ready">{shopReadyMoq(locale)}</p><p class="shop-owner-custom">{shopCustomMoq(locale)}</p><a href={getRelativeLocaleUrl(locale,'/sampling/')}>{t.samples}</a><span>EXW / FOB</span></div></div><a class="button" href={getRelativeLocaleUrl(locale, '/contact/') + '#rfq-form'}>{t.request} <span aria-hidden="true">→</span></a></aside>
 </div>
 <script>
-import { pageSize, selectStyles, setShopQuery, shopFacets, type ShopFacet } from '../data/shop';
+import { pageSize, selectStyles, setShopQuery, shopFacets, formatCategoryCount, type ShopFacet } from '../data/shop';
 import type { Product } from '../data/catalog';
 for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
  const items: Product[] = JSON.parse(root.dataset.products!);
+ const countForms: Parameters<typeof formatCategoryCount>[2] | undefined = root.dataset.categoryCountForms && JSON.parse(root.dataset.categoryCountForms);
  const grid = root.querySelector<HTMLElement>('.shop-grid')!;
  const tiles = new Map([...root.querySelectorAll<HTMLElement>('[data-shop-card]')].map(el => [el.dataset.shopCard!, el]));
  const more = root.querySelector<HTMLButtonElement>('[data-shop-more]')!;
@@ -74,11 +78,13 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
   const count = shopFacets.reduce((n,key)=>n+q.getAll(key).length,0), badge=root.querySelector<HTMLElement>('[data-shop-filter-count]')!;
   badge.textContent=String(count); badge.hidden=count===0;
   sort.value = q.get('sort') === 'code' ? 'code' : 'featured';
-  const countTemplate = root.dataset.countTemplate!.replace('{total}', String(selected.length));
-  root.querySelector<HTMLElement>('[data-shop-count]')!.textContent = countTemplate.replace('{shown}', String(selected.length));
+  const countTemplate = root.dataset.countTemplate?.replace('{total}', String(selected.length));
+  root.querySelector<HTMLElement>('[data-shop-count]')!.textContent = countForms
+   ? formatCategoryCount(document.documentElement.lang, selected.length, countForms)
+   : countTemplate!.replace('{shown}', String(selected.length));
   const shown = root.querySelector<HTMLElement>('[data-shop-shown]');
   if (shown) {
-   shown.textContent = countTemplate.replace('{shown}', String(Math.min(limit, selected.length)));
+   shown.textContent = countTemplate!.replace('{shown}', String(Math.min(limit, selected.length)));
    shown.hidden = selected.length <= limit;
   }
   root.querySelector<HTMLElement>('[data-shop-empty]')!.hidden = selected.length !== 0;

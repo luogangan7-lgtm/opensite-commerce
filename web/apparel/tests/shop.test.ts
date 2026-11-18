@@ -2,9 +2,9 @@
 import {test,expect} from 'bun:test';
 import {readFileSync} from 'node:fs';
 import {ownerMoq,pdpMoq,shopCustomMoq,shopCardMoq} from '../src/data/owner-facts';
-import {locales,dictionaries,type Key} from '../src/i18n';
+import {categoryCountForms,locales,dictionaries,type Key} from '../src/i18n';
 import {products} from '../src/data/catalog';
-import {shopFacts,selectStyles,setShopQuery,cardViews,pageSize,featuredStyles} from '../src/data/shop';
+import {shopFacts,selectStyles,setShopQuery,cardViews,pageSize,featuredStyles,formatCategoryCount} from '../src/data/shop';
 const colourFamilies=['black','white','cream','grey','charcoal','navy','blue','green','brown','beige','red','pink','purple'] as const;
 
 test('every raw front colour has an approved family',async()=>{
@@ -55,6 +55,19 @@ test('URL roundtrip preserves unrelated state, encoded colour and default remova
 test('each swap comes from a SHA-bound back role of the same colour',()=>{
  expect(pageSize).toBe(8);
  for(const p of products) {const {front,back}=cardViews(p);expect(front.role).toBe('front');expect(back).toBeDefined();expect(back!.role).toBe('back');expect(back!.colour).toBe(front.colour);expect(back!.sha256_16||back!.web_sha256).toBeTruthy();expect(p.images).toContain(back!);}
+});
+
+test('Arabic category pages render the plural count before JavaScript runs', () => {
+ const html = readFileSync('web/apparel/dist/ar/collections/zip-ups-jackets/index.html', 'utf8');
+ expect(html.match(/<p data-shop-count[^>]*>([^<]*)<\/p>/)?.[1]).toBe('10 موديلات');
+});
+
+test('Arabic category counts follow the approved noun forms', () => {
+ const forms = categoryCountForms('ar');
+ for (const [total, expected] of [
+  [0, 'لا موديلات'], [1, 'موديل واحد'], [2, 'موديلان'], [10, '10 موديلات'],
+  [16, '16 موديلاً'], [115, '115 موديل'],
+ ] as const) expect(formatCategoryCount('ar', total, forms)).toBe(expected);
 });
 
 test('every rendered listing MOQ line uses the owner 50-piece fact in all eight locales',()=>{ // owner 2026-11-18: "最低50件起订"

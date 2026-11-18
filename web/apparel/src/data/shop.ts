@@ -1,10 +1,15 @@
-/** Listing adapter: catalog facts only; consumed by static cards, URL controls and tests.
+/** Listing adapter: catalog facts and result counts; consumed by static cards, URL controls and tests.
  * Unknown composition/fit never matches a facet. Featured uses the approved prefix and preserves the remaining catalog order.
  */
 import type { Product } from './catalog';
 export const shopFacets = ['category', 'colour', 'fit', 'fabric', 'fleece'] as const;
 export type ShopFacet = typeof shopFacets[number];
 export const pageSize = 8;
+export function formatCategoryCount(locale: string, total: number, forms: Record<Intl.LDMLPluralRule, string>): string {
+  // Arabic catalog copy uses the singular noun after every count of 100 or more.
+  const form = locale === 'ar' && total >= 100 ? 'other' : new Intl.PluralRules(locale).select(total);
+  return forms[form].replace('{total}', String(total));
+}
 export type Family = 'black'|'white'|'cream'|'grey'|'charcoal'|'navy'|'blue'|'green'|'brown'|'beige'|'red'|'pink'|'purple';
 // Every raw front-colour annotation in the catalog collapses to one customer-facing family.
 export const colourFamily: Record<string,Family> = {

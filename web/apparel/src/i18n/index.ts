@@ -19,6 +19,17 @@ export const locales = ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const
 export type Locale = typeof locales[number];
 export type Key = keyof typeof en;
 export const dictionaries: Record<Locale, Record<Key, string>> = { en, zh, es, fr, de, pt, ru, ar };
+export function categoryCountForms(locale: Locale): Record<Intl.LDMLPluralRule, string> {
+  const t = dictionaries[locale];
+  return {
+    zero: t['cp-shop/category-count-zero'],
+    one: t['cp-shop/category-count-one'],
+    two: t['cp-shop/category-count-two'],
+    few: t['cp-shop/category-count-few'],
+    many: t['cp-shop/category-count-many'],
+    other: t['cp-shop/category-count-other'],
+  };
+}
 export const languageNames: Record<Locale, string> = { en: 'English', zh: '中文', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português', ru: 'Русский', ar: 'العربية' };
 type Translation = { name: string; fabric_weight_fit: string; colourway_note: string };
 export const productText: Record<Locale, Record<string, Translation>> = { en: productsEn, zh: productsZh, es: productsEs, fr: productsFr, de: productsDe, pt: productsPt, ru: productsRu, ar: productsAr };
