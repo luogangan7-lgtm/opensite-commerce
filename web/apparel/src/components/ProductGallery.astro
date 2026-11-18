@@ -34,7 +34,7 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
  </div>
  <nav class="gallery-colours" aria-label={t.productViews}>{colours.map(image=><button type="button" data-gallery-swatch={image.colour} data-gallery-colour-label={colourLabel(image)} aria-pressed={image.colour===primary?'true':'false'} aria-label={digitalAlt(image.src,locale)||image.colour}><img src={image.src} alt={digitalAlt(image.src,locale)||image.colour} width="64" height="80" loading="lazy"/></button>)}</nav>
  <p class="gallery-colour-label" data-gallery-colour-label>{colourLabel(initial)}</p>
- <div class="gallery-tiles">{['turn','structure','fabric'].map(role=>{const image=images.find(i=>i.role===role);return <figure data-gallery-tile={role} hidden={!image}><img src={image?.src} alt={image?alt(image):labels[role]} width="800" height={role==='turn'?1000:800} loading="lazy"/><figcaption>{labels[role]}</figcaption></figure>})}</div>
+ <div class="gallery-tiles">{['turn','structure','fabric'].map(role=>{const image=images.find(i=>i.role===role);return <figure data-gallery-tile={role} hidden={!image}><div class="gallery-tile-photo"><img src={image?.src} alt={image?alt(image):labels[role]} width="800" height="800" loading="lazy"/></div><figcaption>{labels[role]}</figcaption></figure>})}</div>
  <p class="sr-only" aria-live="polite" data-gallery-status></p>
  <dialog data-gallery-viewer aria-label={alt(initial)}><form method="dialog"><button aria-label={t.galleryClose}>×</button></form><p data-viewer-title>{alt(initial)}</p><img src={initial.src} alt={alt(initial)} width="1200" height="1200" /></dialog>
 </div>
@@ -122,8 +122,8 @@ const alt = (image: typeof initial) => digitalAlt(image.src,locale) || `${text.n
  .gallery-colours img{display:block;width:44px;height:55px;object-fit:contain;object-position:top;border-radius:var(--sy-radius-inner)}
  .gallery-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sy-space-sm)}
  .gallery-tiles figure{margin:0;min-width:0}
- .gallery-tiles img{width:100%;height:auto;aspect-ratio:1;object-fit:contain;object-position:top;border-radius:var(--sy-radius-image)}
- .gallery-tiles [data-gallery-tile=turn] img{aspect-ratio:4/5}
+ .gallery-tile-photo{position:relative;aspect-ratio:1;}
+ .gallery-tiles img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:top;border-radius:var(--sy-radius-image)}
  @media(min-width:1101px){.gallery{position:sticky;top:var(--sy-space-lg)}}
  @media(max-width:767px){.gallery-layout{display:flex;flex-direction:column-reverse}.grouped-rail{display:none}.gallery-slides{display:flex;width:100%;gap:var(--sy-space-sm);overflow-x:auto;scroll-snap-type:x mandatory}.gallery-slides figure{flex:0 0 calc(100% - 24px);scroll-snap-align:start}}
  @media(prefers-reduced-motion:reduce){.gallery-slides{scroll-behavior:auto}}

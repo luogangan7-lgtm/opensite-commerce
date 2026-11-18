@@ -37,13 +37,12 @@ const image = (slug: string, file?: string) => {
 <HomeHero />
 <section class="home-section home-tiles"><div class="home-heading"><p class="home-eyebrow">{bm('ways-kicker')}</p><h2>{bm('ways-title')}</h2><p class="home-lead">{bm('ways-body')}</p></div>
 <div class="home-models">
-<article class="home-model wholesale" data-home-model="wholesale"><div class="wholesale-photo"><HomeMedia id="collections" alt="" /></div><div class="model-copy"><h3>{bm('wholesale-title')}</h3><p>{bm('wholesale-benefit')}</p><p>{bm('wholesale-get')}</p><a class="button" href={href('/collections/')}>{bm('wholesale-cta')} <span aria-hidden="true">→</span></a></div></article>
-<div class="secondary-models">{['private', 'custom'].map(model => <article class="home-model" data-home-model={model}><div class="model-copy"><h3>{bm(`${model}-title`)}</h3><p>{bm(`${model}-benefit`)}</p><p>{bm(`${model}-get`)}</p><a class="button" href={model === 'private' ? href('/collections/') + '?intent=private-label' : href('/oem-odm/')}>{bm(`${model}-cta`)} <span aria-hidden="true">→</span></a></div></article>)}</div>
+{['wholesale', 'private', 'custom'].map(model => <article class="home-model" data-home-model={model}><div class="model-copy"><h3>{bm(`${model}-title`)}</h3><div class="model-description"><p>{bm(`${model}-benefit`)}</p><p>{bm(`${model}-get`)}</p></div><a class="button" href={model === 'custom' ? href('/oem-odm/') : href('/collections/') + (model === 'private' ? '?intent=private-label' : '')}>{bm(`${model}-cta`)} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a></div></article>)}
 </div></section>
 <section class="home-section home-categories"><div class="home-heading"><p class="home-eyebrow">{c('categories', 0)}</p><h2>{c('categories', 1)}</h2><p class="home-lead">{bm('category-body')}</p></div>
 <ul class="home-category-grid" data-home-categories>{categories.map(([slug, category, n, file]) => {
   const img = image(slug, file);
-  return <li><a data-home-category href={href(`/collections/${category}/`)}><img src={img.src} alt={digitalAlt(img.src, locale) || c('categories', n)} width="600" height="720" loading="lazy" decoding="async" /><h3>{c('categories', n)}</h3><p>{c('categories', n + 1)}</p></a></li>;
+  return <li><a data-home-category href={href(`/collections/${category}/`)}><img src={img.src} alt={digitalAlt(img.src, locale) || c('categories', n)} width="600" height="720" loading="lazy" decoding="async" /><h3>{c('categories', n)}</h3></a></li>;
 })}</ul></section>
 <section class="home-section home-products"><div class="home-heading"><h2>{c('products', 1)}</h2></div>
 <div class="home-card-grid product-grid">{cards.map(([slug, title]) =>
@@ -52,8 +51,8 @@ const image = (slug: string, file?: string) => {
 </section>
 <section class="home-section home-band"><div class="home-heading"><p class="home-eyebrow">{c('benefits', 0)}</p><h2>{c('benefits', 1)}</h2></div>
 <ol class="home-benefits">{benefits.map(([number, title, body]) => <li><span class="home-number">{number}</span><h3>{title}</h3><p>{body}</p></li>)}</ol></section>
-<section class="home-section home-process sand"><div class="home-heading"><p class="home-eyebrow">{c('process', 0)}</p><h2>{c('process', 1)}</h2><p class="home-lead">{c('process', 2)}</p></div>
-<ol class="home-steps">{steps.map(([number, title, body]) => <li><span class="home-number">{number}</span><div><h3>{title}</h3><p>{body}</p></div></li>)}</ol></section>
+<section class="home-section home-process sand"><HomeMedia id="factory-floor" alt="" class="home-factory-photo" /><div class="home-process-copy"><div class="home-heading"><p class="home-eyebrow">{c('process', 0)}</p><h2>{c('process', 1)}</h2><p class="home-lead">{c('process', 2)}</p></div>
+<ol class="home-steps">{steps.map(([number, title, body]) => <li><span class="home-number">{number}</span><div><h3>{title}</h3><p>{body}</p></div></li>)}</ol></div></section>
 <section class="home-section home-fabric"><div class="home-fabric-copy"><p class="home-eyebrow">{c('fabric', 0)}</p><h2>{c('fabric', 1)}</h2><p class="home-lead">{c('fabric', 2)}</p><a class="button secondary" href={href('/contact/') + '?subject=fabric-photos'}>{c('fabric', 3)}<span aria-hidden="true">{c('fabric', 4)}</span></a></div><div class="home-fabric-media"><HomeMedia id="fabric" alt="" /></div></section>
 <section class="home-section home-terms"><div class="home-terms-copy"><p class="home-terms-note">{c('terms', 0)}</p><h2>{c('terms', 1)}</h2><p class="home-lead">{c('terms', 2)}</p><div class="home-terms-media"><HomeMedia id="terms-one" alt="" /><HomeMedia id="terms-two" alt="" /></div></div>
 <dl class="home-terms-list">{terms.map(([label, value]) => <div><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
@@ -70,28 +69,25 @@ const image = (slug: string, file?: string) => {
  .home-lead{margin:0;font-size:var(--sy-text-lead);color:var(--sy-color-muted);max-width:none;}
  .home-number{font-family:var(--sy-font-heading);font-weight:var(--sy-weight-heading);font-size:var(--sy-text-h4);}
  .sand,.home-fabric-media{background:var(--sy-color-surface-alt);}
- /* HOME-BM 30:600 and 1136:119877: wholesale primary, two secondary models. */
- .home-tiles{padding-inline:0;}
- .home-tiles>.home-heading{margin-inline-start:var(--sy-space-section);padding-inline-end:var(--sy-space-section);}
- .home-tiles>.home-models{display:grid;gap:var(--sy-space-grid-x);max-width:calc(var(--sy-layout-desktop) - var(--sy-space-section) * 2);width:calc(100% - var(--side) * 2);margin-block-start:var(--sy-space-2xl);}
- .home-model{min-width:0;background:var(--sy-color-surface-alt);border-radius:var(--sy-radius-card);}
- .wholesale{display:grid;grid-template-columns:40% minmax(0,1fr);background:var(--sy-color-surface-alt);color:var(--sy-color-ink);}
- .wholesale-photo{height:400px;border-radius:var(--sy-radius-card);overflow:hidden;}
- .wholesale-photo :global(picture),.wholesale-photo :global(img){display:block;width:100%;height:100%;}
- .wholesale-photo :global(img){object-fit:cover;object-position:50% 0;border-radius:var(--sy-radius-card);}
- .model-copy{padding:var(--sy-space-card-pad);display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:var(--sy-space-xs);}
- .model-copy h3{margin:0;font-size:var(--sy-text-h3);font-weight:var(--sy-weight-heading);}
- .model-copy p{margin:0;color:var(--sy-color-muted);max-width:none;}
- .wholesale p{color:var(--sy-color-muted);}
- .model-copy .button{background:var(--sy-color-accent);color:var(--sy-color-on-accent);white-space:normal;}
- .secondary-models{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-grid-x);}
- /* Soft-B layered surface */
+ .home-tiles>.home-models{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sy-space-grid-x);margin-block-start:var(--sy-space-2xl);}
+ .home-model{min-width:0;display:flex;background:var(--sy-color-surface-alt);border-radius:var(--sy-radius-card);}
+ .home-model:first-child{background:var(--sy-color-ink);color:var(--sy-color-on-ink);}
+ .home-model:last-child{background:var(--sy-color-surface);}
+ .model-copy{width:100%;padding:var(--sy-space-card-pad);display:grid;grid-template-rows:subgrid;grid-row:span 3;gap:var(--sy-space-sm);}
+ .home-model{display:grid;grid-template-rows:subgrid;grid-row:span 3;}
+ .model-copy h3,.model-copy p{margin:0;max-width:none;}
+ .model-copy .button{justify-self:start;align-self:end;white-space:normal;}
+ .home-model:first-child .button{background:var(--sy-color-on-ink);color:var(--sy-color-ink);}
  .home-band{background:var(--sy-color-surface-alt);color:var(--sy-color-ink);}
  .home-band .home-eyebrow,.home-band .home-number{color:var(--sy-color-ink);}
- .home-benefits{list-style:none;margin:var(--sy-space-3xl) auto 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);align-items:start;}
+ .home-benefits{list-style:none;margin:var(--sy-space-3xl) auto 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);}
  .home-benefits h3{margin:var(--sy-space-md) 0 var(--sy-space-sm);}
  .home-benefits p{margin:0;color:var(--sy-color-muted);}
- .home-benefits li{padding-block-start:var(--sy-space-lg);}
+ .home-benefits li{padding:var(--sy-space-card-pad);background:var(--sy-color-surface);border-radius:var(--sy-radius-card);}
+ .home-process{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-xl);padding-block:var(--sy-space-gutter-lg);}
+ .home-process>*{width:100%;min-width:0;}
+ .home-process-copy{padding:var(--sy-space-card-pad);}
+ .home-factory-photo :global(img){width:100%;aspect-ratio:3/2;object-fit:cover;object-position:center top;border-radius:var(--sy-radius-image);}
  /* Process */
  .home-steps{list-style:none;margin:var(--sy-space-xl) auto 0;padding:0;display:grid;gap:var(--sy-space-lg);}
  .home-steps li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sy-space-lg);padding-block:var(--sy-space-md);}
@@ -99,11 +95,10 @@ const image = (slug: string, file?: string) => {
  .home-steps h3{margin:0 0 var(--sy-space-xs);font-size:var(--sy-text-lead);}
  .home-steps p{margin:0;color:var(--sy-color-muted);max-width:none;}
  /* Categories */
- .home-category-grid{list-style:none;margin:var(--sy-space-2xl) auto 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);align-items:start;}
- .home-category-grid a{display:block;text-decoration:none;color:inherit;}
+ .home-category-grid{list-style:none;margin:var(--sy-space-2xl) auto 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);align-items:stretch;}
+ .home-category-grid a{display:grid;grid-template-rows:auto 1fr;height:100%;text-decoration:none;color:inherit;}
  .home-category-grid img{width:100%;aspect-ratio:4 / 5;object-fit:cover;border-radius:var(--sy-radius-image);}
- .home-category-grid h3{margin:var(--sy-space-sm) 0 var(--sy-space-2xs);font-size:var(--sy-text-lead);}
- .home-category-grid p{margin:0;color:var(--sy-color-muted);}
+ .home-category-grid h3{min-block-size:2lh;margin:var(--sy-space-sm) 0 var(--sy-space-2xs);font-size:var(--sy-text-lead);}
  /* Fabric split */
  .home-fabric{display:grid;grid-template-columns:5fr 4fr;padding:0;background:var(--sy-color-surface-alt);color:var(--sy-color-ink);}
  .home-fabric>*{min-width:0;max-width:none;margin:0;}
@@ -134,9 +129,6 @@ const image = (slug: string, file?: string) => {
  .home-terms-list dd{margin:0;}
  @media(max-width:1023px){
   .home-section{--pad:var(--sy-space-section-sm);--side:var(--sy-space-gutter-md);}
-  .home-tiles>.home-heading{margin-inline-start:var(--sy-space-gutter-md);}
-  .wholesale{grid-template-columns:minmax(0,1fr);}
-  .wholesale-photo{height:300px;}
   .home-benefits{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-xl) var(--sy-space-xl);margin-block-start:var(--sy-space-2xl);}
   .home-category-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sy-space-grid-y) var(--sy-space-lg);}
   .home-fabric{grid-template-columns:416fr 352fr;}
@@ -146,10 +138,10 @@ const image = (slug: string, file?: string) => {
  }
  @media(max-width:650px){
   .home-section{--side:var(--sy-space-gutter-mobile);}
-  .home-tiles>.home-models,.secondary-models{gap:var(--sy-space-md);}
-  .home-tiles>.home-heading{margin-inline-start:var(--sy-space-gutter-mobile);}
-  .secondary-models{grid-template-columns:minmax(0,1fr);}
-  .wholesale-photo{height:240px;}
+  .home-process{grid-template-columns:minmax(0,1fr);padding-block:var(--sy-space-xl);}
+  .home-process-copy{padding:0;}
+  .home-tiles>.home-models{grid-template-columns:minmax(0,1fr);grid-auto-rows:1fr;gap:var(--sy-space-md);}
+  .home-model,.model-copy{grid-row:auto;grid-template-rows:auto 1fr auto;}
   .home-benefits{grid-template-columns:minmax(0,1fr);gap:var(--sy-space-lg);}
   .home-category-grid{gap:var(--sy-space-xl) var(--sy-space-md);}
   .home-fabric{grid-template-columns:minmax(0,1fr);}

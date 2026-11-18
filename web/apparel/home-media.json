@@ -70,5 +70,15 @@
     "authority": "Frozen Figma Home 30:560 imageHash 43c8b88290430702c8d55dca0b8fea2ddf3b9ecc",
     "width": 1448,
     "height": 1086
+  },
+  {
+    "id": "factory-floor",
+    "source": "fleet-20261104/launch-orchestration-20261112/project-control-02/wave9/assets/factory-owner-20261117/IMG_2611.jpg",
+    "sha256": "38749f24c6fb41fc086b84147a36239ad1caa237114c002fd0f8e84bf30c18e4",
+    "src": "/img/home/factory-floor.webp",
+    "authority": "Figma formal Home imageHash d6289a07c195fa1128a9f29189ccf2b0dd719681; factory-owner-20261117/SELECTION.md",
+    "width": 4031,
+    "height": 3023,
+    "rights": "owner-supplied factory photo"
   }
 ]

@@ -16,3 +16,10 @@ export function visibleChartSizes(chart: Chart) {
  return chart.sizes.map((size, index) => ({ size, index }))
   .filter(({ size }) => !chart.row_annotations?.[size]?.crossed_in_source);
 }
+
+/** Preserve the supplier range endpoints and convert only the weight column. */
+export function chartWeight(value: string, locale: string) {
+ if (locale === 'zh') return value;
+ const range = value.replace(/\d+/g, endpoint => String(Math.round(Number(endpoint) / 2))).replace(/斤(?:以下)?$/, '');
+ return value.endsWith('以下') ? '<' + range : range;
+}

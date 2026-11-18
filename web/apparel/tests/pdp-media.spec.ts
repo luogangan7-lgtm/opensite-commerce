@@ -101,7 +101,13 @@ for(const locale of ['en','ar','zh']) test(`structured size cells ${locale}`, as
   const rows=page.locator('[data-size-table] tbody tr');
   const visible=chart.sizes.map((size,index)=>({size,index})).filter(({size})=>!chart.row_annotations?.[size]?.crossed_in_source);
   await expect(rows).toHaveCount(visible.length);
-  for(const [i,{size,index}] of visible.entries())expect(await rows.nth(i).locator('th,td').allTextContents()).toEqual([size,...Object.values(chart.rows).map(values=>values[index]===null?'—':String(values[index]))]);
+  for(const [i,{size,index}] of visible.entries())expect(await rows.nth(i).locator('th,td').allTextContents()).toEqual([size,...Object.entries(chart.rows).map(([key,values])=>{
+   const cell=values[index];
+   if(cell===null) return '—';
+   if(key!=='weight_jin'||locale==='zh') return String(cell);
+   const kg=String(cell).match(/\d+/g)!.map(amount=>Math.round(Number(amount)/2)).join('-');
+   return (/^<|以下$/.test(String(cell)) ? '<' : '')+kg+(locale==='ar'?' كغ':' kg');
+  })]);
   await expect(page.locator('[data-pdp-media] figcaption')).toHaveCount(0);
   const floating=page.locator('.quote-float');await expect(floating).toHaveCSS('position','static');
  }

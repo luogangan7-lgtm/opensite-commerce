@@ -10,3 +10,7 @@ if(!image) throw Error(`Unknown Home master ${id}`);
 const srcset=image.width>640 ? `${image.src.replace('.webp','-640.webp')} 640w, ${image.src} ${Math.min(1024,image.width)}w` : undefined;
 ---
 <picture class={className} data-home-media={id}><img src={image.src} srcset={srcset} sizes="100vw" width={image.width} height={image.height} alt={alt} loading={hero?'eager':'lazy'} fetchpriority={hero?'high':undefined} decoding="async" /></picture>
+<style>
+/* The approved Figma fill warms and desaturates IMG_2611. The source stays SHA-bound. */
+[data-home-media="factory-floor"] img { filter:saturate(.42) contrast(.955) brightness(1.025) sepia(.15); }
+</style>

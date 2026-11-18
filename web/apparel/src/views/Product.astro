@@ -4,7 +4,7 @@ import Shell from '../layouts/Shell.astro';
 import { pdpMoq, pdpMoqValue } from '../data/owner-facts';
 import RFQ from '../components/RFQ.astro';
 import ProductGallery from '../components/ProductGallery.astro';
-import { productSizeChart, visibleChartSizes } from '../data/size-charts';
+import { chartWeight, productSizeChart, visibleChartSizes } from '../data/size-charts';
 import { products, type Product } from '../data/catalog';
 import ProductCard from '../components/ProductCard.astro';
 import { pdpMediaPair, orderedGallery, primaryColour } from '../data/gallery';
@@ -20,26 +20,38 @@ const gallery = orderedGallery(product.images);
 const mediaPair = pdpMediaPair(product.images);
 const fabric = product.images.find(image => image.role === 'fabric' && image.colour === primary);
 const chart = productSizeChart(product.slug);
-const measurements: Record<string, Key> = { length:'pdpLength', chest:'pdpChest', shoulder:'pdpShoulder', sleeve:'pdpSleeve', sleeve_width:'pdpSleeveWidth', rib_height:'pdpRib', sleeve_opening:'pdpSleeveOpening', hem:'pdpHem', weight_jin:'pdpWeight', top_length:'pdpTopLength', top_chest:'pdpTopChest', top_shoulder:'pdpShoulder', top_sleeve:'pdpSleeve', pants_waist:'pdpWaist', pants_hip:'pdpHip', pants_length:'pdpPantsLength' };
+const weightUnit = t.pdpWeightUnit;
+const isFleeceSample = product.slug === 'cotton430-hoodie-58065';
+const tolerance = chart && 'tolerance' in chart ? chart.tolerance.match(/±\d+-\d+/)?.[0].replace('-', '–') : isFleeceSample ? '±1–2' : undefined;
+const measurements: Record<string, Key> = { length:'pdpLength', chest:'pdpChest', shoulder:'pdpShoulder', sleeve:'pdpSleeve', sleeve_width:'pdpSleeveWidth', rib_height:'pdpRib', sleeve_opening:'pdpSleeveOpening', hem:'pdpHem', weight_jin:'pdpBodyWeight', top_length:'pdpTopLength', top_chest:'pdpTopChest', top_shoulder:'pdpShoulder', top_sleeve:'pdpSleeve', pants_waist:'pdpWaist', pants_hip:'pdpHip', pants_length:'pdpPantsLength' };
 const quickSpecs = [[t.pdpStyle, product.style_codes.join(' / ') || text.name], [t.pdpCategory, t[product.category as Key]], [t.pdpFabric, text.fabric_weight_fit], [t.moq, pdpMoqValue[locale]], ...(chart ? [[t.pdpSize, visibleChartSizes(chart).map(({size}) => size).join(' · ')]] : [])];
-const fullSpecs = [...quickSpecs, [t.productViews, text.colourway_note], ...['price','leadTime','sampleCost'].map(field => [t[field as Key], t.quote])];
+const fullSpecs = isFleeceSample ? [
+  [t.pdpGarment, t.pdp58065Garment],
+  [t.pdpChartSizes, 'M–5XL' + (locale === 'zh' ? ' 码' : '')],
+  [t.pdpShownColour, t.pdp58065Colour],
+  [t.pdpFabric, t.pdp58065Fabric],
+  [t.pdpFabricWeight, t.pdpQuoteConfirmed],
+  quickSpecs[3],
+] : [...quickSpecs, [t.productViews, text.colourway_note], ...['price','leadTime','sampleCost'].map(field => [t[field as Key], t.quote])];
 const alt = (image: typeof gallery[number], index: number) => digitalAlt(image.src, locale) || `${text.name}: ${t.view} ${index + 1}`;
 const lcpMobile = digitalAlt(gallery[0].src, locale) ? gallery[0].src.replace(/\.webp$/, '-640.webp') : undefined;
 // Keep the adopted related identity first, excluding the current PDP.
 const related = products.filter(p => p.category === product.category && p.slug !== product.slug);
 const featuredRelated = related.find(p => p.slug === 'apparel-70171');
-const relatedCards = (featuredRelated ? [featuredRelated, ...related.filter(p => p !== featuredRelated)] : related).slice(0, 4);
+const relatedCards = isFleeceSample
+  ? ['58063', '58064', '58066', '70046'].flatMap(code => related.filter(item => item.style_codes.includes(code)))
+  : (featuredRelated ? [featuredRelated, ...related.filter(p => p !== featuredRelated)] : related).slice(0, 4);
 ---
 <Shell title={text.name} lcpImage={gallery[0].src} lcpMobile={lcpMobile}>
-<section class="wrap pdp-section"><a href={getRelativeLocaleUrl(locale, `/collections/${product.category}/`)}>{t[product.category as Key]}</a><div class="pdp split"><ProductGallery product={product} /><div class="product-info"><h1>{text.name}</h1><p class="muted">{t.pdpStyle} · <bdi>{product.style_codes.join(' / ')}</bdi></p><p>{text.fabric_weight_fit}</p><p class="moq-line" data-commercial>{pdpMoq[locale]}</p><div class="actions"><a class="button" data-rfq-intent="quote" href={inquiryUrl('quote')}>{t.request}</a><a class="button secondary" data-rfq-intent="sample" href={inquiryUrl('sample')}>{t.requestSample}</a></div><p>{text.colourway_note}</p><table data-quick-spec><caption>{t.pdpQuick}</caption><tbody>{quickSpecs.map(([label,value]) => <tr><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table>{chart && <a href="#size-chart">{t.sizeChart}</a>}<p class="muted">{t.specText}</p></div></div></section>
-<section class="wrap split pdp-details"><div><h2>{t.pdpDetails}</h2><p>{text.name}</p><p>{text.fabric_weight_fit}</p><p>{text.colourway_note}</p></div><table data-full-spec><caption>{t.pdpSpecs}</caption><tbody>{fullSpecs.map(([label,value]) => <tr><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table></section>
+<section class="wrap pdp-section"><a href={getRelativeLocaleUrl(locale, `/collections/${product.category}/`)}>{t[product.category as Key]}</a><div class="pdp split"><ProductGallery product={product} /><div class="product-info"><h1>{isFleeceSample ? t.pdp58065Title : text.name}</h1><p class="muted">{t.pdpStyle} <bdi>{product.style_codes.join(' / ')}</bdi></p><p>{isFleeceSample ? t.pdp58065Subtitle : text.fabric_weight_fit}</p><p class="moq-line" data-commercial>{pdpMoq[locale]}</p><div class="actions"><a class="button" data-rfq-intent="quote" href={inquiryUrl('quote')}>{t.request}</a><a class="button secondary" data-rfq-intent="sample" href={inquiryUrl('sample')}>{t.requestSample}</a></div>{isFleeceSample && <p>{t.pdpFinishOnRequest}</p>}<p>{isFleeceSample ? t.pdp58065QuoteTiming : text.colourway_note}</p><table data-quick-spec><caption>{t.pdpQuick}</caption><tbody>{quickSpecs.map(([label,value]) => <tr><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table>{chart && <a href="#size-chart">{t.sizeChart}</a>}<p class="muted">{t.specText}</p></div></div></section>
+<section class="wrap split pdp-details"><div><h2>{t.pdpDetails}</h2><p>{isFleeceSample ? t.pdp58065Description : text.name}</p><p>{isFleeceSample ? t.pdp58065Order : text.fabric_weight_fit}</p><p>{isFleeceSample ? t.pdp58065SpecNote : text.colourway_note}</p></div><table data-full-spec><caption>{t.pdpSpecs}</caption><tbody>{fullSpecs.map(([label,value]) => <tr><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table></section>
 <section class="pdp-fabric"><div class="wrap"><h2>{t.pdpFabric}</h2>
   <div class="pdp-media" data-pdp-media><div class="pdp-media-pair">
     {fabric && <img data-pdp-fabric src={fabric.src} alt={alt(fabric, gallery.indexOf(fabric))} width="1200" height="1200" loading="lazy" decoding="async" />}
     <figure class="pdp-detail-card"><img data-pdp-detail src={mediaPair.detail.src} alt={alt(mediaPair.detail, gallery.indexOf(mediaPair.detail))} width="1200" height="1200" loading="lazy" decoding="async" /></figure>
   </div></div><p>{t.specText}</p>
 </div></section>
-{chart && <section class="wrap" id="size-chart"><h2>{t.sizeChart}</h2><div class="size-table-scroll" role="region" aria-label={t.sizeChart} tabindex="0"><table data-size-table><caption>{t.sizeChart} · {chart.unit}</caption><thead><tr><th scope="col">{t.pdpSize}</th>{Object.keys(chart.rows).map(key => <th scope="col" data-measurement={key}>{t[measurements[key]]}</th>)}</tr></thead><tbody>{visibleChartSizes(chart).map(({size,index}) => <tr><th scope="row"><bdi>{size}</bdi></th>{Object.entries(chart.rows).map(([key,values]) => <td data-measurement={key}><bdi>{values[index] ?? '—'}</bdi></td>)}</tr>)}</tbody></table></div></section>}
+{chart && <section class="wrap" id="size-chart"><h2>{t.sizeChart}</h2><p>{t.pdpMeasurements} · {t.pdpLengthUnit}{'weight_jin' in chart.rows && <> / {weightUnit}</>}{tolerance && <> · <bdi>{tolerance}</bdi> {t.pdpLengthUnit}</>}</p><div class="size-table-scroll" role="region" aria-label={t.sizeChart} tabindex="0"><table data-size-table><caption class="sr-only">{t.sizeChart}</caption><thead><tr><th scope="col">{t.pdpSize}</th>{Object.keys(chart.rows).map(key => <th scope="col" data-measurement={key}>{t[measurements[key]]}</th>)}</tr></thead><tbody>{visibleChartSizes(chart).map(({size,index}) => <tr><th scope="row"><bdi>{size}</bdi></th>{Object.entries(chart.rows).map(([key,values]) => <td data-measurement={key}>{key === 'weight_jin' && values[index] != null ? <><bdi>{chartWeight(String(values[index]), locale)}</bdi>{locale !== 'zh' && <> {weightUnit}</>}</> : <bdi>{values[index] ?? '—'}</bdi>}</td>)}</tr>)}</tbody></table></div><div class="size-swipe" aria-hidden="true"><p>{t.pdpSwipe}</p><span></span></div></section>}
 <section class="wrap split" id="inquiry"><div><h2>{t.makeYours}</h2><p>{t.briefText}</p></div><RFQ product={product.style_codes.join(' / ')} /></section>
 <section class="wrap pdp-related"><h2>{t.pdpRelated}</h2><div class="product-grid">{relatedCards.map(product => <ProductCard product={product} />)}</div></section>
 </Shell>
@@ -70,12 +82,45 @@ const relatedCards = (featuredRelated ? [featuredRelated, ...related.filter(p =>
   .pdp-details h2, .pdp-fabric h2, #size-chart h2 { font-size: var(--sy-text-h4); font-weight: var(--sy-weight-body); }
   .product-info .actions { display: grid; }
   .product-info p, .product-info h1, .product-info h2, .product-info table { margin: var(--sy-space-0); }
-  .moq-line { padding: var(--sy-space-md); background: var(--sy-color-surface-alt); }
+  [data-full-spec] { table-layout: fixed; align-self: start; }
+  [data-full-spec] th { width: 40%; }
+  [data-full-spec] th, [data-full-spec] td { padding-block: var(--sy-space-sm); }
   .pdp-details { border-block-start: var(--sy-space-hair) solid var(--sy-color-hairline); }
   .pdp-fabric { background: var(--sy-color-surface-alt); color: var(--sy-color-ink); }
-  .size-table-scroll { overflow-x: auto; }
-  .size-table-scroll th, .size-table-scroll td { padding-inline-end: var(--sy-space-lg); white-space: nowrap; }
+  #size-chart { padding-block: var(--sy-space-2xl); }
+  #size-chart > p { margin-block: var(--sy-space-lg); font-size: var(--sy-text-small); }
+  .size-table-scroll { overflow-x: auto; border: var(--sy-space-hair) solid var(--sy-color-hairline); border-radius: var(--sy-radius-inner); background: var(--sy-color-surface); }
+  .size-table-scroll thead, .size-table-scroll th:first-child { background: var(--sy-color-surface-alt); }
+  .size-table-scroll th, .size-table-scroll td { height: var(--sy-space-2xl); padding: var(--sy-space-xs) var(--sy-space-lg); text-align: center; font-size: var(--sy-text-small); font-weight: var(--sy-weight-body); }
+  .size-swipe { display: none; }
+  .size-table-scroll table { margin-block: 0; }
+  @media (max-width: 768px) {
+    .size-table-scroll { overflow-x: scroll; scrollbar-color: var(--sy-color-border) var(--sy-color-surface-alt); }
+    .size-table-scroll table { min-width: max-content; }
+    .size-table-scroll tr > :not(:first-child) { min-width: calc(var(--sy-space-section) + var(--sy-space-xl)); }
+    .size-swipe { display: grid; gap: var(--sy-space-lg); margin-block-start: var(--sy-space-lg); }
+    .size-swipe p { margin: 0; font-size: var(--sy-text-eyebrow); }
+    .size-swipe span { height: var(--sy-space-2xs); border-radius: var(--sy-radius-pill); background: var(--sy-color-hairline); }
+    .size-swipe span::before { display: block; content: ''; height: 100%; width: var(--chart-thumb-width, 40%); margin-inline-start: var(--chart-thumb-offset, 0%); border-radius: inherit; background: var(--sy-color-accent); }
+    #size-chart { padding-block: var(--sy-space-gutter-mobile); }
+    .size-table-scroll tr > :first-child { position: sticky; inset-inline-start: 0; background: var(--sy-color-surface-alt); }
+  }
+  .size-table-scroll th, .size-table-scroll td { white-space: nowrap; }
   .eyebrow { font-family: var(--sy-font-body); font-size: var(--sy-text-eyebrow); }
   @media (max-width: 1100px) { .pdp, .pdp-details { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 767px) { .pdp-media-pair { grid-template-columns: minmax(0, 1fr); } }
 </style>
+
+<script>
+  const scroller = document.querySelector<HTMLElement>('.size-table-scroll');
+  const swipe = document.querySelector<HTMLElement>('.size-swipe');
+  if (scroller && swipe) {
+    const update = () => {
+      const width = scroller.scrollWidth;
+      swipe.style.setProperty('--chart-thumb-width', `${100 * scroller.clientWidth / width}%`);
+      swipe.style.setProperty('--chart-thumb-offset', `${100 * Math.abs(scroller.scrollLeft) / width}%`);
+    };
+    new ResizeObserver(update).observe(scroller);
+    scroller.addEventListener('scroll', update, { passive: true });
+  }
+</script>
