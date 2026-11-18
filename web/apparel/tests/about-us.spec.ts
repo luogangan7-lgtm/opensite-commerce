@@ -47,13 +47,13 @@ for (const width of [1440,768,390]) {
     expect(edges.overflow).toBeLessThanOrEqual(1);
   });
   // Like imagery.spec.ts, actual image bytes require a packaged artifact, never the raw CI build.
-  test(`packaged About portrait decodes and retains SHA-bound headroom at ${width}`, async ({ page, request }) => {
+  test(`packaged About portrait decodes and retains its SHA-bound source at ${width}`, async ({ page, request }) => {
     test.skip(!process.env.APPAREL_PREVIEW_URL && process.env.APPAREL_PACKAGED_DIST !== '1', 'Requires packaged preview or local CI-artifact packaging acceptance');
     const response = await request.get('/deploy-manifest.json');
     expect(response.status()).toBe(200);
     const manifest = await response.json();
     expect(manifest.sha).toBe(process.env.APPAREL_PACKAGED_SHA || process.env.GITHUB_SHA);
-    const portrait = media.find(image => image.id === 'collections')!;
+    const portrait = media.find(image => image.id === 'factory-portrait')!;
     expect(manifest.aboutMedia.find((image: {id:string}) => image.id === portrait.id).sha256).toBe(portrait.sha256);
     await page.setViewportSize({width,height:1000});
     await page.goto('/about-us/');

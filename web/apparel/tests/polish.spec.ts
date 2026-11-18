@@ -6,7 +6,7 @@ for (const width of [1440, 768, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     for (const path of ['/', '/collections/']) {
       await page.goto(path);
-      const gaps = await page.locator('a.button:has(> span[aria-hidden="true"])').evaluateAll(nodes => nodes.map(node => {
+      const gaps = await page.locator('a.button:visible:has(> span[aria-hidden="true"])').evaluateAll(nodes => nodes.map(node => {
         const arrow = node.querySelector('span[aria-hidden="true"]')!.getBoundingClientRect();
         const range = document.createRange(); range.selectNodeContents(node.firstChild!);
         const text = range.getBoundingClientRect();

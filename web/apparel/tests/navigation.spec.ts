@@ -52,7 +52,8 @@ for (const locale of ['en', 'zh', 'ar']) {
     const first = menu.locator('nav a').first();
     await expect(first).toBeFocused();
     await expect(first).toHaveAttribute('aria-current', 'page');
-    expect(await page.locator('header').evaluate(element => Number(getComputedStyle(element).zIndex))).toBeGreaterThan(await page.locator('.quote-float').evaluate(element => Number(getComputedStyle(element).zIndex)));
+    await expect(page.locator('.quote-float')).toHaveCount(0);
+    await expect(page.locator('footer')).toHaveAttribute('inert', '');
     for (const route of ['/', '/collections/', '/oem-odm/', '/about/', '/contact/']) {
       await expect(menu.locator(`:scope > nav a[href="${prefix}${route}"]`)).toBeVisible();
     }

@@ -30,7 +30,7 @@ for (const v of variables) {
     const mobile = mode.name === 'Mobile';
     expect(normalized(tokens.get(name + (mobile ? '-mobile' : '')))).toBe(value(v,mode.modeId));
     if (mobile) {
-      const block = styles.match(/@media \(max-width: 650px\)\s*\{\s*:root\s*\{([^}]+)\}/)?.[1] || '';
+      const block = styles.match(/@media \(max-width: 650px\)\s*\{\s*body\s*\{([^}]+)\}/)?.[1] || '';
       expect(declarations(block).get(name)).toBe(`var(--${name}-mobile)`);
     }
   });

@@ -31,7 +31,7 @@ for (const locale of languages) for (const route of routes) {
       expect(text).toContain('91430105MA7J4C1WX7');
       await expect(page.locator('.legal-updated')).toContainText(launchDates[locale]);
       expect(text).not.toContain('OWNER-INPUT');
-      expect(await page.locator('.service-copy > div > p').allTextContents()).toEqual(legalCopy[locale as keyof typeof legalCopy][route as 'privacy' | 'terms'][2].map(section => section[1]));
+      expect(await page.locator('.service-copy > div > p > [data-legal-text]').allTextContents()).toEqual(legalCopy[locale as keyof typeof legalCopy][route as 'privacy' | 'terms'][2].map(section => section[1]));
       await expect(page.locator('#rfq-form')).toHaveCount(0);
     }
     if (route === 'privacy') {
@@ -67,9 +67,22 @@ for (const locale of ['en', 'zh', 'ar']) for (const width of [1440, 768, 390]) t
     await expect(page.locator('.quote-float')).toHaveCount(0);
     if (route === '404') {
       await expect(page.locator('.error-code')).toHaveCSS('font-size', '88px');
-      await expect(page.locator('.recovery-card').first()).toHaveCSS('background-color', 'rgb(244, 240, 231)');
+      await expect(page.locator('.recovery-card').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(page.locator('.recovery-card img')).toHaveCount(0);
     } else {
-      await expect(page.locator('h1')).toHaveCSS('font-size', width === 390 ? '36px' : '56px');
+      await expect(page.locator('h1')).toHaveCSS('font-size', width < 900 ? '36px' : '56px');
+      const contents = page.locator('.legal-contents');
+      if (width < 900) {
+        await expect(contents).toBeVisible();
+        await contents.locator('summary').click();
+        const firstSection = contents.locator('a').first();
+        await expect(firstSection).toHaveAttribute('href', '#section-1');
+        await firstSection.click();
+        expect(new URL(page.url()).hash).toBe('#section-1');
+        await contents.locator('summary').click();
+      } else {
+        await expect(contents).toBeHidden();
+      }
       const column = await page.locator('.service-copy').boundingBox();
       expect(Math.round(column!.x + column!.width / 2)).toBe(width / 2);
       const container = (await page.locator('.legal-page').boundingBox())!;
@@ -78,7 +91,7 @@ for (const locale of ['en', 'zh', 'ar']) for (const width of [1440, 768, 390]) t
       expect(Math.round(container.x + container.width)).toBe(Math.round(header.x + header.width));
       const heading = (await page.locator('h1').boundingBox())!;
       expect(Math.round(locale === 'ar' ? heading.x + heading.width : heading.x)).toBe(Math.round(locale === 'ar' ? column!.x + column!.width : column!.x));
-      expect(await page.locator('.service-copy > div > p').first().evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe(Math.min(760, width - (width === 390 ? 48 : 96)));
+      expect(await page.locator('.service-copy > div > p').first().evaluate(el => Math.round(el.getBoundingClientRect().width))).toBe((width < 900 ? 342 : 760));
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `evidence/cp-legal-${route}-${locale}-${width}.png`, fullPage: true });

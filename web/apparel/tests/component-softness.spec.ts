@@ -7,7 +7,7 @@ const classes = {
  card: '.card, .home-model, .home-form, .rfq, .cookie-banner, .success-card, .recovery-card, .pdp-detail-card',
  'image-card': '.image-card, .gallery > picture, .wholesale-photo',
  thumb: '.gallery-thumbs a, .gallery-colours button',
- 'info-box': '.info-box, .moq-line, .home-promo, .collection-promo, .capability-panel, .brief-panel, .capabilities-strip, .form-status',
+ 'info-box': '.info-box, .moq-line, .home-promo, .collection-promo, .form-status',
  input: 'input:not([type=hidden]), textarea',
  tab: '[role=tab], .tab, .category-links a, .shop-tabs a',
  chip: '.chip, .facet, .home-badge, [data-shop-facet]',
@@ -106,6 +106,9 @@ for (const width of [1440, 768, 390]) test(`soft component radii and secondary h
    await testInfo.attach(`home-body-last-line-${width}`, { body: JSON.stringify(lastWords), contentType: 'application/json' });
   }
   if (route === '/sampling/') {
+   const band = page.locator('.capabilities-strip');
+   await expect(band).toHaveCSS('border-radius', '0px');
+   expect((await band.boundingBox())!.width).toBe(width);
    const headings = page.getByRole('heading', { name: 'Labels & packaging', exact: true });
    expect(await headings.count()).toBeGreaterThan(0);
    for (const heading of await headings.all()) {
