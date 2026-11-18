@@ -75,7 +75,7 @@ for (const locale of ['en', 'ar', 'zh'] as const) for (const width of [390, 768,
           return canvas.fillStyle === color;
         }, error);
         expect(await statusMatchesError()).toBe(true);
-        for (const [name, value] of Object.entries({ first_name: 'Test', last_name: 'Buyer', email: 'buyer@example.invalid', quantity_note: '42', message: 'Test' })) {
+        for (const [name, value] of Object.entries({ first_name: 'Test', last_name: 'Buyer', email: 'buyer@example.invalid', company: 'Test buyer', quantity_note: '42', message: 'Test' })) {
           await form.locator(`[name=${name}]`).fill(value);
         }
         await submit.click();
