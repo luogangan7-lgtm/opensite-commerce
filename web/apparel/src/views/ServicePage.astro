@@ -55,6 +55,6 @@ const legal = kind === 'privacy' || kind === 'terms';
     .legal-contents summary { min-block-size: calc(var(--sy-space-xl) + var(--sy-space-sm)); align-content: center; font-weight: var(--sy-weight-body); }
   }
   @media (651px <= width <= 900px) {
-    .legal-page { padding-block-start: var(--sy-space-2xl); }
+    .legal-page { width: calc(100% - 2 * var(--sy-space-gutter-mobile)); padding-block-start: var(--sy-space-2xl); }
   }
 </style>

@@ -103,7 +103,7 @@ for(const locale of ['en','ar','zh']) test(`structured size cells ${locale}`, as
   await expect(rows).toHaveCount(visible.length);
   for(const [i,{size,index}] of visible.entries())expect(await rows.nth(i).locator('th,td').allTextContents()).toEqual([size,...Object.values(chart.rows).map(values=>values[index]===null?'—':String(values[index]))]);
   await expect(page.locator('[data-pdp-media] figcaption')).toHaveCount(0);
-  const floating=page.locator('.quote-float');await expect(floating).toHaveCSS('position','static');
+  await expect(page.locator('.quote-float')).toHaveCount(0);
  }
 });
 

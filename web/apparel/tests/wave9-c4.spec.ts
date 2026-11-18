@@ -26,12 +26,21 @@ for (const locale of ['en', 'ar', 'zh']) for (const width of [390, 768, 1440]) {
     const base = locale === 'en' ? '/' : `/${locale}/`;
     await page.goto(base + 'about-us/');
     await page.evaluate(() => document.fonts.ready);
+    await expect(page.locator('main h2').first()).toHaveCSS('font-weight', '400');
     await expectAligned(page.locator('.about-catalog'), 'a', ['img', 'span']);
     await expectAligned(page.locator('.about-ways'), 'li', ['h3', 'p']);
     await expectAligned(page.locator('.about-terms'), '.about-copy', ['h3', 'p']);
     await expect(page.locator('.quote-float')).toHaveCount(0);
     if (width === 390) await expect(page.locator('[data-menu-toggle]').filter({ hasText: '≡' })).toBeVisible();
-    if (width === 1440) await expect(page.locator('.header-inner > .button')).toContainText(locale === 'ar' ? '←' : '→');
+    if (width === 1440) {
+      const cta = page.locator('header .button:visible');
+      const switcher = page.locator('header .language-switcher');
+      await expect(cta).toContainText(locale === 'ar' ? '←' : '→');
+      await expect(switcher.locator('.nav-caret')).toBeVisible();
+      expect((await switcher.boundingBox())!.x).toBeLessThan((await cta.boundingBox())!.x);
+    }
+    await expect(page.locator('footer nav a').first()).toHaveCSS('color', 'rgb(201, 194, 178)');
+    await expect(page.locator('.footer-legal bdi')).toHaveText('© 2026 Sourcyo Apparel');
     if (locale === 'zh') await expect(page.locator('footer a[href$="/oem-odm/"]')).toHaveText('OEM / ODM');
     await page.goto(base + 'oem-odm/');
     await page.evaluate(() => document.fonts.ready);
@@ -39,5 +48,15 @@ for (const locale of ['en', 'ar', 'zh']) for (const width of [390, 768, 1440]) {
     await expectAligned(page.locator('.workflow'), 'article', ['img', 'h3', 'p']);
     await page.goto(base + (locale === 'en' ? '404.html' : '404/'));
     await expectAligned(page.locator('.recovery-grid'), 'a', ['span', 'p']);
+    await expect(page.locator('.error-code')).toHaveCSS('font-family', /Literata/);
+    await expect(page.locator('.recovery-card > span').first()).toHaveCSS('border-bottom-width', '0px');
+    if (locale === 'ar' && width === 390) {
+      await page.goto(base + 'sampling/');
+      await expect(page.locator('main h1')).toHaveCSS('font-size', '26px');
+      await expect(page.locator('.capabilities-strip')).toHaveCSS('border-radius', '0px');
+      await expect(page.locator('.intro + .capabilities-strip')).toHaveCSS('width', '390px');
+    }
+    await page.goto(base + 'collections/');
+    await expect(page.locator('.quote-float')).toHaveCount(0);
   });
 }

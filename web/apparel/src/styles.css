@@ -17,7 +17,7 @@ img { border-radius: var(--sy-radius-image); display: block; max-width: 100%; he
 h1, h2, h3 { font-family: var(--sy-font-heading); font-weight: var(--sy-weight-heading); line-height: 1.15; overflow-wrap: anywhere; }
 h1, h2, h3, h4 { text-wrap: balance; }
 h1 { font-size: var(--sy-text-h1); margin-block: var(--sy-space-grid-x); }
-h2 { font-size: var(--sy-text-h2); margin-block: 0 var(--sy-space-grid-x); }
+h2 { font-size: var(--sy-text-h2); font-weight: var(--sy-weight-body); margin-block: 0 var(--sy-space-grid-x); }
 h3 { font-weight: var(--sy-weight-title); font-size: var(--sy-text-h4); }
 p { max-width: 70ch; }
 p, .lead { text-wrap: pretty; }
@@ -76,7 +76,6 @@ picture img { width: 100%; }
 .language-switcher nav { border-radius: var(--sy-radius-card); box-shadow: var(--sy-shadow-card); position: absolute; inset-inline-end: 0; inset-block-start: 100%; background: var(--sy-color-canvas); border: var(--sy-space-hair) solid var(--sy-color-border); padding: var(--sy-space-grid-x); min-width: 10rem; display: grid; gap: .5rem; z-index: 3; }
 .language-switcher a { min-height: 36px; }
 .language-switcher [aria-current] { color: var(--sy-color-accent); text-decoration: underline; }
-.quote-float { position: static; z-index: 2; max-width: 100%; }
 .category-links { display: flex; flex-wrap: wrap; gap: var(--sy-space-grid-x); margin-block: var(--sy-space-grid-y); }
 .product-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sy-space-group); }
 .tile { text-decoration: none; min-width: 0; background: var(--sy-color-surface); border-radius: var(--sy-radius-card); box-shadow: var(--sy-shadow-card); }
@@ -195,4 +194,4 @@ footer { padding-block-end: var(--sy-space-section-sm); }
 }
 
 /* Bounded information surfaces share the card token; full-bleed page sections retain their own geometry. */
-.moq-line, .home-promo, .collection-promo, .capability-panel, .brief-panel, .capabilities-strip, .recovery-card, .form-status, .pdp-detail-card { border-radius: var(--sy-radius-card); }
+.moq-line, .home-promo, .collection-promo, .capability-panel, .brief-panel, .recovery-card, .form-status, .pdp-detail-card { border-radius: var(--sy-radius-card); }

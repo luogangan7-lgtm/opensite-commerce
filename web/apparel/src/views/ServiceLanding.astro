@@ -35,7 +35,7 @@ const photographs = ['catalog-hoodie', 'catalog-green', 'catalog-crew'];
 </> : <>
 {sample && <section class="capabilities-strip"><div class="svc-wrap"><p class="eyebrow">{cap(1005)}</p><h3>{cap(1006)}</h3><div class="four">{groups.map((n,i) => <article data-capability-group={n}><h3>{capHeading(i===3 ? 1010 : n)}</h3><p>{cap(i===3 ? 1011 : 1007+i)}</p></article>)}</div></div></section>}
 {phases.map(([kicker,number,heading,body], i) => <section class:list={{inverse:i===1,phase:true}}><div class="svc-wrap"><div class:list={{split:true,reverse:i===1}}><div class="phase-copy"><p class="eyebrow">{c(kicker)}</p><p class="step-number">{c(number)}</p><h2>{c(heading)}</h2><p class="lead">{c(body)}</p></div><ServiceMedia id={photographs[i]} alt="" /></div></div></section>)}
-{sample ? <section><div class="svc-wrap"><p class="eyebrow">{c(865)}</p><h2>{c(866)}</h2><p class="lead">{c(867)}</p></div></section> : <section><div class="svc-wrap"><p class="eyebrow">{c(881)}</p><h2>{c(882)}</h2><div class="three">{[883,886,889].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{n===889 ? <a href="mailto:sales@sourcyowear.com"><bdi>{c(n+2)}</bdi></a> : c(n+2)}</p></article>)}</div></div></section>}
+{sample ? <section class="seasonal"><div class="svc-wrap"><p class="eyebrow">{c(865)}</p><h2>{c(866)}</h2><p class="lead">{c(867)}</p></div></section> : <section><div class="svc-wrap"><p class="eyebrow">{c(881)}</p><h2>{c(882)}</h2><div class="three">{[883,886,889].map(n => <article><p class="eyebrow">{c(n)}</p><h3>{c(n+1)}</h3><p>{n===889 ? <a href="mailto:sales@sourcyowear.com"><bdi>{c(n+2)}</bdi></a> : c(n+2)}</p></article>)}</div></div></section>}
 </>}
 <section class="inverse quote"><div class="svc-wrap"><p class="eyebrow">{c(848)}</p><h2>{c(oem ? 849 : sample ? 868 : 892)}</h2><p class="lead">{c(850)}</p><a class="button" data-service-rfq href={href}>{t.shellRequest} <span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a></div></section>
 </div>
@@ -88,11 +88,12 @@ p { max-inline-size: none; margin: 0; }
 .phase-copy h2 { font-size: var(--sy-text-h3); }
 .step-number { font: var(--sy-weight-heading) var(--sy-text-h2)/1.2 var(--sy-font-heading); }
 .reverse .phase-copy { order: 1; }
-.capabilities-strip { padding-block: var(--sy-space-section-sm); }
+.capabilities-strip { padding-block: var(--sy-space-section-sm); background: var(--sy-color-placeholder); }
 @media(max-width:900px) {
  .svc-wrap { margin-inline: var(--sy-space-gutter-mobile); }
  section { padding-block: var(--sy-space-section-sm); }
  h1,h2 { font-size: var(--sy-text-h2-mobile); }
+ [data-service-page="sampling"]:lang(ar) .intro h1, [data-service-page="sampling"]:lang(ar) .seasonal h2 { font-size: var(--sy-text-h3-mobile); }
  .quote h2 { font-size: var(--sy-text-h3-mobile); }
  h3,.phase-copy h2,.capability-panel h2,.brief-panel h2 { font-size: var(--sy-text-h3-mobile); }
  .three,.matrix,.split,.opening { grid-template-columns: minmax(0,1fr); }
@@ -107,5 +108,8 @@ p { max-inline-size: none; margin: 0; }
  .workflow :global(img) { block-size: 320px; aspect-ratio: 4 / 5; }
  .techniques figure { inline-size: 100%; max-inline-size: calc((var(--sy-layout-mobile) - 3 * var(--sy-space-lg)) / 2); }
  .reverse .phase-copy { order: 0; }
+}
+@media (max-width: 650px) {
+ .capabilities-strip { padding-block: var(--sy-space-2xl); }
 }
 </style>

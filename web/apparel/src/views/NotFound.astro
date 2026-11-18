@@ -19,14 +19,15 @@ const labels = [t.collections, t.details, t.oem, t.quote];
 <style>
   .recovery { display: grid; justify-items: center; gap: var(--sy-space-lg); padding: var(--sy-space-section-sm) var(--sy-space-gutter-lg); text-align: center; border: 0; }
   .recovery > * { margin: 0; }
-  .error-code { font: var(--sy-weight-heading) 88px/1.2 var(--sy-font-heading); }
+  .error-code { font: var(--sy-weight-body) 88px/1.2 Literata, serif; }
   .recovery h1 { font-weight: var(--sy-weight-body); font-size: var(--sy-text-h3); }
   .recovery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-lg); width: min(100%, 768px); }
   .recovery-card { display: grid; grid-template-rows: subgrid; grid-row: span 2; gap: var(--sy-space-sm); padding-block: var(--sy-space-xs); text-align: start; text-decoration: none; }
-  .recovery-card > span { display: flex; justify-content: space-between; align-items: center; gap: var(--sy-space-sm); border-block-end: var(--sy-space-hair) solid var(--sy-color-hairline); }
+  .recovery-card > span { display: flex; justify-content: space-between; align-items: center; gap: var(--sy-space-sm); line-height: 1.375; }
   .recovery-card:hover > span { text-decoration: underline; }
-  .recovery-card p { margin: 0; font-size: var(--sy-text-small); }
+  .recovery-card p { margin: 0; font-size: var(--sy-text-small); line-height: 1.36; }
   .recovery-card > span { font-family: var(--sy-font-heading); font-size: 24px; }
+  .recovery-card:lang(ar) > span, .recovery-card:lang(ar) p { line-height: 2.125; }
 
   @media (max-width: 900px) {
     .recovery { padding-block: var(--sy-space-lg); padding-inline: var(--sy-space-gutter-mobile); }
