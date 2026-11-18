@@ -46,8 +46,10 @@ const relatedCards = (featuredRelated ? [featuredRelated, ...related.filter(p =>
 
 
 <style>
-.pdp-related { width: min(100% - 2 * var(--sy-space-gutter-lg), calc(var(--sy-layout-desktop) - 2 * var(--sy-space-gutter-lg))); }
-@media (max-width: 650px) { .pdp-related { width: calc(100% - 2 * var(--sy-space-gutter-mobile)); } }
+.pdp-related { padding-block: var(--sy-space-2xl) var(--sy-space-lg); width: min(100% - 2 * var(--sy-space-gutter-lg), calc(var(--sy-layout-desktop) - 2 * var(--sy-space-gutter-lg))); }
+.pdp-related h2 { margin-block-end: var(--sy-space-2xl); }
+@media (max-width: 1024px) { .pdp-related { padding-block-start: var(--sy-space-xl); } .pdp-related h2 { margin-block-end: var(--sy-space-xl); } }
+@media (max-width: 650px) { .pdp-related { padding-block: var(--sy-space-2xl) var(--sy-space-lg); width: calc(100% - 2 * var(--sy-space-gutter-mobile)); } }
   /* FD1 Gallery G-detail variants; existing tokens, primary-colour media only. */
   .pdp-detail-card { margin: var(--sy-space-0); }
   .pdp-media-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sy-space-grid-x); align-items: start; }
