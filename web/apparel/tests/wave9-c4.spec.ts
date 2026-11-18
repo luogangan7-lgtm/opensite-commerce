@@ -44,6 +44,7 @@ for (const locale of ['en', 'ar', 'zh']) for (const width of [390, 768, 1440]) {
     if (locale === 'zh') await expect(page.locator('footer a[href$="/oem-odm/"]')).toHaveText('OEM / ODM');
     await page.goto(base + 'oem-odm/');
     await page.evaluate(() => document.fonts.ready);
+    await expect(page.locator('main')).toHaveCSS('background-color', 'rgb(248, 244, 236)');
     const band = page.locator('.matrix-band');
     const matrix = band.locator('.matrix');
     await expect(band).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -63,6 +64,7 @@ for (const locale of ['en', 'ar', 'zh']) for (const width of [390, 768, 1440]) {
     await expectAligned(page.locator('[data-techniques]'), 'figure', ['img', 'h3', 'p']);
     await expectAligned(page.locator('.workflow'), 'article', ['img', 'h3', 'p']);
     await page.goto(base + (locale === 'en' ? '404.html' : '404/'));
+    await expect(page.locator('main')).toHaveCSS('background-color', 'rgb(248, 244, 236)');
     await expectAligned(page.locator('.recovery-grid'), 'a', ['span', 'p']);
     await expect(page.locator('.error-code')).toHaveCSS('font-family', /Literata/);
     await expect(page.locator('.recovery-card > span').first()).toHaveCSS('border-bottom-width', '0px');
