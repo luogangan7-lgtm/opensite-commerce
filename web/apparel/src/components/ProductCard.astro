@@ -11,7 +11,9 @@ interface Props { product: Product; listing?: boolean; shortName?: string }
 const { product, listing = false, shortName } = Astro.props;
 const locale = pageLocale(Astro.url), t = dictionaries[locale];
 const fullName = productText[locale][product.slug].name;
-const name = shortName ?? (t[shopNameKeys[product.style_codes[0]] as Key] || fullName);
+const nameKey = product.category === 'cotton430-hoodie' ? 'cp-shop/figma-0008' : shopNameKeys[product.style_codes[0]];
+const label = shortName ?? (t[nameKey as Key] || fullName);
+const name = locale === 'zh' ? label.replace(/T\s*恤/gu, '短袖上衣') : label;
 const { front, back } = cardViews(product);
 const families = shopFacts(product).colour as Family[];
 const colourCount = t[`cp-shop/colours-${new Intl.PluralRules(locale).select(families.length)}` as Key].replace('{n}', String(families.length));

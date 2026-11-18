@@ -9,7 +9,7 @@ import zh from '../src/i18n/zh.json' with { type: 'json' };
 import enProducts from '../src/i18n/products.en.json' with { type: 'json' };
 import zhProducts from '../src/i18n/products.zh.json' with { type: 'json' };
 const cardTitle = (locale: string, sku: string) => identities.find(identity => identity.slug === sku)!.localized_titles[locale as keyof typeof identities[0]['localized_titles']];
-const listingTitle=(locale:string,sku:string)=>{const p=products.find(p=>p.slug===sku)!;const key=shopNameKeys[p.style_codes[0]];return key?JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`,import.meta.url),'utf8'))[key]:cardTitle(locale,sku);};
+const listingTitle=(locale:string,sku:string)=>{const p=products.find(p=>p.slug===sku)!;const key=shopNameKeys[p.style_codes[0]];return key?JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`,import.meta.url),'utf8'))[key]:locale==='zh'?cardTitle(locale,sku).replace(/T\s*恤/gu,'短袖上衣'):cardTitle(locale,sku);};
 const slug = products[0].slug;
 test('contact prefill and language switching retain path/query/fragment', async ({ page }) => {
   await page.goto(`/contact/?product=${slug}&type=sample&subject=fabric-photos#rfq-form`);
@@ -156,7 +156,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) 
         await expect(card).toHaveAttribute('href', `${prefix}/products/${sku}/`);
         await expect(card).toHaveAttribute('title', cardTitle(locale, sku));
         if (origin === '/') await expect(card).not.toBeEmpty();
-        else await expect(card).toHaveText(cardTitle(locale, sku));
+        else await expect(card).toHaveText(listingTitle(locale, sku));
         await card.click();
         await expect(page).toHaveURL(`${prefix}/products/${sku}/`);
         await expect(page.locator('h1')).toHaveText(cardTitle(locale, sku));

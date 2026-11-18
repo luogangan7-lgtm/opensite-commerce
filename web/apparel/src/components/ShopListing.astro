@@ -46,7 +46,7 @@ const facetLabel = (key: string, value: string) => t[`cp-shop/${key}-${value}` a
  {!category && <p class="shop-shown" data-shop-shown role="status" hidden />}
  <button type="button" data-shop-more hidden>{label('more')}</button>
  </div></div>
- <aside class="shop-b2b"><div><h2>{t['cp-shop/figma-0055']}</h2><p>{t['cp-shop/figma-0057']}</p><div class="shop-terms"><p class="shop-owner-ready">{shopReadyMoq(locale)}</p><p class="shop-owner-custom">{shopCustomMoq(locale)}</p><a href={getRelativeLocaleUrl(locale,'/sampling/')}>{t.samples}</a><a href={getRelativeLocaleUrl(locale,'/shipping/')}>{t['about.order-ship-title']}</a><span>EXW / FOB</span></div></div><a class="button" href={getRelativeLocaleUrl(locale, '/contact/') + '#rfq-form'}>{t.request} <span aria-hidden="true">→</span></a></aside>
+ <aside class="shop-b2b"><div><h2>{t['cp-shop/figma-0055']}</h2><p>{t['cp-shop/figma-0057']}</p><div class="shop-terms"><p class="shop-owner-ready">{shopReadyMoq(locale)}</p><p class="shop-owner-custom">{shopCustomMoq(locale)}</p><a href={getRelativeLocaleUrl(locale,'/sampling/')}>{t.samples}</a><span>EXW / FOB</span></div></div><a class="button" href={getRelativeLocaleUrl(locale, '/contact/') + '#rfq-form'}>{t.request} <span aria-hidden="true">→</span></a></aside>
 </div>
 <script>
 import { pageSize, selectStyles, setShopQuery, shopFacets, type ShopFacet } from '../data/shop';
@@ -154,7 +154,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-shop]')) {
 [data-shop-more]{display:flex;margin-block:var(--sy-space-xl)}
 [data-shop-more][hidden]{display:none}
 .shop-b2b{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--sy-space-lg);padding:var(--sy-space-gutter-lg);margin-inline:calc(-1 * var(--sy-space-gutter-lg));margin-block-start:var(--sy-space-section-sm);background:var(--sy-color-surface-alt);border:var(--sy-space-0);border-radius:var(--sy-radius-card)}
-.shop-b2b h2{font-size:var(--sy-text-h3);margin:0}.shop-b2b>p{margin:0}
+.shop-b2b h2{font-size:var(--sy-text-h2);margin:0}.shop-b2b p{margin-block:var(--sy-space-xs)}
 .shop-terms{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sy-space-xs)}
 .shop-terms p{margin:0}.shop-terms > :not(:last-child)::after{content:" /";margin-inline-start:var(--sy-space-2xs)}
 @media(max-width:1024px){.shop-b2b{padding:var(--sy-space-gutter-md);margin-inline:calc(-1 * var(--sy-space-gutter-md))}.shop-tabs{gap:var(--sy-space-xs);padding-block:0 var(--sy-space-xs);scrollbar-width:thin}.shop-tabs [aria-current]{order:-1}.shop-filter-open:not([hidden]){display:inline-flex!important}.shop[data-enhanced="true"] .shop-layout>.shop-filters{display:none}.shop-filter-dialog .shop-facet-list{grid-template-columns:1fr}.shop{width:calc(100% - 2 * var(--sy-space-gutter-md))}.shop-layout{grid-template-columns:minmax(0,1fr)}.shop-facet-list{grid-template-columns:repeat(3,minmax(0,1fr))}.shop-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}

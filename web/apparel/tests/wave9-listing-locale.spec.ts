@@ -20,7 +20,12 @@ for (const locale of ['ar', 'zh']) test(`localized catalog copy ${locale}`, asyn
     ['/', '.home-products'], ['/products/cotton430-hoodie-58065/', '.product-grid'],
   ]) {
     await page.goto(`/${locale}${path}`);
-    const copy = await page.locator(selector).innerText();
+    const scope = page.locator(selector);
+    const labels = await scope.locator('.product-card-title').allTextContents();
+    expect(labels.length).toBeGreaterThan(0);
+    // All styles renders the rest of the catalog for progressive enhancement and pagination.
+    if (path === '/collections/') expect(labels).toHaveLength(products.length);
+    const copy = [await scope.innerText(), ...labels].join(' ');
     const words = copy.match(/[\p{Script=Latin}][\p{Script=Latin}\d.-]*/gu) ?? [];
     expect([...new Set(words.filter(word => !allowed.has(word.toLowerCase())))], path).toEqual([]);
   }
