@@ -19,7 +19,7 @@ test('all 115 served PDPs use their own primary whole and same-colour structure'
 });
 for(const [locale,t] of Object.entries(dictionaries)) test(`caption ${locale}`,async({page})=>{
  await page.goto(path(locale));
- await expect(page.locator('[data-pdp-media] figcaption')).toHaveCount(0);
+ await expect(page.locator('[data-pdp-media] [data-gallery-tile=structure] figcaption')).toBeVisible();
  const translations = JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`, import.meta.url),'utf8'));
  const productText = JSON.parse(readFileSync(new URL(`../src/i18n/products.${locale}.json`, import.meta.url),'utf8'));
  const detailAlt = await page.locator('[data-pdp-detail]').getAttribute('alt');
@@ -101,8 +101,14 @@ for(const locale of ['en','ar','zh']) test(`structured size cells ${locale}`, as
   const rows=page.locator('[data-size-table] tbody tr');
   const visible=chart.sizes.map((size,index)=>({size,index})).filter(({size})=>!chart.row_annotations?.[size]?.crossed_in_source);
   await expect(rows).toHaveCount(visible.length);
-  for(const [i,{size,index}] of visible.entries())expect(await rows.nth(i).locator('th,td').allTextContents()).toEqual([size,...Object.values(chart.rows).map(values=>values[index]===null?'—':String(values[index]))]);
-  await expect(page.locator('[data-pdp-media] figcaption')).toHaveCount(0);
+  for(const [i,{size,index}] of visible.entries())expect(await rows.nth(i).locator('th,td').allTextContents()).toEqual([size,...Object.entries(chart.rows).map(([key,values])=>{
+   const cell=values[index];
+   if(cell===null) return '—';
+   if(key!=='weight_jin'||locale==='zh') return String(cell);
+   const kg=String(cell).match(/\d+/g)!.map(amount=>Math.round(Number(amount)/2)).join('-');
+   return (/^<|以下$/.test(String(cell)) ? '<' : '')+kg+(locale==='ar'?' كغ':' kg');
+  })]);
+  await expect(page.locator('[data-pdp-media] [data-gallery-tile=structure] figcaption')).toBeVisible();
   await expect(page.locator('.quote-float')).toHaveCount(0);
  }
 });

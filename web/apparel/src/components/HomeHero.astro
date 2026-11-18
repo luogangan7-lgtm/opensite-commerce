@@ -8,18 +8,18 @@ const locale=pageLocale(Astro.url), t=dictionaries[locale];
 const bm=(key:string)=>t[`home.bm.${key}` as Key];
 const models=[
  {eyebrow:bm("hero-eyebrow"),title:bm("hero-title"),body:bm("hero-body"),cta:bm("wholesale-cta"),href:getRelativeLocaleUrl(locale,"/collections/")},
- ...["private","custom"].map(model=>({eyebrow:bm(`${model}-title`),title:bm(`${model}-benefit`),body:bm(`${model}-get`),cta:bm(`${model}-cta`),href:getRelativeLocaleUrl(locale,model==="private"?"/collections/":"/oem-odm/")+(model==="private"?"?intent=private-label":"")}))
+ ...["private","custom"].map(model=>({eyebrow:bm(`${model}-title`),title:bm(model==="private"?"hero-private-title":`${model}-benefit`),body:bm(model==="private"?"hero-private-body":`${model}-get`),cta:bm(model==="private"?"hero-private-cta":`${model}-cta`),href:getRelativeLocaleUrl(locale,model==="private"?"/collections/":"/oem-odm/")+(model==="private"?"?intent=private-label":"")}))
 ];
-const slides=['hero-visit','hero-overhead','hero-lifestyle'];
+const slides=['hero-visit','factory-floor','hero-lifestyle'];
 const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
 ---
 <section class="hero home-hero" data-home-carousel data-active="0" data-pause={text(16)} data-play={text(17)} role="region" aria-label={bm("ways-kicker")}>
  <div class="hero-visual">
-  {slides.map((id,i)=><div class:list={['hero-photo',{'is-active':i===0}]} data-slide data-title={models[i].title} data-eyebrow={models[i].eyebrow} data-body={models[i].body} data-cta={models[i].cta} data-href={models[i].href} aria-hidden="true"><HomeMedia id={id} alt="" hero={i===0} class="hero-picture" /></div>)}
+  {slides.map((id,i)=><div class:list={['hero-photo',{'is-active':i===0,'factory-slide':id==='factory-floor'}]} data-slide data-title={models[i].title} data-eyebrow={models[i].eyebrow} data-body={models[i].body} data-cta={models[i].cta} data-href={models[i].href} aria-hidden="true"><HomeMedia id={id} alt="" hero={i===0} class="hero-picture" /></div>)}
   <div class="hero-shade"></div>
-  <div class="hero-content"><p class="eyebrow" data-hero-eyebrow>{models[0].eyebrow}</p><h1 data-hero-title>{models[0].title}</h1><p class="hero-sub" data-hero-body>{models[0].body}</p><a class="button secondary" data-hero-cta href={models[0].href}><span data-hero-cta-label>{models[0].cta}</span><span aria-hidden="true">→</span></a></div>
+  <div class="hero-content"><p class="eyebrow" data-hero-eyebrow>{models[0].eyebrow}</p><h1 data-hero-title>{models[0].title}</h1><p class="hero-sub" data-hero-body>{models[0].body}</p><a class="button secondary" data-hero-cta href={models[0].href}><span data-hero-cta-label>{models[0].cta}</span><span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a></div>
   <div class="hero-dots" role="group" aria-label={bm("ways-kicker")}>{slides.map((_,i)=><button type="button" data-slide-to={i} aria-label={models[i].title.replaceAll('\n',' ')} aria-pressed={i===0}><span aria-hidden="true">{i===0?'●':'○'}</span></button>)}</div>
-  <p class="hero-counter" dir="ltr" aria-live="polite" aria-atomic="true"><span data-slide-counter>1</span> / 3</p>
+  <p class="hero-counter" aria-live="polite" aria-atomic="true"><bdi><span data-slide-counter>1</span> / 3</bdi></p>
   <button class="hero-playback" type="button" data-playback>{text(16)}</button>
  </div>
  <dl class="hero-facts">{[7,9,11,13].map(n=><div><dt>{text(n)}</dt><dd dir={n===13?'ltr':undefined}>{text(n+1)}</dd></div>)}</dl>
@@ -66,7 +66,7 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
 <style>
  /* Values bind the frozen 687:135326 / 135395 / 135464 geometry and FD2 reactions;
     shared color, spacing and type remain project tokens. */
- .home-hero { --home-photo-height:768px; --home-facts-height:112px; --home-copy-top:200px; --home-gutter:var(--sy-space-section); --home-control:44px; --home-autoplay-ms:6000; --home-crossfade:400ms; position:relative;display:block;min-height:0;padding:0;border:var(--sy-space-0);color:var(--sy-color-on-ink);background:var(--sy-color-ink); }
+ .home-hero { --home-photo-height:768px; --home-facts-height:69px; --home-copy-top:200px; --home-gutter:var(--sy-space-section); --home-control:44px; --home-autoplay-ms:6000; --home-crossfade:400ms; position:relative;display:block;min-height:0;padding:0;border:var(--sy-space-0);color:var(--sy-color-on-ink);background:var(--sy-color-ink); }
  .hero-visual{height:var(--home-photo-height);position:relative;isolation:isolate;}
  .hero-photo,.hero-shade{position:absolute;inset:0;z-index:-2;overflow:hidden;}
  .hero-photo{opacity:0;transition:opacity var(--home-crossfade) ease-in-out;}
@@ -74,7 +74,8 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
  .hero-shade{z-index:-1;opacity:.66;background:var(--sy-color-overlay);}
  .hero-photo :global(picture){position:absolute;inset:0;}
  .hero-photo :global(img){border-radius:var(--sy-radius-none);width:100%;height:100%;object-fit:cover;object-position:50% 0;}
- :global([dir=rtl]) .hero-photo{transform:scaleX(-1);}
+ :global([dir=rtl]) .hero-photo:not(.factory-slide){transform:scaleX(-1);}
+ .factory-slide :global(img){object-position:center;}
  .hero-content{position:absolute;inset-inline-start:var(--home-gutter);top:var(--home-copy-top);padding:0;max-width:calc(100% - var(--home-gutter) * 2);}
  .eyebrow{font-size:var(--sy-text-eyebrow);font-weight:var(--sy-weight-label);margin:0 0 var(--sy-space-lg);}
  h1{white-space:pre-line;max-width:880px;font-size:var(--sy-text-h1);line-height:1.1;margin:0 0 var(--sy-space-lg);}
@@ -86,29 +87,29 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
  .hero-dots{position:absolute;inset-inline-end:var(--sy-space-md);top:calc(50% - var(--home-control) * 1.5);display:grid;}
  .hero-dots button{min-height:var(--home-control);width:var(--home-control);padding:0;background:transparent;color:inherit;border:var(--sy-space-0);border-radius:var(--sy-radius-pill);}
  .hero-dots span{font-size:var(--sy-text-h4);}
- .hero-counter,.hero-playback{position:absolute;inset-inline-end:var(--sy-space-gutter-lg);}
- .hero-counter{bottom:var(--sy-space-section);margin:0;font-size:var(--sy-text-eyebrow);}
- .hero-playback{bottom:var(--sy-space-lg);min-height:var(--home-control);min-width:var(--sy-space-section);padding:var(--sy-space-xs) var(--sy-space-md);}
- .hero-facts{height:var(--home-facts-height);margin:0;padding:var(--sy-space-lg) var(--home-gutter);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);}
- .hero-facts dt{font-size:var(--sy-text-eyebrow);font-weight:var(--sy-weight-label);margin-bottom:var(--sy-space-xs);}
- .hero-facts dd{margin:0;font-size:var(--sy-text-small);}
+ .hero-counter,.hero-playback{position:absolute;bottom:var(--sy-space-section-sm);}
+ .hero-counter{inset-inline-end:var(--home-gutter);margin:0;padding-block:var(--sy-space-sm);font-size:var(--sy-text-eyebrow);}
+ .hero-playback{inset-inline-start:var(--home-gutter);min-height:var(--home-control);min-width:var(--sy-space-section);padding:var(--sy-space-xs) var(--sy-space-md);}
+ .hero-facts{height:var(--home-facts-height);margin:0;padding:var(--sy-space-md) var(--home-gutter);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sy-space-lg);}
+ .hero-facts dt{font-size:var(--sy-text-eyebrow);font-weight:var(--sy-weight-label);margin-bottom:var(--sy-space-2xs);line-height:var(--sy-space-md);}
+ .hero-facts dd{margin:0;font-size:var(--sy-text-small);line-height:17px;}
  @media(max-width:1023px){
   .home-hero{--home-photo-height:688px;--home-copy-top:184px;--home-gutter:var(--sy-space-gutter-md);}
   h1{font-size:var(--sy-text-h2);}
   .hero-photo:nth-child(3) :global(img){object-position:77.3636% 0;}
  }
- @media(max-width:650px){
-  .home-hero{--home-photo-height:560px;--home-facts-height:168px;--home-copy-top:176px;--home-gutter:var(--sy-space-gutter-mobile);}
+ @media(max-width:768px){
+  .home-hero{--home-photo-height:560px;--home-facts-height:122px;--home-copy-top:176px;--home-gutter:var(--sy-space-gutter-mobile);}
   /* Long locale copy must grow the hero instead of covering carousel controls. */
   .hero-visual{height:auto;min-height:var(--home-photo-height);}
-  .hero-content{position:relative;inset-inline-start:auto;top:auto;max-width:none;margin-inline:var(--home-gutter);padding-block:var(--home-copy-top) calc(var(--sy-space-section) + var(--sy-space-2xl));}
+  .hero-content{position:relative;inset-inline-start:auto;top:auto;max-width:none;margin-inline:var(--home-gutter);padding-block:var(--home-copy-top) var(--sy-space-section);}
   h1{font-size:var(--sy-text-h1-mobile);}
   .hero-sub{font-size:var(--sy-text-body);}
-  .hero-dots{inset-inline-end:auto;inset-inline-start:50%;top:auto;bottom:var(--sy-space-lg);transform:translateX(-50%);display:flex;direction:ltr;}
-  :global([dir=rtl]) .hero-dots{transform:translateX(50%);}
-  .hero-playback{inset-inline-end:var(--home-gutter);min-width:80px;bottom:calc(var(--sy-space-section-sm) + var(--sy-space-md));}
-  .hero-counter{inset-inline-end:auto;inset-inline-start:var(--home-gutter);bottom:calc(var(--sy-space-section-sm) + var(--sy-space-md));}
-  .hero-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding-block:var(--sy-space-lg);gap:var(--sy-space-lg);}
+  .hero-content:lang(ar) .button{display:flex;width:fit-content;margin-inline-start:auto;flex-direction:row-reverse;}
+  .hero-dots{inset-inline-end:auto;left:50%;top:auto;bottom:var(--sy-space-lg);transform:translateX(-50%);display:flex;direction:ltr;}
+  .hero-playback{min-width:80px;bottom:calc(var(--sy-space-section-sm) + var(--sy-space-md));}
+  .hero-counter{bottom:calc(var(--sy-space-section-sm) + var(--sy-space-md));}
+  .hero-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding-block:var(--sy-space-md);gap:var(--sy-space-md);}
   .hero-photo:nth-child(3) :global(img){position:absolute;max-width:none;width:146.285714%;height:146.285714%;inset-inline-start:-38.74%;top:0;object-position:83.6935% 0;}
  }
  @media(prefers-reduced-motion:reduce){.hero-photo{transition-duration:0s;}}

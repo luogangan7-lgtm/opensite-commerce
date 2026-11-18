@@ -16,6 +16,12 @@ test('digital delivery includes a 640px candidate without altering the master', 
   await packageDigital({source:'master.png',src:'/img/test.webp',sha256},dir,dir);
   const mobile = await sharp(`${dir}/img/test-640.webp`).metadata();
   expect([mobile.width,mobile.height]).toEqual([640,800]);
+  await packageDigital({
+   source:'master.png',src:'/img/crop.webp',sha256,
+   crop:{left:100,top:300,width:1000,height:500},
+  },dir,dir);
+  const cropped = await sharp(`${dir}/img/crop-640.webp`).metadata();
+  expect([cropped.width,cropped.height]).toEqual([640,320]);
   expect(readFileSync(input)).toEqual(bytes);
  } finally { rmSync(dir,{recursive:true,force:true}); }
 });

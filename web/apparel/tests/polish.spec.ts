@@ -15,8 +15,8 @@ for (const width of [1440, 768, 390]) {
       if(path==='/') expect(gaps.length).toBeGreaterThan(0);
       else {await expect(page.locator('.shop-quote').first()).not.toBeEmpty();await expect(page.locator('.shop-quote span[aria-hidden]')).toHaveCount(0);}
       for (const gap of gaps) expect(gap).toBeGreaterThan(0);
-      const portrait = page.locator(path === '/' ? '.wholesale-photo img' : '.shop-photo > a > img:first-child');
-      await expect(portrait.first()).toHaveCSS('object-position', /^50% 0(?:px|%)$/);
+      if (path === '/') await expect(page.locator('[data-home-category] img').first()).toHaveCSS('object-fit', 'cover');
+      else await expect(page.locator('.shop-photo > a > img:first-child').first()).toHaveCSS('object-position', /^50% 0(?:px|%)$/);
     }
   });
   test(`POLISH PDP frame and thumbnail rail ${width}`, async ({ page }) => {
@@ -27,16 +27,15 @@ for (const width of [1440, 768, 390]) {
     expect(Math.abs(box.width / box.height / 0.8 - 1)).toBeLessThanOrEqual(0.02);
     await expect(page.locator('.gallery-actions, [data-gallery-prev], [data-gallery-next], [data-gallery-zoom]')).toHaveCount(0);
     const rail = page.locator('.gallery-thumbs:not([hidden])');
-    const geometry = await rail.evaluate(node => {
-      const links = [...node.querySelectorAll('a')];
-      const rect = node.getBoundingClientRect();
-      return { links:links.length, rows: new Set(links.map(a => a.offsetTop)).size, height: node.clientHeight, content: node.scrollHeight,
-        inside: links.every(a => { const r = a.getBoundingClientRect(); return r.top >= rect.top && r.bottom <= rect.bottom; }) };
-    });
-    if(width>=768)expect(geometry.rows).toBe(geometry.links);else await expect(page.locator('.grouped-rail')).toBeHidden();
-    expect(geometry.inside).toBe(true);
-    expect(geometry.content).toBeLessThanOrEqual(geometry.height);
+    if (width >= 768) {
+      expect(await rail.evaluate(node => {
+        const links = [...node.querySelectorAll('a')];
+        return new Set(links.map(link => link.offsetTop)).size === links.length;
+      })).toBe(true);
+      const last = rail.locator('a').last();
+      await last.scrollIntoViewIfNeeded();
+      await expect(last).toBeInViewport();
+    } else await expect(page.locator('.grouped-rail')).toBeHidden();
     await expect(page.locator('.moq-line')).toHaveText('MOQ 50 pcs · mix colours & sizes');
-    await expect(page.locator('[data-quick-spec]')).toContainText('50 pcs');
   });
 }

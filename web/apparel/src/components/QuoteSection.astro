@@ -30,6 +30,12 @@ const t = dictionaries[pageLocale(Astro.url)];
   .quote-contact-inline { grid-template-columns: minmax(0, calc(var(--sy-space-section) + var(--sy-space-split))) minmax(0, 1fr); align-items: center; gap: var(--sy-space-md); }
   .quote-contact-inline .rfq-contact-links { font-size: var(--sy-text-small); }
 }
+@media (min-width: 768px) and (max-width: 1023px) {
+  .home-closing { gap: var(--sy-space-xl); padding-block: var(--sy-space-gutter-mobile); }
+  .home-closing .quote-contact { gap: var(--sy-space-xs); }
+  .home-closing .quote-contact :global(img) { width: min(100%, 342px); aspect-ratio: 19 / 20; }
+  .home-closing .rfq-contact-links { line-height: 1.3; }
+}
 @media (max-width: 767px) {
   .quote-section { padding: var(--sy-space-gutter-mobile); }
   .quote-contact:not(.quote-contact-inline) :global(img) { aspect-ratio: 1 / 1; }

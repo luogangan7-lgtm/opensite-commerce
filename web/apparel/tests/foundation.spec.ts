@@ -9,6 +9,14 @@ import zh from '../src/i18n/zh.json' with { type: 'json' };
 import enProducts from '../src/i18n/products.en.json' with { type: 'json' };
 import zhProducts from '../src/i18n/products.zh.json' with { type: 'json' };
 const cardTitle = (locale: string, sku: string) => identities.find(identity => identity.slug === sku)!.localized_titles[locale as keyof typeof identities[0]['localized_titles']];
+// The F3 PDP heading is shorter than the full product name carried on the card.
+const f3HoodieTitles: Partial<Record<string,string>> = {
+  en: 'Fleece pullover hoodie',
+  ar: 'هودي ببطانة فليس',
+  zh: '加绒套头帽衫',
+};
+const pdpTitle = (locale: string, sku: string) =>
+  (sku === 'cotton430-hoodie-58065' && f3HoodieTitles[locale]) || cardTitle(locale, sku);
 const listingTitle=(locale:string,sku:string)=>{const p=products.find(p=>p.slug===sku)!;const key=shopNameKeys[p.style_codes[0]];return key?JSON.parse(readFileSync(new URL(`../src/i18n/${locale}.json`,import.meta.url),'utf8'))[key]:locale==='zh'?cardTitle(locale,sku).replace(/T\s*恤/gu,'短袖上衣'):cardTitle(locale,sku);};
 const slug = products[0].slug;
 test('contact prefill and language switching retain path/query/fragment', async ({ page }) => {
@@ -66,10 +74,14 @@ test('15s timeout disables duplicates and allows retry without clearing fields',
 for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar']) {
   const prefix = locale === 'en' ? '' : `/${locale}`;
   for (const route of [`products/${slug}`, 'shipping']) {
-    test(`non-contact success ${locale} ${route}`, async ({ page }) => {
+    test(`quote success from ${locale} ${route}`, async ({ page }) => {
       await page.route('**/api/rfq', route => route.fulfill({ status: 201, contentType: 'application/json', body: '{}' }));
       await page.goto(`${prefix}/${route}/`);
       if (route === 'shipping') await page.locator('[data-service-rfq]').click();
+      else {
+        await page.locator('[data-rfq-intent=quote]').click();
+        await expect(page.locator('[name=product_slug]')).toHaveValue(slug);
+      }
       await fill(page);
       await page.locator('button[type="submit"]').click();
       await expect(page).toHaveURL(`${prefix}/contact/?sent=1`);
@@ -128,13 +140,12 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) 
       const card = page.locator('[data-shop-card]').filter({ has: page.locator('bdi', { hasText: new RegExp(`^${style}$`) }) });
       while(!await card.isVisible() && await page.locator('[data-shop-more]').isVisible()) await page.locator('[data-shop-more]').click();
       await expect(card).toHaveCount(1);
-      const title = cardTitle(locale, sku);
       await expect(card.locator('h2')).toHaveText(listingTitle(locale,sku));
       const entrance=card.locator('h2 a');
       await expect(entrance).toHaveAttribute('href', `${prefix}/products/${sku}/`);
       await entrance.click();
       await expect(page).toHaveURL(`${prefix}/products/${sku}/`);
-      await expect(page.locator('h1')).toHaveText(title);
+      await expect(page.locator('h1')).toHaveText(pdpTitle(locale, sku));
       await expect(page.locator('.product-info > .muted bdi')).toHaveText(style);
       await expect(page.locator('html')).toHaveAttribute('lang', locale);
       await expect(page.locator('html')).toHaveAttribute('dir', locale === 'ar' ? 'rtl' : 'ltr');
@@ -159,7 +170,7 @@ for (const locale of ['en', 'zh', 'es', 'fr', 'de', 'pt', 'ru', 'ar'] as const) 
         else await expect(card).toHaveText(listingTitle(locale, sku));
         await card.click();
         await expect(page).toHaveURL(`${prefix}/products/${sku}/`);
-        await expect(page.locator('h1')).toHaveText(cardTitle(locale, sku));
+        await expect(page.locator('h1')).toHaveText(pdpTitle(locale, sku));
       }
     });
   }

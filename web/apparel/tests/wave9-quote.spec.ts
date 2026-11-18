@@ -44,8 +44,14 @@ for (const locale of ['en', 'ar', 'zh'] as const) for (const width of [390, 768,
       } else if (route === '/contact/') {
         expect(Math.abs(photo.y + photo.height / 2 - copy.y - copy.height / 2)).toBeLessThanOrEqual(2);
       } else {
-        expect(Math.abs(photo.x - card.x)).toBeLessThanOrEqual(2);
-        expect(Math.abs(photo.width - card.width)).toBeLessThanOrEqual(2);
+        const photoStart = photo.x + (locale === 'ar' ? photo.width : 0);
+        const cardStart = card.x + (locale === 'ar' ? card.width : 0);
+        expect(Math.abs(photoStart - cardStart)).toBeLessThanOrEqual(2);
+        expect(Math.abs(photo.width - (width === 768 ? 342 : card.width))).toBeLessThanOrEqual(2);
+        if (width === 768) {
+          expect(Math.abs(photo.height - 360)).toBeLessThanOrEqual(2);
+          expect(Math.abs(card.y - copy.y - copy.height - 32)).toBeLessThanOrEqual(2);
+        }
       }
       if (route === '/contact/' && width === 390) {
         const height = await page.evaluate(() => document.documentElement.scrollHeight);
