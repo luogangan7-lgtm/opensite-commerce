@@ -36,6 +36,11 @@ for (const width of [390, 768, 1440]) for (const locale of ['en', 'ar', 'zh']) {
     expect(panels).toHaveLength(3);
     expect.soft(delta(panels.map(panel => panel.height)), 'ways to buy panel height').toBeLessThanOrEqual(2);
     expect.soft(delta(buttons.map((button, i) => panels[i].y + panels[i].height - button.y - button.height)), 'ways to buy CTA inset').toBeLessThanOrEqual(2);
+    if (width <= 768) {
+      const dots = await page.locator('.hero-dots').boundingBox();
+      expect(dots).not.toBeNull();
+      expect(Math.abs(dots!.x + dots!.width / 2 - width / 2)).toBeLessThanOrEqual(2);
+    }
     const [counter, pause] = await Promise.all(['.hero-counter', '[data-playback]'].map(selector => page.locator(selector).boundingBox()));
     expect(counter && pause && (counter.x + counter.width <= pause.x || pause.x + pause.width <= counter.x || counter.y + counter.height <= pause.y || pause.y + pause.height <= counter.y)).toBe(true);
   });

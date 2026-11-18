@@ -15,9 +15,9 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
 ---
 <section class="hero home-hero" data-home-carousel data-active="0" data-pause={text(16)} data-play={text(17)} role="region" aria-label={bm("ways-kicker")}>
  <div class="hero-visual">
-  {slides.map((id,i)=><div class:list={['hero-photo',{'is-active':i===0}]} data-slide data-title={models[i].title} data-eyebrow={models[i].eyebrow} data-body={models[i].body} data-cta={models[i].cta} data-href={models[i].href} aria-hidden="true"><HomeMedia id={id} alt="" hero={i===0} class="hero-picture" /></div>)}
+  {slides.map((id,i)=><div class:list={['hero-photo',{'is-active':i===0,'factory-slide':id==='factory-floor'}]} data-slide data-title={models[i].title} data-eyebrow={models[i].eyebrow} data-body={models[i].body} data-cta={models[i].cta} data-href={models[i].href} aria-hidden="true"><HomeMedia id={id} alt="" hero={i===0} class="hero-picture" /></div>)}
   <div class="hero-shade"></div>
-  <div class="hero-content"><p class="eyebrow" data-hero-eyebrow>{models[0].eyebrow}</p><h1 data-hero-title>{models[0].title}</h1><p class="hero-sub" data-hero-body>{models[0].body}</p><a class="button secondary" data-hero-cta href={models[0].href}><span data-hero-cta-label>{models[0].cta}</span><span aria-hidden="true">→</span></a></div>
+  <div class="hero-content"><p class="eyebrow" data-hero-eyebrow>{models[0].eyebrow}</p><h1 data-hero-title>{models[0].title}</h1><p class="hero-sub" data-hero-body>{models[0].body}</p><a class="button secondary" data-hero-cta href={models[0].href}><span data-hero-cta-label>{models[0].cta}</span><span aria-hidden="true">{locale === 'ar' ? '←' : '→'}</span></a></div>
   <div class="hero-dots" role="group" aria-label={bm("ways-kicker")}>{slides.map((_,i)=><button type="button" data-slide-to={i} aria-label={models[i].title.replaceAll('\n',' ')} aria-pressed={i===0}><span aria-hidden="true">{i===0?'●':'○'}</span></button>)}</div>
   <p class="hero-counter" aria-live="polite" aria-atomic="true"><bdi><span data-slide-counter>1</span> / 3</bdi></p>
   <button class="hero-playback" type="button" data-playback>{text(16)}</button>
@@ -74,7 +74,8 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
  .hero-shade{z-index:-1;opacity:.66;background:var(--sy-color-overlay);}
  .hero-photo :global(picture){position:absolute;inset:0;}
  .hero-photo :global(img){border-radius:var(--sy-radius-none);width:100%;height:100%;object-fit:cover;object-position:50% 0;}
- :global([dir=rtl]) .hero-photo{transform:scaleX(-1);}
+ :global([dir=rtl]) .hero-photo:not(.factory-slide){transform:scaleX(-1);}
+ .factory-slide :global(img){object-position:center;}
  .hero-content{position:absolute;inset-inline-start:var(--home-gutter);top:var(--home-copy-top);padding:0;max-width:calc(100% - var(--home-gutter) * 2);}
  .eyebrow{font-size:var(--sy-text-eyebrow);font-weight:var(--sy-weight-label);margin:0 0 var(--sy-space-lg);}
  h1{white-space:pre-line;max-width:880px;font-size:var(--sy-text-h1);line-height:1.1;margin:0 0 var(--sy-space-lg);}
@@ -104,8 +105,7 @@ const text=(n:number)=>t[`home.hero.${String(n).padStart(2,'0')}` as Key];
   .hero-content{position:relative;inset-inline-start:auto;top:auto;max-width:none;margin-inline:var(--home-gutter);padding-block:var(--home-copy-top) var(--sy-space-section);}
   h1{font-size:var(--sy-text-h1-mobile);}
   .hero-sub{font-size:var(--sy-text-body);}
-  .hero-dots{inset-inline-end:auto;inset-inline-start:50%;top:auto;bottom:var(--sy-space-lg);transform:translateX(-50%);display:flex;direction:ltr;}
-  :global([dir=rtl]) .hero-dots{transform:translateX(50%);}
+  .hero-dots{inset-inline-end:auto;left:50%;top:auto;bottom:var(--sy-space-lg);transform:translateX(-50%);display:flex;direction:ltr;}
   .hero-playback{min-width:80px;bottom:calc(var(--sy-space-section-sm) + var(--sy-space-md));}
   .hero-counter{bottom:calc(var(--sy-space-section-sm) + var(--sy-space-md));}
   .hero-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding-block:var(--sy-space-md);gap:var(--sy-space-md);}

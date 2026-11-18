@@ -77,8 +77,14 @@
     "sha256": "38749f24c6fb41fc086b84147a36239ad1caa237114c002fd0f8e84bf30c18e4",
     "src": "/img/home/factory-floor.webp",
     "authority": "Figma formal Home imageHash d6289a07c195fa1128a9f29189ccf2b0dd719681; factory-owner-20261117/SELECTION.md",
-    "width": 4031,
-    "height": 3023,
-    "rights": "owner-supplied factory photo"
+    "width": 1781,
+    "height": 950,
+    "rights": "owner-supplied factory photo",
+    "crop": {
+      "left": 1079,
+      "top": 780,
+      "width": 1781,
+      "height": 950
+    }
   }
 ]
