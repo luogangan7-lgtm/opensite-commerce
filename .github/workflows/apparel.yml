@@ -39,7 +39,7 @@ jobs:
   apparel:
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       SEO_BUILD_MODE: ${{ inputs.release == true && 'production' || 'preview' }}
       PUBLIC_GA4_ID: ${{ inputs.release == true && vars.APPAREL_GA4_ID || '' }}
