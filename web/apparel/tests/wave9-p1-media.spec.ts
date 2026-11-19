@@ -1,4 +1,4 @@
-/** WAVE9 P1 verifies single-view image coverage and the restored Home hero image. */
+/** WAVE9 P1 verifies single-view image coverage and centring, plus the restored Home hero image. */
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import products from '../src/data/products.json' with { type: 'json' };
 
@@ -12,12 +12,14 @@ async function expectFilled(image: Locator, label: string) {
   const coverage = await image.evaluate((node: HTMLImageElement) => {
     const frame = node.closest('picture')!.getBoundingClientRect();
     const box = node.getBoundingClientRect();
+    const area = node.closest('[data-gallery-slides]')!.getBoundingClientRect();
     const { objectFit, objectPosition } = getComputedStyle(node);
     const scale = (objectFit === 'cover' ? Math.max : Math.min)(
       box.width / node.naturalWidth, box.height / node.naturalHeight,
     );
     return {
       objectFit, objectPosition,
+      centerDelta: Math.abs((box.left + box.right - area.left - area.right) / 2),
       gap: Math.max(
         box.left - frame.left, frame.right - box.right,
         box.top - frame.top, frame.bottom - box.bottom,
@@ -27,6 +29,7 @@ async function expectFilled(image: Locator, label: string) {
   });
   expect.soft(coverage.objectFit, label).toBe('cover');
   expect.soft(coverage.objectPosition, label).toBe('50% 50%');
+  expect.soft(coverage.centerDelta, label + ' horizontal centre').toBeLessThanOrEqual(2);
   if (packaged) expect.soft(coverage.gap, label).toBeLessThanOrEqual(1);
 }
 
@@ -54,6 +57,16 @@ for (const width of widths) for (const locale of ['en', 'ar', 'zh']) {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await checkGallery(page, prefix, sample, width);
+    if (width === 390) {
+      // The published catalog supplies a structure crop, so exercise the existing Fabric fallback directly.
+      const rail = page.locator('.gallery-thumbs:not([hidden])');
+      const fabric = await rail.locator('a[data-role=fabric]').getAttribute('href');
+      await rail.locator('a[data-role=structure]').evaluate(node => node.remove());
+      await page.locator('[data-gallery-view=details]').click();
+      const image = page.locator('[data-gallery-main]');
+      await expect(image).toHaveAttribute('src', fabric!);
+      await expectFilled(image, 'mobile Fabric fallback');
+    }
 
     await page.goto(prefix + '/');
     await page.locator('[data-slide-to="1"]').click();
