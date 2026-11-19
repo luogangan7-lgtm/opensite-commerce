@@ -306,12 +306,14 @@
         "tests/db_sealed_media.sql",
         "tests/db_security_services.sql",
         "tests/db_catalog_api.sql",
-        "internal/modules/media/integration_test.go"
+        "internal/modules/media/integration_test.go",
+        "internal/db/media_reserve_idempotency_integration_test.go",
+        "tests/db_media_reserve_idempotency.sql"
       ],
       "scopes": [
         "media:write"
       ],
-      "note": "C-07a typed handlers through platform authorized-tenant runner. Authentication and C-04b idempotency middleware are separate integration seams; default authentication denies."
+      "note": "Media reserve uses shared C-04 commands with durable exact replay; all media writes use authorized tenant transactions. Default authentication denies."
     },
     {
       "name": "cms",
@@ -1936,6 +1938,7 @@
       ]
     },
     {"file":"migrations/pending/mdel02-tenant-guard_tenant_lifecycle_cancel_guard.sql","owner":"tenant","touches_tables":["tenant_lifecycles","tenant_lifecycle_receipts","tenant_lifecycle_events","tenant_memberships"]},
+    {"file":"migrations/pending/fix-media-idem_media_reserve_idempotency.sql","owner":"media","touches_tables":["idempotency_records"]},
     {"file":"migrations/pending/mdel02-identity_identity_merchant_deletion.sql","owner":"identity","touches_tables":["identity_merchant_proofs","users","auth_sessions","tenant_memberships","tenant_lifecycles","tenant_lifecycle_events","tenant_lifecycle_receipts"]}
   ]
 }

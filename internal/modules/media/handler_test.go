@@ -23,6 +23,9 @@ type allowMedia struct{}
 func (allowMedia) Authenticate(ctx context.Context, _ *http.Request, _ httpapi.RouteSpec) (context.Context, error) {
 	return ctx, nil
 }
+func (allowMedia) ResolveActor(context.Context, *http.Request, httpapi.RouteSpec) (httpapi.Actor, error) {
+	return httpapi.Actor{Kind: "user", ID: "33333333-3333-4333-8333-333333333333"}, nil
+}
 func mediaRouter(t *testing.T, s *Service) *httpapi.Router {
 	t.Helper()
 	r := httpapi.New(allowMedia{}, nil)
