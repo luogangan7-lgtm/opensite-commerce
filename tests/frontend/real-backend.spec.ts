@@ -321,12 +321,35 @@ async function historyLogin(page: Page, email: string, password: string) {
 }
 const historyPanel = (page: Page) => page.locator('.purchase-page[aria-label="Order history"]');
 type Box = { x: number; y: number; width: number; height: number };
-function assertDateMaskBounds(mask: Box, date: Box, protectedBoxes: Box[]) {
+async function assertDateMaskBounds(mask: Locator, bounds: Locator, protectedBoxes: Box[]) {
+  const boundsElement = await bounds.elementHandle();
+  if (!boundsElement) throw new Error('Missing date mask geometry');
+  try {
+    if (await mask.evaluate((element, other) => element === other, boundsElement))
+      throw new Error('Mask and bounds resolve to the same element');
+  } finally { await boundsElement.dispose(); }
+  const [maskBox, date] = await Promise.all([mask.boundingBox(), bounds.boundingBox()]);
+  if (!maskBox || !date) throw new Error('Missing date mask geometry');
   const right = (box: Box) => box.x + box.width, bottom = (box: Box) => box.y + box.height;
-  if (mask.x < date.x || mask.y < date.y || right(mask) > right(date) || bottom(mask) > bottom(date))
+  if (maskBox.x < date.x || maskBox.y < date.y || right(maskBox) > right(date) || bottom(maskBox) > bottom(date))
     throw new Error('Date mask extends outside time element');
-  if (protectedBoxes.some(box => mask.x < right(box) && right(mask) > box.x && mask.y < bottom(box) && bottom(mask) > box.y))
+  if (protectedBoxes.some(box => maskBox.x < right(box) && right(maskBox) > box.x && maskBox.y < bottom(box) && bottom(maskBox) > box.y))
     throw new Error('Date mask overlaps status or amount');
+}
+// Keep the exact existing mask rectangle while giving containment a distinct DOM
+// child. Move the real nodes so timestamp locators and API text stay authoritative.
+async function maskFieldContents(field: Locator) {
+  const before = await field.boundingBox();
+  if (!before) throw new Error('Missing runtime field geometry');
+  await field.evaluate(node => {
+    const contents = document.createElement('span'); contents.dataset.runtimeMask = '';
+    contents.style.display = getComputedStyle(node).display;
+    contents.append(...node.childNodes); node.append(contents);
+  });
+  const mask = field.locator(':scope > [data-runtime-mask]');
+  expect(await field.boundingBox(), 'wrapping mask preserves field layout').toEqual(before);
+  expect(await mask.boundingBox(), 'child mask preserves the original mask rectangle').toEqual(before);
+  return mask;
 }
 // Only the runtime B2B order may supply an exact date mask. Historical dates
 // remain visible; real API timestamp/display assertions precede every mask.
@@ -631,23 +654,17 @@ test.describe('VISUAL-REAL #250', () => {
         const r = range.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
       });
       if (!beforeBox || !amountBox) throw new Error('Missing date mask geometry');
-      const maskBox = async (locator: Locator) => {
-        const box = await locator.boundingBox();
-        if (!box) throw new Error('Missing date mask geometry');
-        return box;
-      };
-      const dateMasks = [date];
+      const dateMasks = [await maskFieldContents(date)];
       // The adversarial candidate spans the whole row; it must be rejected.
-      const awaitedRowBox = await maskBox(row);
-      expect(() => assertDateMaskBounds(awaitedRowBox, beforeBox, [statusBox, amountBox])).toThrow('Date mask extends outside time element');
-      assertDateMaskBounds(await maskBox(dateMasks[0]), beforeBox, [statusBox, amountBox]);
+      await expect(assertDateMaskBounds(row, date, [statusBox, amountBox])).rejects.toThrow('Date mask extends outside time element');
+      await assertDateMaskBounds(dateMasks[0], date, [statusBox, amountBox]);
       const before = await page.screenshot({ fullPage: true, mask: dateMasks, maskColor });
-      await date.evaluate(node => { node.textContent = '12/31/2099'; });
+      await dateMasks[0].evaluate(node => { node.textContent = '12/31/2099'; });
       const afterBox = await date.boundingBox();
       if (!afterBox) throw new Error('Missing shifted date mask geometry');
-      assertDateMaskBounds(await maskBox(dateMasks[0]), afterBox, [statusBox, amountBox]);
+      await assertDateMaskBounds(dateMasks[0], date, [statusBox, amountBox]);
       const after = await page.screenshot({ fullPage: true, mask: dateMasks, maskColor });
-      await date.evaluate((node, value) => { node.textContent = value; }, original);
+      await dateMasks[0].evaluate((node, value) => { node.textContent = value; }, original);
       console.info('VISUAL runtime date mask geometry', { beforeBox, afterBox, maskColor });
       if (!after.equals(before)) {
         // This page contains only the owned synthetic order, never credentials.
@@ -655,7 +672,7 @@ test.describe('VISUAL-REAL #250', () => {
         await info.attach('runtime-date-shifted', { body: after, contentType: 'image/png' });
       }
       expect(after.equals(before), 'date change must not alter screenshot pixels').toBe(true);
-      assertDateMaskBounds(await maskBox(dateMasks[0]), await maskBox(date), [statusBox, amountBox]);
+      await assertDateMaskBounds(dateMasks[0], date, [statusBox, amountBox]);
       await historySnapshot(page, 'b2b-paid-list', false, true, dateMasks, maskColor);
       await order.click(); await historyReady(page);
       await expect(page.getByRole('region', { name: 'Order details', exact: true })).toContainText('$27.00');
@@ -1045,17 +1062,14 @@ test.describe('VISUAL-REAL #230 round5', () => {
       await expect(times.nth(index)).toHaveAttribute('datetime', stamp);
       await expect(times.nth(index)).toHaveText(stamp);
     }
-    const metadata = times.first().locator('..');
+    const metadata = times.first().locator('xpath=ancestor::p[1]');
     await expect(metadata).toHaveText(`Created ${order.created_at} · Updated ${order.updated_at}`);
-    await staffSnapshot(page, 'multiline', [await runtimeMask(page, metadata, metadata)]);
+    await staffSnapshot(page, 'multiline', [await runtimeMask(page, await maskFieldContents(metadata), metadata)]);
   });
 });
 
 // Masks own only a verified runtime metadata field or UUID cell; status/version/money stay compared.
 async function runtimeMask(page: Page, target: Locator, field: Locator) {
-  const box = await target.boundingBox();
-  const fieldBounds = await field.boundingBox();
-  if (!box || !fieldBounds) throw new Error('Missing runtime mask geometry');
   const protectedBoxes: Box[] = [];
   for (const locator of [page.getByRole('heading'), page.locator('.os-badge').locator('..'), page.locator('.admin-stack dd'),
     page.locator('[data-completion-ready] dd').filter({ hasNotText: /^[0-9a-f-]{36}$/ })]) {
@@ -1063,7 +1077,7 @@ async function runtimeMask(page: Page, target: Locator, field: Locator) {
       const bounds = await element.boundingBox(); if (bounds) protectedBoxes.push(bounds);
     }
   }
-  assertDateMaskBounds(box, fieldBounds, protectedBoxes);
+  await assertDateMaskBounds(target, field, protectedBoxes);
   return target;
 }
 // This candidate extends only one pixel beyond its independently measured field.
@@ -1126,11 +1140,11 @@ async function domainSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[230][
   }
   // Both inline times affect the position of the fixed Updated label. Mask their
   // exact metadata field, verified to contain only those two timestamps/labels.
-  const metadata = times.first().locator('..');
+  const metadata = times.first().locator('xpath=ancestor::p[1]');
   expect(await metadata.evaluate(node => node.tagName)).toBe('P');
   await expect(metadata.locator(':scope > *')).toHaveCount(2);
   await expect(metadata).toHaveText(`Created ${order.created_at} · Updated ${order.updated_at}`);
-  const masks = [await runtimeMask(page, metadata, metadata)];
+  const masks = [await runtimeMask(page, await maskFieldContents(metadata), metadata)];
   if (state === 'paid') {
     await expect(runtimeMask(page, page.getByRole('main'), metadata)).rejects.toThrow('Date mask extends outside time element');
     await assertOversizedRuntimeMaskRejected(page, metadata);
@@ -1205,10 +1219,11 @@ test('VISUAL-REAL #230 real two-unit purchase and five staff domain states', asy
     element.style.clipPath = 'inset(0)'; return previous;
   });
   try {
-    const masks = [await runtimeMask(page, completionID, completionID)];
+    const completionMask = await maskFieldContents(completionID);
+    const masks = [await runtimeMask(page, completionMask, completionID)];
     await expect(runtimeMask(page, page.getByRole('main'), completionID)).rejects.toThrow('Date mask extends outside time element');
     await assertOversizedRuntimeMaskRejected(page, completionID);
-    await assertStableRuntimeMask(page, masks, completionID, completionID, [
+    await assertStableRuntimeMask(page, masks, completionID, completionMask, [
       [checkout.order_id.slice(0, -1) + '0'], [checkout.order_id.slice(0, -1) + '8'],
     ]);
     await expect(completionID).toHaveText(checkout.order_id);
@@ -1316,4 +1331,451 @@ test('VISUAL-REAL #230 real two-unit purchase and five staff domain states', asy
   await expect(page.getByRole('main')).toContainText('refunded');
   await domainSnapshot(page, 'refunded', order);
   await info.attach('rma-journey', { body: JSON.stringify({ first, second, received, refunded, remainingReceived, fullRefund, order }), contentType: 'application/json' });
+});
+
+// VISUAL-274 structural regression: the checker owns locator resolution and geometry.
+test('VISUAL-274 rejects oversized masks and aliases using independent DOM bounds', async ({ page }) => {
+  await page.goto(site + '/account');
+  await page.evaluate(() => {
+    const field = document.createElement('div'); field.dataset.maskField = '';
+    Object.assign(field.style, { position: 'fixed', left: '20px', top: '20px', width: '100px', height: '20px' });
+    const mask = document.createElement('span'); mask.dataset.maskCandidate = '';
+    Object.assign(mask.style, { display: 'block', width: '101px', height: '20px' });
+    field.append(mask); document.body.append(field);
+  });
+  const field = page.locator('[data-mask-field]'), mask = page.locator('[data-mask-candidate]');
+  await expect(assertDateMaskBounds(mask, field, [])).rejects.toThrow('Date mask extends outside time element');
+  await mask.evaluate(node => { (node as HTMLElement).style.width = '100px'; });
+  await assertDateMaskBounds(mask, field, []);
+  await expect(assertDateMaskBounds(field, field, [])).rejects.toThrow('Mask and bounds resolve to the same element');
+  await expect(assertDateMaskBounds(field, page.locator('div[data-mask-field]'), []))
+    .rejects.toThrow('Mask and bounds resolve to the same element');
+  await page.locator('[data-mask-field]').evaluate(node => node.remove());
+});
+
+// #274: every catalog state below uses the shipped admin and real domain HTTP.
+const catalogBase = `/api/v1/t/${tenant}`;
+const catalogSite = 'c0900003-0000-4000-8000-000000000001';
+const catalogList = 'c2400009-0000-4000-8000-000000000001';
+const catalogPNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415478da636064620600000e0007e99237d40000000049454e44ae426082', 'hex');
+type CatalogFixture = { id: string; code: string; path: string; api: string; headers: Record<string, string> };
+async function catalogHeaders(page: Page) {
+  const response = await page.request.get(`${staffSite}/api/v1/auth/session`);
+  expect(response.status()).toBe(200);
+  const session = await response.json();
+  return { Origin: staffSite, 'X-CSRF-Token': session.csrf_token as string };
+}
+async function catalogWrite(page: Page, headers: Record<string, string>, method: string, path: string, data?: unknown, etag?: string) {
+  return page.request.fetch(staffSite + path, { method, headers: { ...headers,
+    'Idempotency-Key': randomUUID(), ...(etag ? { 'If-Match': etag } : {}) }, ...(data === undefined ? {} : { data }) });
+}
+async function catalogFixture(page: Page, project: string, suffix: string): Promise<CatalogFixture> {
+  await staffLogin(page, `/t/${tenant}/products/new`);
+  const headers = await catalogHeaders(page), code = `V274-${project}-${suffix}`.toUpperCase();
+  const created = await catalogWrite(page, headers, 'POST', catalogBase + '/products', { product_code: code });
+  expect(created.status()).toBe(201);
+  const product = await created.json();
+  const api = `${catalogBase}/products/${product.id}`, path = `/t/${tenant}/products/${product.id}`;
+  expect((await catalogWrite(page, headers, 'PATCH', api, { product_code: code, lifecycle_status: 'ready' }, `"${product.version}"`)).status()).toBe(200);
+  await page.goto(staffSite + path);
+  await expect(page.getByLabel('Product code', { exact: true })).toHaveValue(code);
+  await expect(page.getByRole('button', { name: 'Load content', exact: true })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Product SKUs', exact: true })).toHaveAttribute('aria-busy', 'false');
+  return { id: product.id, code, api, path, headers };
+}
+async function catalogVariant(page: Page, f: CatalogFixture) {
+  const created = await catalogWrite(page, f.headers, 'POST', f.api + '/variants', { sku: f.code + '-SKU', option_value_ids: [] });
+  expect(created.status()).toBe(201);
+  const variant = await created.json();
+  expect((await catalogWrite(page, f.headers, 'PATCH', f.api + '/variants/' + variant.id,
+    { sku: variant.sku, lifecycle_status: 'ready' }, `"${variant.version}"`)).status()).toBe(200);
+  await page.reload();
+  await page.getByRole('button', { name: `Edit ${variant.sku}`, exact: true }).click();
+  await expect(page.getByLabel('Price list', { exact: true })).toContainText('USD · active');
+  await page.getByLabel('Price list', { exact: true }).selectOption(catalogList);
+  await expect(page.getByLabel('Price in minor units', { exact: true })).toBeEnabled();
+  return variant;
+}
+async function catalogContent(page: Page, title = 'Staff catalog evidence') {
+  await page.getByRole('button', { name: 'Load content', exact: true }).click();
+  await expect(page.getByLabel('Title', { exact: true })).toBeEnabled();
+  await page.getByLabel('Title', { exact: true }).fill(title);
+  await page.getByLabel('Body blocks JSON', { exact: true }).fill('[{"kind":"paragraph","text":"Real staff content"}]');
+  await page.getByLabel('SEO JSON', { exact: true }).fill('{"description":"Real staff description"}');
+}
+async function catalogSaveContent(page: Page) {
+  await page.getByRole('button', { name: 'Save content', exact: true }).click();
+  await expect(page.getByText('Content saved.', { exact: true })).toBeVisible();
+}
+async function catalogListing(page: Page, slug: string) {
+  await page.getByLabel('Site ID', { exact: true }).fill(catalogSite);
+  await page.getByRole('button', { name: 'Load listing', exact: true }).click();
+  await expect(page.getByLabel('Slug', { exact: true })).toBeEnabled();
+  await page.getByLabel('Slug', { exact: true }).fill(slug);
+  await page.getByLabel('Listing state', { exact: true }).selectOption('listed');
+}
+async function catalogSnapshot(page: Page, state: typeof REAL_VISUAL_STATES[274][number], pending = false) {
+  await page.evaluate(async () => { await document.fonts.ready; });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '#274 fits viewport').toBe(true);
+  const masks: Locator[] = [];
+  const mediaID = page.getByLabel('Media ID', { exact: true });
+  if (await mediaID.count() && /^[0-9a-f-]{36}$/.test(await mediaID.inputValue())) {
+    // The input contains only the already-verified backend UUID, not state/money.
+    await assertDateMaskBounds(mediaID, mediaID.locator('..'), []); masks.push(mediaID);
+  }
+  const mediaStatus = page.locator('#media-heading').locator('..').getByRole('status').filter({ hasText: 'Upload session:' });
+  if (await mediaStatus.count()) {
+    await expect(mediaStatus).toContainText('ready');
+    const before = await mediaStatus.boundingBox();
+    await mediaStatus.evaluate(node => {
+      for (const child of [...node.childNodes]) if (child.nodeType === Node.TEXT_NODE) {
+        const match = /^(.*Media ID: )([0-9a-f-]{36})$/.exec(child.textContent ?? '');
+        if (match) {
+          // Keep natural UUID hyphen wrapping; one rectangle must never span
+          // multiple lines and accidentally cover the adjacent ready badge.
+          const groups = match[2]!.match(/[0-9a-f]+-?/g)!.map(text => {
+            const span = document.createElement('span'); span.dataset.catalogUuid = ''; span.textContent = text; return span;
+          });
+          child.replaceWith(document.createTextNode(match[1]!), ...groups);
+        }
+      }
+    });
+    expect(await mediaStatus.boundingBox(), 'UUID fragments preserve the shipped status layout').toEqual(before);
+    const uuid = mediaStatus.locator('[data-catalog-uuid]');
+    await expect(uuid).toHaveCount(5);
+    expect((await uuid.allTextContents()).join('')).toBe(await mediaID.inputValue());
+    const badge = await mediaStatus.locator('.os-badge').boundingBox();
+    if (!badge) throw new Error('Missing ready badge geometry');
+    for (const group of await uuid.all()) { await assertDateMaskBounds(group, mediaStatus, [badge]); masks.push(group); }
+  }
+  if (!pending) {
+    const report = await new AxeBuilder({ page }).analyze();
+    expect(report.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
+  }
+  const maskColor = await page.locator('body').evaluate(node => getComputedStyle(node).backgroundColor);
+  await page.getByRole('heading').first().focus();
+  await expect(page).toHaveScreenshot(`real-274-${state}.png`, { fullPage: true, mask: masks, maskColor });
+}
+async function catalogHold(page: Page, path: string, method: string, action: () => Promise<unknown>, check: () => Promise<void>) {
+  await fault(page, path, method, 'hold');
+  try {
+    await action();
+    await expect.poll(async () => (await (await control(page, 'status')).json()).status).toBeGreaterThanOrEqual(200);
+    expect((await (await control(page, 'status')).json()).status).toBeLessThan(300);
+    await check();
+  } finally { await control(page, 'release'); }
+}
+
+test.describe('VISUAL-REAL #274', () => {
+  test.setTimeout(180_000);
+  test.afterEach(async ({ page }) => { await control(page, 'release'); });
+
+  test('normal edit, truly empty SKUs/content/media and real create/edit/variant busy states', async ({ page }, info) => {
+    await staffLogin(page, `/t/${tenant}/products/new`);
+    await page.getByLabel('Product code', { exact: true }).fill(`V274-${info.project.name}-CREATE`);
+    await catalogSnapshot(page, 'create');
+    await catalogHold(page, catalogBase + '/products', 'POST',
+      () => page.getByRole('button', { name: 'Create product', exact: true }).click(), async () => {
+        await expect(page.getByLabel('Product code', { exact: true })).toBeDisabled();
+        await expect(page.locator('form').filter({ has: page.getByLabel('Product code', { exact: true }) }).locator('button[type=submit]')).toBeDisabled();
+        await catalogSnapshot(page, 'create-busy', true);
+      });
+    await expect(page.getByRole('heading', { name: 'Edit product', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Load content', exact: true })).toBeVisible();
+    await catalogSnapshot(page, 'edit');
+    await page.getByRole('button', { name: 'Load content', exact: true }).click();
+    await expect(page.getByLabel('Title', { exact: true })).toHaveValue('');
+    await expect(page.getByText('No SKUs on this page.', { exact: true })).toBeVisible();
+    await catalogSnapshot(page, 'empty');
+    await expect(page.getByLabel('Media ID', { exact: true })).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Upload media', exact: true })).toBeDisabled();
+    const api = new URL(page.url()).pathname.replace('/t/', '/api/v1/t/');
+    await page.getByLabel('Product code', { exact: true }).fill(`V274-${info.project.name}-EDITED`);
+    await catalogHold(page, api, 'PATCH', () => page.getByRole('button', { name: 'Save product', exact: true }).click(), async () => {
+      await expect(page.getByLabel('Product code', { exact: true })).toBeDisabled();
+      await catalogSnapshot(page, 'product-busy', true);
+    });
+    await expect(page.getByLabel('Product code', { exact: true })).toBeEnabled();
+    await page.getByLabel('SKU code', { exact: true }).fill(`V274-${info.project.name}-VARIANT`);
+    const creatingVariant = page.waitForResponse(r => new URL(r.url()).pathname === api + '/variants' && r.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Create SKU', exact: true }).click();
+    const createdVariant = await creatingVariant; expect(createdVariant.status()).toBe(201);
+    const variantID = (await createdVariant.json()).id;
+    const variant = `V274-${info.project.name}-VARIANT`.toUpperCase();
+    await page.getByRole('button', { name: `Edit ${variant}`, exact: true }).click();
+    await page.getByLabel('SKU code', { exact: true }).fill(variant + '-SAVED');
+    await catalogHold(page, api + '/variants/' + variantID, 'PATCH', () => page.getByRole('button', { name: 'Save SKU', exact: true }).click(), async () => {
+      await expect(page.getByLabel('SKU code', { exact: true })).toBeDisabled();
+      await expect(page.locator('form').filter({ has: page.getByLabel('SKU code', { exact: true }) }).locator('button[type=submit]')).toBeDisabled();
+      await catalogSnapshot(page, 'variant-busy', true);
+    });
+    await expect(page.getByRole('button', { name: `Edit ${variant}-SAVED`, exact: true })).toBeVisible();
+    await catalogSnapshot(page, 'variant-saved');
+  });
+
+  test('independent empty media and upload failure fixtures render real domain states', async ({ page }, info) => {
+    await catalogFixture(page, info.project.name, 'EMPTY-MEDIA');
+    await expect(page.getByLabel('Media ID', { exact: true })).toHaveValue('');
+    await expect(page.getByRole('status').filter({ hasText: 'Upload session:' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Upload media', exact: true })).toBeDisabled();
+    await catalogSnapshot(page, 'empty-media');
+    // Re-authenticate before constructing the independent upload-failure product.
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await catalogFixture(page, info.project.name, 'UPLOAD-FAILURE');
+    await page.getByLabel('Media file').setInputFiles({ name: 'upload-failure.png', mimeType: 'image/png', buffer: catalogPNG });
+    await fault(page, catalogBase + '/media/uploads/*/complete', 'POST', '503');
+    await page.getByRole('button', { name: 'Upload media', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('The service is temporarily unavailable. Try again later.');
+    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 202 });
+    await catalogSnapshot(page, 'upload-failure');
+  });
+
+  test('invalid generated idempotency key is rejected locally and changing the draft recovers', async ({ page }, info) => {
+    await staffLogin(page, `/t/${tenant}/products/new`);
+    let writes = 0; page.on('request', r => { if (new URL(r.url()).pathname === catalogBase + '/products' && r.method() === 'POST') writes++; });
+    await page.getByLabel('Product code', { exact: true }).fill(`V274-${info.project.name}-BADKEY`);
+    await page.evaluate(() => {
+      const original = crypto.randomUUID.bind(crypto);
+      crypto.randomUUID = () => { crypto.randomUUID = original; return 'invalid-key' as ReturnType<Crypto['randomUUID']>; };
+    });
+    await page.getByRole('button', { name: 'Create product', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('The request is invalid. Check your input.');
+    expect(writes).toBe(0); await catalogSnapshot(page, 'invalid-key');
+    await page.getByLabel('Product code', { exact: true }).fill(`V274-${info.project.name}-KEY-RECOVERED`);
+    await page.getByRole('button', { name: 'Create product', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Edit product', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Load content', exact: true })).toBeVisible();
+    expect(writes).toBe(1); await catalogSnapshot(page, 'key-recovered');
+  });
+
+  test('real access-check loading and exact-step network failure recover', async ({ page }, info) => {
+    const f = await catalogFixture(page, info.project.name, 'ACCESS');
+    await catalogHold(page, catalogBase + '/price-lists', 'GET', () => page.reload(), async () => {
+      await expect(page.getByText('Checking catalog editing access…', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Load content', exact: true })).toHaveCount(0);
+      await catalogSnapshot(page, 'access-loading', true);
+    });
+    await expect(page.getByRole('button', { name: 'Load content', exact: true })).toBeVisible();
+    await catalogContent(page);
+    await fault(page, f.api + '/content/en', 'PUT', '503');
+    await page.getByRole('button', { name: 'Save content', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('The service is temporarily unavailable. Try again later.');
+    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: 200 });
+    await catalogSnapshot(page, 'network-error'); await control(page, 'release');
+    await page.getByRole('button', { name: 'Load content', exact: true }).click();
+    await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Staff catalog evidence');
+  });
+
+  test('invalid JSON renders its guard and disabled content save preserves real input', async ({ page }, info) => {
+    const f = await catalogFixture(page, info.project.name, 'JSON'); await catalogContent(page);
+    let writes = 0;
+    page.on('request', r => { if (new URL(r.url()).pathname === f.api + '/content/en' && r.method() === 'PUT') writes++; });
+    await page.getByLabel('Body blocks JSON', { exact: true }).fill('{not json');
+    await page.getByRole('button', { name: 'Save content', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('Body and SEO must be valid JSON.'); expect(writes).toBe(0);
+    await catalogSnapshot(page, 'invalid-json');
+    await page.getByLabel('Body blocks JSON', { exact: true }).fill('[]');
+    await catalogHold(page, f.api + '/content/en', 'PUT', () => page.getByRole('button', { name: 'Save content', exact: true }).click(), async () => {
+      await expect(page.getByLabel('Title', { exact: true })).toBeDisabled();
+      await expect(page.locator('form').filter({ has: page.getByLabel('Title', { exact: true }) }).locator('button[type=submit]')).toBeDisabled();
+      await catalogSnapshot(page, 'content-saving', true);
+    });
+    await expect(page.getByText('Content saved.', { exact: true })).toBeVisible();
+  });
+
+  for (const kind of ['title', 'slug', 'json'] as const) test(`distinct real long ${kind} data state`, async ({ page }, info) => {
+    await catalogFixture(page, info.project.name, 'LONG-' + kind); await catalogContent(page, kind === 'title' ? 'Long staff product title '.repeat(24).trim() : 'Staff long ' + kind);
+    if (kind === 'json') await page.getByLabel('Body blocks JSON', { exact: true }).fill(JSON.stringify([{ kind: 'paragraph', text: 'Long real staff content '.repeat(100) }]));
+    await catalogSaveContent(page);
+    await catalogListing(page, kind === 'slug' ? 'long-staff-slug-'.repeat(15) + info.project.name + '-end' : `visual-274-${info.project.name}-long-${kind}`);
+    await page.getByRole('button', { name: 'Save listing', exact: true }).click();
+    await expect(page.getByText('Listing saved.', { exact: true })).toBeVisible();
+    await catalogSnapshot(page, `long-${kind}`);
+  });
+
+  test('real second staff session creates price/content/listing 412 with retained drafts and explicit recovery', async ({ page, browser }, info) => {
+    test.setTimeout(300_000);
+    const f = await catalogFixture(page, info.project.name, 'CONFLICT'), variant = await catalogVariant(page, f);
+    await page.getByLabel('Price in minor units', { exact: true }).fill('3456'); await catalogSnapshot(page, 'price-editor');
+    await page.getByLabel('Price in minor units', { exact: true }).fill('9223372036854775808');
+    await page.getByRole('button', { name: 'Save price', exact: true }).click();
+    await expect(page.getByLabel('Price in minor units', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+    await catalogSnapshot(page, 'invalid-amount');
+    await page.getByLabel('Price in minor units', { exact: true }).fill('3456');
+    const context = await browser.newContext({ ignoreHTTPSErrors: true }), other = await context.newPage();
+    try {
+      await staffLogin(other, f.path); const headers = await catalogHeaders(other);
+      const a = await (await page.request.get(staffSite + '/api/v1/auth/session')).json();
+      const b = await (await other.request.get(staffSite + '/api/v1/auth/session')).json(); expect(a.session_id).not.toBe(b.session_id);
+      const list = await page.request.get(`${staffSite}${catalogBase}/price-lists/${catalogList}`);
+      const pricePath = `${catalogBase}/price-lists/${catalogList}/variants/${variant.id}/prices/1`;
+      expect((await catalogWrite(other, headers, 'PUT', pricePath, { unit_amount: 7890 }, `"${(await list.json()).version}"`)).status()).toBe(200);
+      const priceConflict = page.waitForResponse(r => new URL(r.url()).pathname === pricePath && r.request().method() === 'PUT');
+      await page.getByRole('button', { name: 'Save price', exact: true }).click(); expect((await priceConflict).status()).toBe(412);
+      await expect(page.getByLabel('Price in minor units', { exact: true })).toHaveValue('3456');
+      await expect(page.getByRole('button', { name: 'Save price', exact: true })).toBeDisabled(); await catalogSnapshot(page, 'price-conflict');
+      await page.getByRole('button', { name: 'Reload price from server', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Save price', exact: true })).toBeEnabled();
+      await page.getByLabel('Price in minor units', { exact: true }).fill('3456');
+      await page.getByRole('button', { name: 'Save price', exact: true }).click();
+      await expect(page.getByRole('status').filter({ hasText: 'Price saved:' })).toBeVisible(); await catalogSnapshot(page, 'reload-saved');
+      await catalogContent(page); await catalogSaveContent(page);
+      const content = await other.request.get(staffSite + f.api + '/content/en');
+      expect((await catalogWrite(other, headers, 'PUT', f.api + '/content/en', { title: 'Second staff content', body_blocks: [], seo: {} }, content.headers().etag)).status()).toBe(200);
+      await page.getByLabel('Title', { exact: true }).fill('Retained first staff title');
+      const contentConflict = page.waitForResponse(r => new URL(r.url()).pathname === f.api + '/content/en' && r.request().method() === 'PUT');
+      await page.getByRole('button', { name: 'Save content', exact: true }).click(); expect((await contentConflict).status()).toBe(412);
+      await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Retained first staff title'); await catalogSnapshot(page, 'content-conflict');
+      await page.getByRole('button', { name: 'Load content', exact: true }).click();
+      await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Second staff content');
+      await catalogListing(page, `visual-274-${info.project.name}-conflict`);
+      await page.getByRole('button', { name: 'Save listing', exact: true }).click(); await expect(page.getByText('Listing saved.', { exact: true })).toBeVisible();
+      const listingPath = f.api + `/listings/${catalogSite}/en`, listing = await other.request.get(staffSite + listingPath);
+      const liveContent = await (await other.request.get(staffSite + f.api + '/content/en')).json();
+      expect((await catalogWrite(other, headers, 'PUT', listingPath, { slug: `second-${info.project.name}`, listed: false, content_revision: liveContent.revision }, listing.headers().etag)).status()).toBe(200);
+      await page.getByLabel('Slug', { exact: true }).fill('retained-first-staff-slug');
+      const conflict = page.waitForResponse(r => new URL(r.url()).pathname === listingPath && r.request().method() === 'PUT');
+      await page.getByRole('button', { name: 'Save listing', exact: true }).click(); expect((await conflict).status()).toBe(412);
+      await expect(page.getByLabel('Slug', { exact: true })).toHaveValue('retained-first-staff-slug');
+      await expect(page.getByRole('button', { name: 'Save listing', exact: true })).toBeDisabled(); await catalogSnapshot(page, 'listing-conflict');
+      await page.getByLabel('Slug', { exact: true }).fill('retained-draft-after-conflict'); await catalogSnapshot(page, 'draft-retained');
+      await page.getByRole('button', { name: 'Load listing', exact: true }).click();
+      await expect(page.getByLabel('Slug', { exact: true })).toHaveValue(`second-${info.project.name}`);
+      await expect(page.getByRole('button', { name: 'Save listing', exact: true })).toBeEnabled();
+    } finally { await context.close(); }
+  });
+
+  async function mediaRetry(page: Page, project: string, step: 'reserve' | 'content' | 'complete', capture = true) {
+    await catalogFixture(page, project, 'MEDIA-' + step);
+    const observed: { path: string; key: string; method: string }[] = [];
+    page.on('request', r => { const path = new URL(r.url()).pathname;
+      if (path.startsWith(catalogBase + '/media/uploads') && ['POST', 'PUT'].includes(r.method())) observed.push({ path, key: r.headers()['idempotency-key'] ?? '', method: r.method() }); });
+    await page.getByLabel('Media file').setInputFiles({ name: `staff-${project}-${step}.png`, mimeType: 'image/png', buffer: catalogPNG });
+    const exactStep = catalogBase + '/media/uploads' + (step === 'reserve' ? '' : `/*/${step}`);
+    await fault(page, exactStep, step === 'content' ? 'PUT' : 'POST', '503');
+    await page.getByRole('button', { name: 'Upload media', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('The service is temporarily unavailable. Try again later.');
+    expect(await (await control(page, 'status')).json()).toMatchObject({ matched: true, status: step === 'reserve' ? 201 : step === 'content' ? 204 : 202 });
+    if (capture) await catalogSnapshot(page, `${step}-failure`);
+    await control(page, 'release');
+    await page.getByRole('button', { name: 'Upload media', exact: true }).click();
+    await expect(page.getByLabel('Media ID', { exact: true })).toHaveValue(/^[0-9a-f-]{36}$/);
+    await expect(page.getByRole('status').filter({ hasText: 'Upload session:' })).toContainText('ready');
+    const reserveRequests = observed.filter(r => r.path === catalogBase + '/media/uploads');
+    expect(reserveRequests).toHaveLength(2); expect(reserveRequests[0]!.key).toBe(reserveRequests[1]!.key);
+    if (capture) await catalogSnapshot(page, `${step}-retry`);
+    if (capture && step === 'complete') { await page.getByRole('button', { name: 'Attach media', exact: true }).click();
+      await expect(page.getByText('Media attached to this product.', { exact: true })).toBeVisible(); await catalogSnapshot(page, 'media-ready'); }
+    return observed;
+  }
+
+  for (const step of ['reserve', 'content', 'complete'] as const) {
+    test(`real media ${step} failure renders recovery with stable client keys`, async ({ page }, info) => {
+      await mediaRetry(page, info.project.name, step);
+    });
+
+    // RED: 40834241038. Separate owner: codex/fix-media-idem (cxf-media-idem).
+    // The orchestrator will un-fixme after that domain fix merges. Keep the
+    // original single-effect assertions; visual recovery alone is not replay proof.
+    test.fixme(`real media ${step} retry persists one upload and replays the same server paths`, async ({ page }, info) => {
+      const project = info.project.name + '-idem';
+      const observed = await mediaRetry(page, project, step, false);
+      const allSteps = new Set(observed.map(r => r.path)); expect(allSteps.size).toBe(3);
+      for (const path of allSteps) { const keys = observed.filter(r => r.path === path).map(r => r.key);
+        expect(new Set(keys).size).toBe(1); expect(keys[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/); }
+      expect(new Set(observed.map(r => r.key)).size).toBe(3);
+      // Read-only independent persistence witness: a replay never creates a second upload.
+      expect(sql(`SELECT count(*) FROM app.media_uploads WHERE tenant_id='${tenant}' AND original_filename='staff-${project}-${step}.png';`)).toBe('1');
+    });
+  }
+
+  test('invalid media UUID guard, recovery and long filename error stay actionable', async ({ page }, info) => {
+    await catalogFixture(page, info.project.name, 'UUID');
+    let writes = 0; page.on('request', r => { if (r.method() === 'POST' && new URL(r.url()).pathname.endsWith('/media')) writes++; });
+    await page.getByLabel('Media ID', { exact: true }).fill('not-a-uuid');
+    await page.getByRole('button', { name: 'Attach media', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('Enter a valid media UUID.'); expect(writes).toBe(0); await catalogSnapshot(page, 'invalid-uuid');
+    await page.getByLabel('Media file').setInputFiles({ name: 'recovery.png', mimeType: 'image/png', buffer: catalogPNG });
+    await page.getByRole('button', { name: 'Upload media', exact: true }).click();
+    await expect(page.getByLabel('Media ID', { exact: true })).toHaveValue(/^[0-9a-f-]{36}$/);
+    await page.getByRole('button', { name: 'Attach media', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveCount(0); await expect(page.getByText('Media attached to this product.', { exact: true })).toBeVisible();
+    expect(writes).toBe(1); await catalogSnapshot(page, 'uuid-recovered');
+    const filename = 'long-staff-media-filename-'.repeat(8) + 'end.png';
+    await page.getByLabel('Media file').setInputFiles({ name: filename, mimeType: 'image/png', buffer: catalogPNG });
+    await fault(page, catalogBase + '/media/uploads', 'POST', '503');
+    await page.getByRole('button', { name: 'Upload media', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('The service is temporarily unavailable. Try again later.');
+    expect(await page.getByLabel('Media file').evaluate(e => (e as HTMLInputElement).files?.[0]?.name)).toBe(filename);
+    await catalogSnapshot(page, 'long-filename');
+  });
+
+  test('real viewer denial renders no catalog write controls', async ({ page }, info) => {
+    const f = await catalogFixture(page, info.project.name, 'DENIED');
+    // Boundary seed only: shipped API cannot provision a staff identity/membership.
+    const email = `visual-274-viewer-${info.project.name}@example.test`;
+    sql(`BEGIN; INSERT INTO app.users(email,password_hash) SELECT '${email}',password_hash FROM app.users WHERE email='visual-owner@example.test';
+      INSERT INTO app.tenant_memberships(tenant_id,user_id,role) SELECT '${tenant}',id,'viewer' FROM app.users WHERE email='${email}'; COMMIT;`);
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await page.goto(staffSite + f.path);
+    await page.getByLabel('Email', { exact: true }).fill(email); await page.getByLabel('Password', { exact: true }).fill(runtime().staffPassword);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page.getByLabel('Product code', { exact: true })).toHaveValue(f.code);
+    await expect(page.getByText('Catalog editing is unavailable for this session.', { exact: true })).toBeVisible();
+    const deniedProduct = page.waitForResponse(r => new URL(r.url()).pathname === f.api && r.request().method() === 'PATCH');
+    await page.getByRole('button', { name: 'Save product', exact: true }).click(); expect((await deniedProduct).status()).toBe(403);
+    await page.getByLabel('SKU code', { exact: true }).fill('DENIED-SKU');
+    const deniedSKU = page.waitForResponse(r => new URL(r.url()).pathname === f.api + '/variants' && r.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Create SKU', exact: true }).click(); expect((await deniedSKU).status()).toBe(403);
+    await page.getByLabel('Media file').setInputFiles({ name: 'denied.png', mimeType: 'image/png', buffer: catalogPNG });
+    const deniedMedia = page.waitForResponse(r => new URL(r.url()).pathname === catalogBase + '/media/uploads' && r.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Upload media', exact: true }).click(); expect((await deniedMedia).status()).toBe(403);
+    await expect(page.getByRole('alert')).toHaveCount(3);
+    for (const name of ['Save product', 'Create SKU', 'Save SKU', 'Save price', 'Save content', 'Save listing', 'Upload media', 'Attach media'])
+      await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+    await expect(page.getByRole('main').locator('form')).toHaveCount(0);
+    await catalogSnapshot(page, 'permission-denied');
+  });
+
+  test('real staff edit upload attach publish then identical-release SSR title and amount', async ({ page }, info) => {
+    test.setTimeout(240_000);
+    const f = await catalogFixture(page, info.project.name, 'PUBLISH'), variant = await catalogVariant(page, f);
+    await page.getByLabel('Price in minor units', { exact: true }).fill('3456');
+    await page.getByRole('button', { name: 'Save price', exact: true }).click(); await expect(page.getByRole('status').filter({ hasText: 'Price saved:' })).toBeVisible();
+    await page.getByLabel('Media file').setInputFiles({ name: 'published-staff.png', mimeType: 'image/png', buffer: catalogPNG });
+    await page.getByRole('button', { name: 'Upload media', exact: true }).click();
+    await expect(page.getByLabel('Media ID', { exact: true })).toHaveValue(/^[0-9a-f-]{36}$/);
+    const media = await page.getByLabel('Media ID', { exact: true }).inputValue();
+    await page.getByRole('button', { name: 'Attach media', exact: true }).click(); await expect(page.getByText('Media attached to this product.', { exact: true })).toBeVisible();
+    // Inventory has no HTTP write endpoint; invoke its actual guarded domain command.
+    sql(`BEGIN; SELECT set_config('app.tenant_id','${tenant}',true); SELECT app.inventory_adjust('${variant.id}',10,'Visual staff stock','${randomUUID()}','inbound'); COMMIT;`);
+    const title = `Published staff product ${info.project.name}`, slug = `visual-274-${info.project.name}-published`;
+    await catalogContent(page, title); await catalogSaveContent(page); await catalogListing(page, slug);
+    await page.getByRole('button', { name: 'Save listing', exact: true }).click(); await expect(page.getByText('Listing saved.', { exact: true })).toBeVisible();
+    const drafts = `${catalogBase}/sites/${catalogSite}/drafts`;
+    const created = await catalogWrite(page, f.headers, 'POST', drafts, { locale: 'en', title: 'Staff published shop', description: 'Real staff publication' });
+    expect(created.status()).toBe(201); const draft = await created.json();
+    const ready = await page.request.get(staffSite + drafts + '/' + draft.draft_id); const data = await ready.json();
+    const published = await catalogWrite(page, f.headers, 'POST', drafts + '/' + draft.draft_id + '/publish',
+      { expected_release_id: data.base_release_id, expected_publication_revision: data.publication_revision, renderer_build_id: 'visual-274' }, ready.headers().etag);
+    expect(published.status()).toBe(201); const release = await published.json();
+    // This contract exposes POST attachment only, no invented GET collection.
+    // Independent readback observes the result of the actual domain command.
+    expect(sql(`SELECT count(*) FROM app.product_media WHERE tenant_id='${tenant}' AND product_id='${f.id}' AND media_id='${media}' AND role='main';`)).toBe('1');
+    await catalogSnapshot(page, 'attached-published');
+    await expect.poll(async () => {
+      const response = await page.request.get('http://127.0.0.1:4180/api/v1/public/sites/current?host=127.0.0.1');
+      return response.status() === 200 ? await response.json() : null;
+    }).toMatchObject({ tenant_id: tenant, site_id: catalogSite, release_id: release.release_id,
+      products: expect.arrayContaining([expect.objectContaining({ id: f.id, slug, name: title,
+        skus: expect.arrayContaining([expect.objectContaining({ sku_id: variant.id, price_minor: '3456', currency: 'USD', available: true })]) })]) });
+    await page.goto(site + '/products/' + slug);
+    await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+    await expect(page.getByText('$34.56', { exact: false })).toBeVisible(); await expect(page.getByText('Real staff description', { exact: true })).toBeVisible();
+    await catalogSnapshot(page, 'published');
+    // The shipped renderer currently has no product-media slot; preserve that
+    // contract visibly rather than inventing an image or claiming it rendered.
+    await expect(page.getByRole('main').locator('img')).toHaveCount(0);
+    await info.attach('visual-274-publication', { body: JSON.stringify({ product: f.id, variant: variant.id, media, release }), contentType: 'application/json' });
+  });
 });
