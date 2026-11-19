@@ -1,4 +1,4 @@
-/** Browser regression for §6.2/6.3: served PDP interaction, disclosure and uncropped details. */
+/** Browser regression for §6.2/6.3: PDP interaction, filled details and uncropped viewer. */
 import { test, expect } from '@playwright/test';
 test.beforeEach(async({page})=>{await page.setViewportSize({width:1440,height:1000})});
 for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) test(`gallery details ${locale}`, async ({ page }) => {
@@ -12,7 +12,7 @@ for (const locale of ['en','zh','es','fr','de','pt','ru','ar']) test(`gallery de
  await expect(detail).toHaveCount(1);
  await detail.click();
  const main = page.locator('[data-gallery-main]');
- await expect(main).toHaveCSS('object-fit', 'contain');
+ await expect(main).toHaveCSS('object-fit', 'cover');
  if (process.env.APPAREL_PACKAGED_IMAGES === '1' || process.env.APPAREL_PREVIEW_URL) await expect.poll(() => main.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth === 1200 && img.naturalHeight === 1200)).toBe(true);
  const box = await main.boundingBox(); expect(box!.width / box!.height).toBeCloseTo(4/5, 2);
  await expect(page.locator('[data-digital-label]')).toHaveCount(0);

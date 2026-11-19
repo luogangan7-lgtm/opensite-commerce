@@ -7,7 +7,7 @@ for(const slug of ['apparel-70194','pullover-hoodie-69010','pullover-hoodie-6901
  await expect(link).toHaveCount(1); await link.click();
  const main=page.locator('[data-gallery-main]');
  await expect(main).toHaveAttribute('src',`/img/${slug}/structure.webp`);
- await expect(main).toHaveCSS('object-fit','contain');
+ await expect(main).toHaveCSS('object-fit','cover');
  await expect(page.locator('[data-digital-label]')).toHaveCount(0);
  if(process.env.APPAREL_FIN_IMAGES==='1') await expect.poll(()=>main.evaluate((i:HTMLImageElement)=>i.complete&&i.naturalWidth===1254&&i.naturalHeight===1254)).toBe(true);
  await main.click();
