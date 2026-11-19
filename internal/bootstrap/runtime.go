@@ -27,6 +27,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/identity"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/notifications"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/publish/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/quotes"
@@ -36,6 +37,7 @@ import (
 )
 
 func FromEnvironment(ctx context.Context, config Config) (Config, func(), error) {
+	config.PaymentDeletion = payments.NewDeletionObligations(nil)
 	if config.Subject == nil {
 		config.Subject = staffSubject
 	}

@@ -188,6 +188,9 @@ func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
 				body["account_id"] = "unknown_" + uuid.NewString()
 			case "disabled_account", "foreign_account":
 				err := p.f.runner.InMaintenance(p.f.ctx, func(ctx context.Context, tx pgx.Tx) error {
+					if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id',$1,true)", p.f.tenant); err != nil {
+						return err
+					}
 					if name == "disabled_account" {
 						_, err := tx.Exec(ctx, "UPDATE app.payment_provider_accounts SET enabled=false WHERE provider_account_id=$1", p.account)
 						return err

@@ -11,11 +11,11 @@ BEGIN
    RAISE EXCEPTION 'C19D_GATE FORCE RLS %',tab; END IF;
   FOR r IN SELECT rolname FROM pg_roles WHERE starts_with(rolname,'app_') LOOP
    FOREACH p IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] LOOP
-    IF has_table_privilege(r.rolname,'app.'||tab,p) IS DISTINCT FROM (r.rolname='app_payments_service' AND p IN('SELECT','INSERT') OR r.rolname IN('app_orders_executor','app_fulfillment_executor') AND tab='payment_refund_reversals' AND p='SELECT') THEN RAISE EXCEPTION 'C19D_GATE table ACL % % %',r.rolname,tab,p; END IF;
+    IF has_table_privilege(r.rolname,'app.'||tab,p) IS DISTINCT FROM (r.rolname='app_payments_service' AND p IN('SELECT','INSERT') OR r.rolname='app_payments_deletion_executor' AND p='SELECT' OR r.rolname IN('app_orders_executor','app_fulfillment_executor') AND tab='payment_refund_reversals' AND p='SELECT') THEN RAISE EXCEPTION 'C19D_GATE table ACL % % %',r.rolname,tab,p; END IF;
    END LOOP;
    FOR a IN SELECT attnum FROM pg_attribute WHERE attrelid=('app.'||tab)::regclass AND attnum>0 AND NOT attisdropped LOOP
     FOREACH p IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
-     IF has_column_privilege(r.rolname,'app.'||tab,a.attnum,p) IS DISTINCT FROM (r.rolname='app_payments_service' AND p IN('SELECT','INSERT') OR r.rolname IN('app_orders_executor','app_fulfillment_executor') AND tab='payment_refund_reversals' AND p='SELECT') THEN RAISE EXCEPTION 'C19D_GATE column ACL % % %',r.rolname,tab,p; END IF;
+     IF has_column_privilege(r.rolname,'app.'||tab,a.attnum,p) IS DISTINCT FROM (r.rolname='app_payments_service' AND p IN('SELECT','INSERT') OR r.rolname='app_payments_deletion_executor' AND p='SELECT' OR r.rolname IN('app_orders_executor','app_fulfillment_executor') AND tab='payment_refund_reversals' AND p='SELECT') THEN RAISE EXCEPTION 'C19D_GATE column ACL % % %',r.rolname,tab,p; END IF;
     END LOOP;
    END LOOP;
   END LOOP;
