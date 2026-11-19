@@ -3,6 +3,15 @@ import { expect, test } from '@playwright/test';
 
 const allowed = /\b(?:MOQ|EXW|FOB|OEM|ODM|Logo|GSM|Pantone|DTG|DTF|WhatsApp|Cookie|GA4|Google|user-agent|Consent Mode|cm|kg)\b/gi;
 
+// F3 sourcing panel primary CTA labels read through Fleet Bridge.
+for (const [locale, label] of Object.entries({ en: 'Request a quote', ar: 'اطلب عرض سعر', zh: '获取报价' })) {
+  test(`${locale} PDP primary CTA matches Figma`, async ({ page }) => {
+    const prefix = locale === 'en' ? '' : '/' + locale;
+    await page.goto(prefix + '/products/cotton430-hoodie-58065/');
+    await expect(page.locator('[data-rfq-intent="quote"]')).toHaveText(label);
+  });
+}
+
 for (const locale of ['ar', 'zh']) {
   test(`${locale} Home and PDP have localized visible copy`, async ({ page }) => {
     for (const route of ['/', '/products/cotton430-hoodie-58065/']) {
