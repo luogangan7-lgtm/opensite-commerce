@@ -1,6 +1,3 @@
-// Responsibility: wire explicit nonproduction payment capabilities.
-// Dependencies: checkout's fact consumer, Payments and the central mapped runner;
-// caller: FromEnvironment. Staff/customer admission and provider IO are unchanged.
 package bootstrap
 
 import (

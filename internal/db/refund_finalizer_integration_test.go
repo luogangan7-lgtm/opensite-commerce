@@ -1,8 +1,5 @@
 //go:build pgx
 
-// Responsibility: exercise compensation through authenticated Fake facts.
-// Dependencies: migrated PostgreSQL and the production payment fixture.
-// Caller: CI pgx lane; invariant: terminal identities cannot resurrect money.
 package db_test
 
 import (
@@ -100,7 +97,6 @@ func TestRefundFinalizerSignedFacts(t *testing.T) {
 			if err != nil || reversals != want || components != 0 {
 				t.Fatalf("C19D2_EXACTLY_ONCE_RED: reversals=%d components=%d err=%v", reversals, components, err)
 			}
-			// A fresh ordinary identity can consume exactly the restored capacity.
 			p.receive(t, "replacement-admitted", payment.StatusRefunded, p.start.AmountMinor)
 			if w := p.witness(t); w.refunded != p.start.AmountMinor {
 				t.Fatalf("capacity not restored: %+v", w)

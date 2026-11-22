@@ -1,6 +1,4 @@
-// Responsibility: bind Returns only to the isolated coordinator and Payments.
-// Dependencies: public refund ports; caller: FromEnvironment after all providers.
-// Invariants: no implicit provider, no runtime role borrowing or client money proof.
+// Refunds use the isolated coordinator role and explicitly supplied trusted payment bindings.
 package bootstrap
 
 import (

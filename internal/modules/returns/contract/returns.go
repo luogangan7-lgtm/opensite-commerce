@@ -1,7 +1,4 @@
 // Package contract owns return commands and trusted refund composition ports.
-// Dependencies: pgx, money, Payment Port and Ledger contract; callers: bootstrap
-// and authorized admin API. Invariants: no client provider/account/amount proof;
-// durable preparation precedes PSP, and ledger/order/receipt finalize atomically.
 package contract
 
 import (

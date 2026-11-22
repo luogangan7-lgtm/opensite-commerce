@@ -1,10 +1,7 @@
 //go:build pgx && stripe_sandbox
 
-// Responsibility: real Stripe TEST API commands plus CLI-forwarded signed events.
-// Dependencies: disposable PG fixture, production Stripe port/mapped runner and
-// Checkout/Orders/Returns/Ledger contracts. Caller: optional stripe-sandbox CI only.
-// Invariants: durable consent, one event application, bounded failures, balanced
-// payment/refund journals. Event bodies/signatures stay only in process memory.
+// Stripe CLI event bodies and signatures stay in process memory.
+
 package db_test
 
 import (
@@ -582,7 +579,6 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	t.Log("PASS: TEST MODE pay/decline/cancel, received Returns partial+full refund, over-refund rejection, duplicate/out-of-order signed replay; Orders/Returns/Payments/Ledger agree")
 }
 
-// Persisted readers mirror bootstrap's consumer adapters over Payments ports.
 type sandboxReturnReaders struct{ journal payments.RefundJournal }
 
 func (r sandboxReturnReaders) CapturedPayment(ctx context.Context, tx pgx.Tx, tenant, order string) (rc.CapturedPayment, error) {

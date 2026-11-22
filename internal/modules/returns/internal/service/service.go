@@ -1,9 +1,7 @@
 // Package service owns return commands and durable refund orchestration.
-// Dependencies: trusted capture/account/payment/ledger ports and the repository port.
-// Callers: bootstrap/admin API. Invariants: PSP is outside database transactions;
-// a prepared request survives failures, while final ledger/order/receipt commit
-// together. Retry uses the persisted PSP fingerprint, never current order data.
-// Finalization locks the order and return before any ledger or receipt write.
+// The PSP runs after preparation commits. Finalization takes the order and
+// return locks before any journal or receipt write so the refund budget and
+// response commit together. See docs/modules/returns.md.
 package service
 
 import (

@@ -1,9 +1,5 @@
 //go:build pgx
 
-// Responsibility: exercise approved quote -> real checkout -> trusted Confirm in PG.
-// Dependencies: bootstrap typed composition and public modules; pgxadapter owns pools.
-// Invariants: expendable fixtures, effective app_runtime, provider IO at tx depth zero;
-// tests never implement order transitions, captures or business journals themselves.
 package bootstrap_test
 
 import (
@@ -228,7 +224,6 @@ func (f *quoteOrderFixture) maintenance(t *testing.T, fn func(context.Context, p
 	}
 }
 
-// The neutral probe observes provider calls; it implements no business protocol.
 type quoteOrderPaymentProbe struct {
 	mu                                                 sync.Mutex
 	fake                                               *paymentfake.Fake

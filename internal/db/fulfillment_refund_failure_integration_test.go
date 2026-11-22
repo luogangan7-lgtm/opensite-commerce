@@ -1,9 +1,5 @@
 //go:build pgx
 
-// Responsibilities: persist known refund rejection without admitting stale completion.
-// Dependencies: public Returns fixture and controlled SQL commands through pgxadapter.
-// Callers: PG18 CI gate. Invariants: only trusted service can fail a pending intent;
-// uncertain errors retain it; corrected retries use a new immutable PSP key.
 package db_test
 
 import (

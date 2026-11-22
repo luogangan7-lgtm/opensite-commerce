@@ -1,12 +1,8 @@
 //go:build pgx
 
-// Responsibility: exercise Checkout, Orders, Ledger and the Fake Payment Port
-// end to end against expendable, migrated PostgreSQL, without skipped cases.
-// Dependencies: public module contracts and the central pgxadapter. These
-// orchestration cases use intent fixtures; checkout_cart_integration_test.go
-// covers the real Cart reader. Prices/tax/shipping are SQL.
-// Invariants: runtime-scoped transactions, durable replay, one terminal winner,
-// no overselling and no provider IO while the calling transaction remains open.
+// These orchestration tests use intent fixtures. checkout_cart_integration_test.go
+// covers the real Cart reader. Provider calls must run after transaction commit.
+
 package db_test
 
 import (
@@ -298,7 +294,6 @@ func TestCheckoutPGGuestPaidBalancedReplay(t *testing.T) {
 	if f.provider.captures.Load() != 1 {
 		t.Fatalf("duplicate event called Capture %d times", f.provider.captures.Load())
 	}
-	// Replaying Start after payment returns the original intent/payable snapshot.
 	r, e := f.service.Start(ctx, f.actor, in)
 	if e != nil || r != start {
 		t.Fatalf("Start after terminal %#v %v", r, e)
@@ -587,7 +582,6 @@ func TestCheckoutPGExpiredReservationIsNotCaptured(t *testing.T) {
 			f := newCheckoutPGFixture(t, 10, 2)
 			start := f.start(t)
 			err := f.runner.InMaintenance(f.ctx, func(ctx context.Context, tx pgx.Tx) error {
-				// Only the trusted fixture administrator advances this order's deadline.
 				_, err := tx.Exec(ctx, "UPDATE app.inventory_reservations SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1 AND owner_id=$2", f.tenant, start.OrderID)
 				return err
 			})
@@ -632,7 +626,7 @@ func TestCheckoutPGExpiredReservationIsNotCaptured(t *testing.T) {
 	}
 }
 
-// ADR-C13a: only the selected profile's zones compete. Another profile's
+// docs/ADR-C13a.md: only the selected profile's zones compete. Another profile's
 // narrower (US-CA) or equally specific (US) zone must not shadow profile A's
 // national rate, while A's own narrower zone still wins.
 func TestCheckoutPGShippingZonesScopedToProfile(t *testing.T) {

@@ -1,6 +1,3 @@
-// Responsibilities: verify return commands use strict DTOs and trusted service ports.
-// Dependencies: public return/payment contracts and authenticated routing.
-// Invariants: client input cannot supply PSP/ledger proof; errors never expose it.
 package returns
 
 import (

@@ -1,10 +1,5 @@
 //go:build pgx
 
-// Responsibilities: regress legacy/RMA conservation and zero-value completion.
-// Dependencies: existing fulfillment fixture, public Orders/Fulfillment/Returns
-// ports and tenanttx; reads Orders, Returns, Inventory and Ledger as witnesses.
-// Callers: tagged CI gate. Invariants: frozen refunds conserve remaining credit,
-// each RMA restores once, zero returns finish without PSP or ledger side effects.
 package db_test
 
 import (

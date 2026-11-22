@@ -1,6 +1,4 @@
-// Package checkout exposes the single checkout orchestrator to static composition.
-// Dependencies: only checkout's private service and public contract; no pools,
-// HTTP auth or provider selection. Missing ports remain a default-deny boundary.
+// Package checkout exposes the checkout orchestrator to static composition.
 package checkout
 
 import (
@@ -14,8 +12,7 @@ type Config = contract.Config
 
 func New(config Config) contract.ServiceWithPaymentEvents { return service.New(config) }
 
-// NewSQLCart consumes the cart module's public transaction-scoped intent reader.
-// Static composition supplies cart.ReadIntent; checkout imports only its contract.
+// NewSQLCart reads shopping intent inside the checkout transaction.
 func NewSQLCart(read cart.IntentReader) contract.CartReader { return store.NewCart(read) }
 
 // RuleMetadata only supplies canonical catalog fields not modeled by this base.

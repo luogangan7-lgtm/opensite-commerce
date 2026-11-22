@@ -1,7 +1,3 @@
-// Responsibility: opt in to the development/test checkout capability explicitly.
-// Dependencies: neutral Fake, public checkout/orders/ledger and pgxadapter ports;
-// FromEnvironment calls this before database IO. It owns no persistence or secrets.
-// Invariants: no live provider or implicit Fake; incomplete/prod configuration fails.
 package bootstrap
 
 import (

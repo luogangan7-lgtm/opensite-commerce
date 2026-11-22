@@ -1,7 +1,4 @@
 // Package returns composes transaction commands and the two-phase refund port.
-// Dependencies: public contract and private service/store; callers: bootstrap.
-// Invariants: missing captured-payment/account bindings fail closed; production
-// must inject trusted readers, and paymentfake is only a test adapter.
 package returns
 
 import (

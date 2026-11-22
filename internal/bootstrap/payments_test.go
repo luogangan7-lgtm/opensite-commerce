@@ -1,6 +1,3 @@
-// Responsibility: guard the explicit Fake PSP/environment/key capability before IO.
-// Dependencies: bootstrap environment parser and stdlib; caller: CI default suite.
-// Invariant: malformed toggles, production modes and invalid isolated keys fail closed.
 package bootstrap
 
 import (

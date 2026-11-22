@@ -1,6 +1,3 @@
-// Responsibilities: prove refund finalization lock order and failure recovery.
-// Dependencies: shared refund fixtures and public contracts; caller: Go gate.
-// Invariants: lock after PSP success, before journal, completion and response.
 package service
 
 import (
@@ -73,7 +70,6 @@ func TestRefundLockFailurePreservesPendingWithoutFinalization(t *testing.T) {
 	}
 }
 
-// Errors originate in the trusted Payments posting port after PSP success.
 type postingFailureLedger struct {
 	*ledgerFake
 	cause  error

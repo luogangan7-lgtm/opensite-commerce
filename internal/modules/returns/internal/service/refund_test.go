@@ -1,8 +1,3 @@
-// Responsibilities: prove refund recovery and trust fences without a database.
-// Dependencies: private service, public ports and Payment Fake; callers: Go gate.
-// Invariants: a PSP side effect is never repeated when journal commit fails;
-// mutable account/capture readers are not consulted after durable preparation.
-// Finalization locks the order/RMA before any journal or response persistence.
 package service
 
 import (
@@ -182,8 +177,6 @@ func (r *refundRepo) Prepared(_ context.Context, _ pgx.Tx, _ string, in contract
 	return out, true, nil
 }
 
-// Extra fake method compiles before Repository gains the locking port. The
-// service must select it in its second transaction, after external PSP success.
 func (r *refundRepo) LockPrepared(ctx context.Context, tx pgx.Tx, tenant string, in contract.RefundInput) (contract.PreparedRefund, bool, error) {
 	r.locks++
 	if r.record != nil {
