@@ -1,9 +1,5 @@
 //go:build pgx
 
-// Responsibility: prove signed payment facts, admission and checkout effects commit together.
-// Dependencies: real migrated PG, Payments/Checkout public ports and existing checkout fixture.
-// Caller: CI pgx race gate. Invariants: account authority, durable replay, no provider commands,
-// atomic rollback, deferred refund draining and double-entry conservation.
 package db_test
 
 import (
@@ -260,7 +256,6 @@ func TestPaymentsPGSignatureAccountAndBindingNoWrite(t *testing.T) {
 			} else if after != before {
 				t.Fatalf("invalid admission wrote state: before %+v after %+v", before, after)
 			}
-			// Mapped foreign/unknown order claims retain only a failed receipt; no business effects.
 			var count int
 			expected := 0
 			if rejectedFact || name == "foreign_account" {

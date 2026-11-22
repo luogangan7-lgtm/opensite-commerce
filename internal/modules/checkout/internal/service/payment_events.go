@@ -1,8 +1,3 @@
-// Responsibility: consume completed payment facts without invoking the provider.
-// Dependencies: checkout store/receipts, Orders and Ledger public transaction ports.
-// Caller: Payments through the public applier; it owns transaction and Inbox result.
-// Invariants: checkout lock serializes commands/facts; original payable stays fixed;
-// refund components are bounded, and order/journal/receipt commit atomically.
 package service
 
 import (

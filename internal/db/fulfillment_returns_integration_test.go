@@ -1,9 +1,5 @@
 //go:build pgx
 
-// Responsibilities: exercise fulfillment/returns public ports on real PG18.
-// Dependencies: tenanttx adapter, public modules, money and test Payment Fake.
-// Callers: tagged integration gate. Invariants: no raw pool/connection, tenant
-// hiding, committed paid stock, durable PSP recovery and balanced refund ledger.
 package db_test
 
 import (
@@ -476,7 +472,6 @@ func TestFulfillmentPartialShipmentCancelRemainderRefund(t *testing.T) {
 	if state != "partially_refunded" || refunded != 230 || journals != 1 || debits != 230 || credits != 230 || f.stock(t) != 18 {
 		t.Fatalf("partial cancel conservation state=%s refunded=%d journals=%d debit=%d credit=%d stock=%d", state, refunded, journals, debits, credits, f.stock(t))
 	}
-	// Return the two physically shipped units and refund the remaining components.
 	var physical returnscontract.Return
 	physicalInput := returnscontract.RequestInput{OrderID: f.order.ID, ExpectedVersion: done.OrderVersion, IdempotencyKey: uuid.NewString(), Kind: returnscontract.ShipmentReturn, Reason: "received damaged", Lines: []returnscontract.Line{{OrderLineID: f.line, ShipmentLineID: shipped.Lines[0].ID, Quantity: 2}}}
 	err = f.runtime.InTenant(f.ctx, f.tenant, func(ctx context.Context, tx pgx.Tx) error {

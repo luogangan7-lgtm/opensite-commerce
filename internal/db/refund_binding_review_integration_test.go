@@ -1,8 +1,5 @@
 //go:build pgx
 
-// Responsibility: regress FIX-341 original PSP binding and compensation entry fences.
-// Dependencies: production mapped ingress and closed Returns/Payments SQL ports.
-// Caller: CI pgx lane; unproven facts must retain money and reconciliation access.
 package db_test
 
 import (

@@ -9,8 +9,8 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 )
 
-// LoadPaymentReceiptSnapshot borrows the transaction whose tenant and checkout
-// lock have already been established by payment fact admission.
+// LoadPaymentReceiptSnapshot reads the applied state in the tenant transaction
+// holding the checkout lock shared with Confirm and Cancel (issue #704).
 func LoadPaymentReceiptSnapshot(ctx context.Context, tx pgx.Tx, tenantID, checkoutID string, status payment.PaymentStatus) (contract.Result, []byte, error) {
 	row, err := db.New(tx).GetCheckoutByID(ctx, db.GetCheckoutByIDParams{TenantID: UUID(tenantID), ID: UUID(checkoutID)})
 	if err != nil {

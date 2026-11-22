@@ -1,8 +1,4 @@
 // Package contract owns checkout's transport-neutral actor, commands and ports.
-// Dependencies: Orders/Ledger public contracts, neutral Payment Port, pure calculators.
-// Callers: trusted storefront resolver, checkout service and test composition.
-// Invariants: actor capability is not request data; cart prices are recomputed,
-// existing orders retain sealed prices, and payment calls never hold a transaction.
 package contract
 
 import (

@@ -1,5 +1,3 @@
-// Deployment URL tests guard secret encoding and fail-closed component config.
-// Dependencies: environmentDSN and net/url; Go gates execute without a database.
 package bootstrap
 
 import (

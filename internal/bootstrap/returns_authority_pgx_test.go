@@ -1,9 +1,5 @@
 //go:build pgx
 
-// Responsibility: exercise refundReturn with the production coordinator LOGIN.
-// Dependencies: disposable PG, quote paid-order fixture, staff auth and Fake PSP.
-// Caller: foundation pgx gate. Invariant: authenticated refund and replay produce
-// one provider refund and one journal without borrowing runtime privileges.
 package bootstrap_test
 
 import (

@@ -1,9 +1,5 @@
 //go:build pgx
 
-// Responsibility: bind refund delivery variants to one persisted financial fact.
-// Dependencies: production mapped Payments and migrated PG checkout fixture.
-// Caller: CI pgx lane. Invariants: independent delivery receipts, one journal,
-// immutable refund amount, and durable unmatched dashboard facts without money.
 package db_test
 
 import (
@@ -508,7 +504,6 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// A missing financial identity must be retained without interpreting it as a new refund.
 	var missingBody map[string]any
 	_ = json.Unmarshal(p.raw("rma-without-identity", payment.StatusPartiallyRefunded, completed.RefundMinor), &missingBody)
 	delete(missingBody, "refund_id")

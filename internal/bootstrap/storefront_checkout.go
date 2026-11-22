@@ -1,6 +1,3 @@
-// Responsibility: compose opt-in cart checkout behind independently verified actors.
-// Dependencies: Cart/Checkout/Orders/Ledger public ports and authorized pgxadapter runners.
-// Caller: FromEnvironment; invariant: retain Payments receiver, staff rechecks and DB-clock rules.
 package bootstrap
 
 import (

@@ -1,7 +1,3 @@
-// Responsibilities: expose return commands through strict generated transport.
-// Dependencies: public return/payment contracts, authorization and bounded routing.
-// Callers: bootstrap. Invariants: refunds accept no client PSP/account/amount proof;
-// the trusted service owns its committed preparation and completion transactions.
 package returns
 
 import (
@@ -38,7 +34,7 @@ func NewHTTP(config HTTPConfig) *HTTP {
 		config.Service = New(Config{})
 	}
 	if config.RefundCompleter == nil {
-		// Older callers supply both capabilities through Service.
+		// Preserve callers that supply both capabilities through Service.
 		config.RefundCompleter, _ = config.Service.(contract.RefundCompleter)
 	}
 	return &HTTP{config: config}

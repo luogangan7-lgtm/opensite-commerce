@@ -1,8 +1,5 @@
 //go:build pgx
 
-// Responsibility: gate the production quote composition through customer HTTP
-// admission and signed completed payment facts. Dependencies: public module ports;
-// invariants: real customer capability, real checkout, no test business writes.
 package bootstrap_test
 
 import (
