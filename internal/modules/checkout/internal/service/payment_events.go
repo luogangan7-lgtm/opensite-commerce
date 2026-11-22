@@ -93,16 +93,16 @@ func (s *Service) applyPaymentFact(ctx context.Context, tx pgx.Tx, event payment
 	}
 	// Results are transport-compatible with command receipt replay; checkout's
 	// original final_result is not rewritten when a later refund arrives.
-	current, err := q.GetCheckoutByID(ctx, db.GetCheckoutByIDParams{TenantID: row.TenantID, ID: row.ID})
+	current, finalResult, err := store.LoadPaymentReceiptSnapshot(ctx, tx, row.TenantID.String(), row.ID.String(), event.Status)
 	if err != nil {
-		return false, store.MapError(err)
+		return false, err
 	}
-	result, err := json.Marshal(snapshot(current, event.Status))
+	result, err := json.Marshal(current)
 	if err != nil {
 		return false, contract.ErrUnavailable
 	}
-	if !refund && current.FinalResult != nil {
-		result = current.FinalResult
+	if !refund && finalResult != nil {
+		result = finalResult
 	}
 	err = q.CompleteCheckoutAttempt(ctx, db.CompleteCheckoutAttemptParams{TenantID: row.TenantID, EventKind: "payment", EventKey: eventKey, Result: result})
 	return err == nil, store.MapError(err)
