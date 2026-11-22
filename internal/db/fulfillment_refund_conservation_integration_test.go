@@ -93,7 +93,7 @@ func newConservationFixture(t *testing.T, quantity, unit, taxBasisPoints, shippi
 	}
 	f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments,
 		Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: f.tenant, OrderID: f.order.ID, ProviderRef: intent.ProviderRef, OrderVersion: req.OrderVersion, Paid: req.Amount}},
-		Accounts: fulfillmentAccounts{tenant: f.tenant, accounts: accounts}, Ledger: payments.RefundJournal{Ledger: f.journal}})
+		Accounts: fulfillmentAccounts{tenant: f.tenant, accounts: accounts}, RefundJournal: payments.RefundJournal{Ledger: f.journal}})
 	return f, initialStock
 }
 

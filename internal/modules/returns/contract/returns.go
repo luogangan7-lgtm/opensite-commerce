@@ -108,15 +108,16 @@ type RefundAccounts struct{ Income, Tax, Shipping, Cash string }
 type AccountReader interface {
 	RefundAccounts(context.Context, pgx.Tx, string, string) (RefundAccounts, error)
 }
-type LedgerPoster interface {
-	Post(context.Context, pgx.Tx, ledger.Transaction) (string, error)
+type RefundJournal interface {
+	LockReturnCheckout(ctx context.Context, tx pgx.Tx, returnID string) error
+	PostReturnRefund(ctx context.Context, tx pgx.Tx, returnID, key, refundID string, posting ledger.Transaction) (string, error)
 }
 type Config struct {
-	Runner   TransactionRunner
-	Payments payment.Port
-	Captures CapturedPaymentReader
-	Accounts AccountReader
-	Ledger   LedgerPoster
+	Runner        TransactionRunner
+	Payments      payment.Port
+	Captures      CapturedPaymentReader
+	Accounts      AccountReader
+	RefundJournal RefundJournal
 }
 type Service interface {
 	Request(context.Context, pgx.Tx, string, RequestInput) (Return, error)

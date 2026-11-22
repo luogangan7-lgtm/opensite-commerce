@@ -131,7 +131,7 @@ type ledgerFake struct {
 	record func(string)
 }
 
-func (l *ledgerFake) Post(_ context.Context, _ pgx.Tx, in ledger.Transaction) (string, error) {
+func (l *ledgerFake) PostReturnRefund(_ context.Context, _ pgx.Tx, _, _, _ string, in ledger.Transaction) (string, error) {
 	l.calls++
 	if l.record != nil {
 		l.record("ledger")
@@ -310,7 +310,7 @@ func refundFixture(t *testing.T) (*Service, *refundRepo, *paymentTestPort, *capt
 	l := &ledgerFake{}
 	r := &refundRepo{}
 	runner := &testRunner{}
-	s := &Service{config: contract.Config{Runner: runner, Payments: p, Captures: c, Accounts: a, Ledger: l}, repo: r}
+	s := &Service{config: contract.Config{Runner: runner, Payments: p, Captures: c, Accounts: a, RefundJournal: l}, repo: r}
 	return s, r, p, c, a, l, runner
 }
 func TestRefundRecoversProviderSuccessBeforeDatabaseFailure(t *testing.T) {
@@ -402,7 +402,7 @@ func TestRefundCompletedReplaySurvivesMissingProviderConfiguration(t *testing.T)
 		t.Fatal(err)
 	}
 	s.config.Payments = nil
-	s.config.Ledger = nil
+	s.config.RefundJournal = nil
 	s.config.Captures = nil
 	s.config.Accounts = nil
 	if _, err := s.Refund(context.Background(), tenantID, in); err != nil || !r.completed || l.calls != 1 || len(p.Events()) != 3 || c.calls != 1 || a.calls != 1 {
@@ -426,10 +426,4 @@ func TestRefundJournalZeroComponentsRemainBalanced(t *testing.T) {
 	}
 }
 
-func (l *ledgerFake) PostRefund(ctx context.Context, tx pgx.Tx, in ledger.Transaction) (string, error) {
-	return l.Post(ctx, tx, in)
-}
 func (l *ledgerFake) LockReturnCheckout(context.Context, pgx.Tx, string) error { return nil }
-func (l *ledgerFake) PostReturnRefund(ctx context.Context, tx pgx.Tx, _ string, _ string, _ string, in ledger.Transaction) (string, error) {
-	return l.Post(ctx, tx, in)
-}

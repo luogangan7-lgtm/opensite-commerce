@@ -87,13 +87,13 @@ func (l *postingFailureLedger) LockReturnCheckout(context.Context, pgx.Tx, strin
 	}
 	return nil
 }
-func (l *postingFailureLedger) PostReturnRefund(ctx context.Context, tx pgx.Tx, _ string, _ string, _ string, in ledger.Transaction) (string, error) {
+func (l *postingFailureLedger) PostReturnRefund(ctx context.Context, tx pgx.Tx, returnID, key, refundID string, in ledger.Transaction) (string, error) {
 	if l.cause != nil {
 		err := l.cause
 		l.cause = nil
 		return "", err
 	}
-	return l.Post(ctx, tx, in)
+	return l.ledgerFake.PostReturnRefund(ctx, tx, returnID, key, refundID, in)
 }
 func TestRefundPostingErrorContractAndSameKeyRecovery(t *testing.T) {
 	for _, atLock := range []bool{false, true} {
@@ -111,7 +111,7 @@ func TestRefundPostingErrorContractAndSameKeyRecovery(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("lock=%t/%s", atLock, tt.name), func(t *testing.T) {
 				s, r, p, c, a, l, runner := refundFixture(t)
-				s.config.Ledger = &postingFailureLedger{ledgerFake: l, cause: fmt.Errorf("trusted posting: %w", tt.cause), atLock: atLock}
+				s.config.RefundJournal = &postingFailureLedger{ledgerFake: l, cause: fmt.Errorf("trusted posting: %w", tt.cause), atLock: atLock}
 				in := contract.RefundInput{ReturnID: returnID, ExpectedVersion: 4, IdempotencyKey: "posting-recovery"}
 				out, err := s.Refund(context.Background(), tenantID, in)
 				if !errors.Is(err, tt.want) || out.ID != "" {
