@@ -12,9 +12,12 @@ type ServiceWithPaymentEvents interface {
 	PaymentEventApplier
 }
 
-// PaymentEventApplier consumes verified facts within the caller's transaction.
-// The caller verifies signature, account and inbox admission and owns rollback
-// on error. A false result with nil error means a prerequisite is missing.
+// PaymentEventApplier consumes facts after signature verification, trusted
+// account mapping and inbox admission (V1_DECISIONS.md §2).
+// The caller owns the transaction and rolls back an application error
+// (C-19a, docs/architecture/modules/PAYMENTS_FAKE.md).
+// A false result with nil error leaves the fact pending, such as a refund
+// received before capture (issue #293).
 type PaymentEventApplier interface {
 	ApplyPaymentEvent(context.Context, pgx.Tx, payment.VerifiedEvent) (bool, error)
 }

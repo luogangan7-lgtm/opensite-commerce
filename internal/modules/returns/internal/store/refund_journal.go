@@ -1,5 +1,3 @@
-// RefundJournal translates trusted journal failures at the Returns boundary.
-// The caller supplies the active finalization transaction for both commands.
 package store
 
 import (
@@ -10,6 +8,8 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
 )
 
+// RefundJournal maps trusted journal failures to Returns errors so a temporary
+// server failure preserves the HTTP 503 and same-key recovery contract (issue #190).
 type RefundJournal struct {
 	Journal contract.RefundJournal
 }

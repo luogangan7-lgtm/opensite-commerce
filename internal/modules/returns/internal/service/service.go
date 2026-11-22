@@ -1,7 +1,7 @@
 // Package service owns return commands and durable refund orchestration.
 // The PSP runs after preparation commits. Finalization takes the order and
 // return locks before any journal or receipt write so the refund budget and
-// response commit together. See docs/modules/returns.md.
+// response commit together (issue #190, docs/modules/returns.md).
 package service
 
 import (
@@ -188,6 +188,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 // Only an adapter's permanently sealed no-effect proof may release a reservation.
 // Timeouts, unknown results and unmarked errors need reconciliation with the
 // same frozen PSP key. Persist even if the caller disconnected, but bound I/O.
+// See docs/modules/returns.md, Provider rejection and reconciliation.
 func (s *Service) recordProviderFailure(ctx context.Context, tenant string, prepared contract.PreparedRefund, cause error) error {
 	var providerError *payment.PaymentError
 	rejected := errors.As(cause, &providerError) && providerError.NoSideEffect && !providerError.Retryable()
