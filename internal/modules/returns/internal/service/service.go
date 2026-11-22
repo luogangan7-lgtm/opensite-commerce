@@ -1,5 +1,5 @@
 // Package service owns return commands and durable refund orchestration.
-// Dependencies: trusted capture/account/payment/ledger ports and private store.
+// Dependencies: trusted capture/account/payment/ledger ports and the repository port.
 // Callers: bootstrap/admin API. Invariants: PSP is outside database transactions;
 // a prepared request survives failures, while final ledger/order/receipt commit
 // together. Retry uses the persisted PSP fingerprint, never current order data.
@@ -16,7 +16,6 @@ import (
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
-	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/internal/store"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
@@ -35,6 +34,10 @@ type Repository interface {
 type Service struct {
 	config contract.Config
 	repo   Repository
+}
+
+func New(config contract.Config, repo Repository) *Service {
+	return &Service{config: config, repo: repo}
 }
 
 func (s *Service) Request(ctx context.Context, tx pgx.Tx, tenant string, in contract.RequestInput) (contract.Return, error) {
@@ -142,7 +145,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 	var out contract.Return
 	err = s.config.Runner.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
 		if err := s.config.RefundJournal.LockReturnCheckout(ctx, tx, prepared.ID); err != nil {
-			return store.MapError(err)
+			return err
 		}
 		latest, exists, err := s.repo.LockPrepared(ctx, tx, tenant, in)
 		if err != nil {
@@ -164,7 +167,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 		}
 		journal, err := s.config.RefundJournal.PostReturnRefund(ctx, tx, prepared.ID, prepared.RefundKey, result.RefundID, posting)
 		if err != nil {
-			return store.MapError(err)
+			return err
 		}
 		if !contract.ValidID(journal) {
 			return contract.ErrUnavailable
