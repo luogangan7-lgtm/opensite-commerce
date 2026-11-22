@@ -12,7 +12,7 @@ import (
 
 type Config = contract.Config
 
-func New(config Config) contract.Service { return service.New(config) }
+func New(config Config) contract.ServiceWithPaymentEvents { return service.New(config) }
 
 // NewSQLCart consumes the cart module's public transaction-scoped intent reader.
 // Static composition supplies cart.ReadIntent; checkout imports only its contract.

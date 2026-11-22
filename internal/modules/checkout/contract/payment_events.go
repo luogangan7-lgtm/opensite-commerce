@@ -11,6 +11,12 @@ import (
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 )
 
+// ServiceWithPaymentEvents is the checkout instance used by payment composition.
+type ServiceWithPaymentEvents interface {
+	Service
+	PaymentEventApplier
+}
+
 type PaymentEventApplier interface {
 	ApplyPaymentEvent(context.Context, pgx.Tx, payment.VerifiedEvent) (bool, error)
 }

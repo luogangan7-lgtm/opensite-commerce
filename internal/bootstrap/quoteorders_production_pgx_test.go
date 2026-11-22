@@ -26,7 +26,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/bootstrap"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
-	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer"
 	cc "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/customer/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
@@ -136,11 +135,7 @@ func (f *quoteOrderFixture) factReceiver(t *testing.T) (pc.Receiver, string) {
 			return fn(ctx, tx, tenant, at)
 		})
 	}
-	applier, ok := f.checkout.(checkoutcontract.PaymentEventApplier)
-	if !ok {
-		t.Fatal("real checkout lacks completed-fact consumer")
-	}
-	receiver, err := payments.New(payments.Config{Key: f.signingKey, Run: run, Apply: applier.ApplyPaymentEvent})
+	receiver, err := payments.New(payments.Config{Key: f.signingKey, Run: run, Apply: f.checkout.ApplyPaymentEvent})
 	if err != nil {
 		t.Fatal(err)
 	}
