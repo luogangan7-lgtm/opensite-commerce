@@ -143,7 +143,7 @@ func TestPaymentsLegacyRefundRequiresReconciliation(t *testing.T) {
 		if err = q.InsertPaymentEvent(ctx, db.InsertPaymentEventParams{TenantID: mustPGUUID(t, tenant), ID: inbox, ProviderAccountID: p.account, ProviderRef: p.start.Payment.ProviderRef, EventKey: key, ClaimedOrderID: mustPGUUID(t, p.start.OrderID), OrderVersion: p.start.OrderVersion, Status: string(payment.StatusPartiallyRefunded), AmountMinor: 1, Currency: p.start.Currency}); err != nil {
 			return err
 		}
-		done, err := p.f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent(ctx, tx, payment.VerifiedEvent{EventID: key, TenantID: tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Status: payment.StatusPartiallyRefunded, Amount: money.Money{Amount: 1, Currency: p.start.Currency}})
+		done, err := p.f.service.ApplyPaymentEvent(ctx, tx, payment.VerifiedEvent{EventID: key, TenantID: tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Status: payment.StatusPartiallyRefunded, Amount: money.Money{Amount: 1, Currency: p.start.Currency}})
 		if err != nil || !done {
 			return fmt.Errorf("seed legacy refund: applied=%v error=%v", done, err)
 		}
@@ -240,7 +240,7 @@ func TestStripeRefundFailedAfterSuccess(t *testing.T) {
 					})
 				}
 				retrievalDown := false
-				config := payments.Config{Run: run, Apply: f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent, Admit: func(context.Context, payment.CreatePaymentIntent, bool) error { return nil }}
+				config := payments.Config{Run: run, Apply: f.service.ApplyPaymentEvent, Admit: func(context.Context, payment.CreatePaymentIntent, bool) error { return nil }}
 				if enabled {
 					config.TerminalRun = func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
 						return run(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
@@ -364,7 +364,7 @@ func TestPaymentsFactReadFailureIsBounded(t *testing.T) {
 		return p.run(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
 			return fn(ctx, paymentKeyReadFailure{tx}, tenant, at)
 		})
-	}, Apply: p.f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent})
+	}, Apply: p.f.service.ApplyPaymentEvent})
 	if err != nil {
 		t.Fatal(err)
 	}

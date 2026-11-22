@@ -64,7 +64,7 @@ type quoteOrderFixture struct {
 	quote                                                                                                  qc.Quote
 	fake                                                                                                   *paymentfake.Fake
 	prepay                                                                                                 *quoteOrderPaymentProbe
-	checkout                                                                                               checkoutcontract.Service
+	checkout                                                                                               checkoutcontract.ServiceWithPaymentEvents
 	confirm                                                                                                http.Handler
 	signingKey                                                                                             []byte
 	app                                                                                                    *quotes.ConversionApplication
