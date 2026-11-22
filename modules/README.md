@@ -23,7 +23,7 @@ and flow/block combinations are not accepted.
   `planned` or `implemented`, must exist under an inline OpenAPI
   `paths/<path>/<method>/operationId`; every OpenAPI ID has exactly one module
   owner. Status affects handler readiness and the C-03e coverage gate, never ID
-  accounting. Identity/business operations remain planned; platform `health` is
+  accounting. See the registry for each operation’s current status. Platform `health` is
   implemented by bootstrap and owned by reliability. RouteSpec/OpenAPI tests
   independently verify actual registration readiness. Future operations without an
   OAS contract cannot be put in `operations`; a separate future-operation model is outside this card.
@@ -61,9 +61,9 @@ Nor may they use `pgx.Conn`, `pgx.Connect` or `pgx.ConnectConfig`, including ren
 imports, tests and sources behind custom build tags; dot imports of pgx are
 forbidden. Transaction types such as `pgx.Tx` remain allowed. Connection creation
 belongs to the allowlisted platform transaction adapter.
-Only `internal/platform/httpapi` may import the oapi-codegen server package
-(`httpapi/generated`) in production code, so nothing mounts generated handlers
-around the httpapi chain; tests may import it. A registry operation `status` must
+Production imports of the oapi-codegen server package are restricted to the
+HTTP chain and its explicitly allowlisted adapters. See `GENERATED_SERVER_IMPORTERS`
+in [the checker](../scripts/check_modules.py) for the exact paths. Tests may import it. A registry operation `status` must
 equal the OpenAPI `x-opensite-status` of the same `operationId`. The same rule covers registered legacy business paths.
 Vendor Go files are scanned too: linker directives targeting this repository
 are forbidden, including private package roots and symlink aliases that omit
