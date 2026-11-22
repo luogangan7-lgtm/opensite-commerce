@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/internal/store"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -101,6 +102,10 @@ func TestRefundPostingErrorContractAndSameKeyRecovery(t *testing.T) {
 			name        string
 			cause, want error
 		}{
+			{"canceled", context.Canceled, context.Canceled},
+			{"deadline", context.DeadlineExceeded, context.DeadlineExceeded},
+			{"key reused", &pgxadapter.PgError{Code: "23514", Message: "REFUND_KEY_REUSED"}, contract.ErrKeyReused},
+			{"refund key constraint", &pgxadapter.PgError{Code: "23505", SchemaName: "app", TableName: "returns", ConstraintName: "returns_tenant_id_refund_key_key"}, contract.ErrKeyReused},
 			{"serialization", &pgxadapter.PgError{Code: "40001"}, contract.ErrRetry},
 			{"deadlock", &pgxadapter.PgError{Code: "40P01"}, contract.ErrRetry},
 			{"account", &pgxadapter.PgError{Code: "23514", Message: "FULFILLMENT_LEDGER_ACCOUNT_CONFIG"}, contract.ErrUnavailable},
@@ -111,7 +116,7 @@ func TestRefundPostingErrorContractAndSameKeyRecovery(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("lock=%t/%s", atLock, tt.name), func(t *testing.T) {
 				s, r, p, c, a, l, runner := refundFixture(t)
-				s.config.RefundJournal = &postingFailureLedger{ledgerFake: l, cause: fmt.Errorf("trusted posting: %w", tt.cause), atLock: atLock}
+				s.config.RefundJournal = store.RefundJournal{Journal: &postingFailureLedger{ledgerFake: l, cause: fmt.Errorf("trusted posting: %w", tt.cause), atLock: atLock}}
 				in := contract.RefundInput{ReturnID: returnID, ExpectedVersion: 4, IdempotencyKey: "posting-recovery"}
 				out, err := s.Refund(context.Background(), tenantID, in)
 				if !errors.Is(err, tt.want) || out.ID != "" {
