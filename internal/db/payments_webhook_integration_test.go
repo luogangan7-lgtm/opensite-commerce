@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -492,6 +493,65 @@ func TestPaymentsPGAdmissionAndEffectsRollbackTogether(t *testing.T) {
 	}
 	if w := p.witness(t); w.inbox != 1 || w.applied != 1 || w.checkout.state != "paid" {
 		t.Fatalf("retry %+v", w)
+	}
+}
+
+type paymentReceiptReadTx struct {
+	pgx.Tx
+	t                  *testing.T
+	tenant, checkoutID string
+	reads              int
+}
+
+func (tx *paymentReceiptReadTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if strings.HasPrefix(sql, "-- name: GetCheckoutByID :one\n") {
+		tx.reads++
+		if !strings.Contains(sql, "FOR UPDATE") || len(args) != 2 ||
+			fmt.Sprint(args[0]) != tx.tenant || fmt.Sprint(args[1]) != tx.checkoutID {
+			tx.t.Fatalf("receipt read must lock the checkout selected in the borrowed tenant: %q %v", sql, args)
+		}
+	}
+	return tx.Tx.QueryRow(ctx, sql, args...)
+}
+
+func TestPaymentsPGReceiptSnapshotUsesBorrowedTenantTransaction(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	p.receive(t, "receipt-capture", payment.StatusCaptured, p.start.AmountMinor)
+	p.module = p.newModule(t, func(ctx context.Context, tx pgx.Tx, event payment.VerifiedEvent) (bool, error) {
+		probe := &paymentReceiptReadTx{Tx: tx, t: t, tenant: p.f.tenant, checkoutID: p.start.CheckoutID}
+		done, err := p.f.service.ApplyPaymentEvent(ctx, probe, event)
+		if err != nil || !done || probe.reads != 1 {
+			t.Fatalf("first application: done=%t receipt reads=%d err=%v", done, probe.reads, err)
+		}
+		done, err = p.f.service.ApplyPaymentEvent(ctx, probe, event)
+		if err != nil || !done || probe.reads != 1 {
+			t.Fatalf("completed replay: done=%t total receipt reads=%d err=%v", done, probe.reads, err)
+		}
+		return done, err
+	})
+	if receipt := p.receive(t, "receipt-refund", payment.StatusPartiallyRefunded, 70); receipt.Status != "processed" {
+		t.Fatalf("refund receipt status: %s", receipt.Status)
+	}
+
+	var got checkoutcontract.Result
+	if err := p.f.run(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		var raw []byte
+		if err := tx.QueryRow(ctx, `SELECT result FROM app.checkout_attempts
+WHERE tenant_id=$1 AND checkout_id=$2 AND event_kind='payment' AND result->'payment'->>'status'=$3`,
+			p.f.tenant, p.start.CheckoutID, string(payment.StatusPartiallyRefunded)).Scan(&raw); err != nil {
+			return err
+		}
+		return json.Unmarshal(raw, &got)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := checkoutcontract.Result{
+		CheckoutID: p.start.CheckoutID, OrderID: p.start.OrderID, State: "paid",
+		AmountMinor: p.start.AmountMinor, Currency: p.start.Currency, OrderVersion: p.start.OrderVersion,
+		Payment: checkoutcontract.Intent{ProviderRef: p.start.Payment.ProviderRef, Status: payment.StatusPartiallyRefunded},
+	}
+	if got != want {
+		t.Fatalf("refund receipt lost frozen checkout fields: got %+v want %+v", got, want)
 	}
 }
 
