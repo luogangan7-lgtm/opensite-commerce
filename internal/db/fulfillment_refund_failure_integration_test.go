@@ -211,7 +211,7 @@ func TestReturnsPGTrustedLedgerFailureRecovery(t *testing.T) {
 				accounts.Income, accounts.Cash = accounts.Cash, accounts.Income
 				original := f.returns
 				capture := f.payments.Events()[1]
-				f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, Ledger: f.journal,
+				f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, RefundJournal: f.journal,
 					Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: f.tenant, OrderID: f.order.ID, OrderVersion: capture.OrderVersion, ProviderRef: capture.ProviderRef, Paid: capture.Amount}},
 					Accounts: fulfillmentAccounts{tenant: f.tenant, accounts: accounts}})
 				if _, err := f.returns.Refund(f.ctx, f.tenant, input); !errors.Is(err, returnscontract.ErrUnavailable) {
@@ -226,14 +226,14 @@ func TestReturnsPGTrustedLedgerFailureRecovery(t *testing.T) {
 				if _, err := f.returns.Refund(f.ctx, f.tenant, input); !errors.Is(err, returnscontract.ErrUnavailable) {
 					t.Fatalf("post-PSP failure must be unavailable: %v", err)
 				}
-				f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, Ledger: mismatchedReturnJournal{f.journal}})
+				f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, RefundJournal: mismatchedReturnJournal{f.journal}})
 				if _, err := f.returns.Refund(f.ctx, f.tenant, input); !errors.Is(err, returnscontract.ErrUnavailable) {
 					t.Fatalf("exact DB journal mismatch must be unavailable: %v", err)
 				}
 				if len(f.payments.Events()) != 3 {
 					t.Fatal("journal failure repeated provider refund")
 				}
-				f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, Ledger: f.journal})
+				f.returns = returns.New(returns.Config{Runner: f.service, Payments: f.payments, RefundJournal: f.journal})
 			}
 			out, err := f.returns.Refund(f.ctx, f.tenant, input)
 			if err != nil || out.Status != "refunded" || len(f.payments.Events()) != 3 {

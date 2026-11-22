@@ -413,7 +413,7 @@ func TestReturnsAndProviderFactHaveOneRefundJournal(t *testing.T) {
 	}
 	s := returns.New(returns.Config{Runner: fulfillmentRunner{runner: p.f.runner, role: "service"}, Payments: p.f.provider,
 		Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Paid: r.Amount}},
-		Accounts: fulfillmentAccounts{tenant: p.f.tenant, accounts: accounts}, Ledger: payments.RefundJournal{Ledger: ledger.New()}})
+		Accounts: fulfillmentAccounts{tenant: p.f.tenant, accounts: accounts}, RefundJournal: payments.RefundJournal{Ledger: ledger.New()}})
 	var receipt returnscontract.Return
 	err = p.f.run(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
@@ -551,7 +551,7 @@ func TestMixedRefundComponents(t *testing.T) {
 			}
 			s := returns.New(returns.Config{Runner: fulfillmentRunner{runner: p.f.runner, role: "service"}, Payments: p.f.provider,
 				Captures: fulfillmentCapture{captured: returnscontract.CapturedPayment{TenantID: r.TenantID, OrderID: r.OrderID, OrderVersion: r.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Paid: r.Amount}},
-				Accounts: fulfillmentAccounts{tenant: p.f.tenant, accounts: accounts}, Ledger: payments.RefundJournal{Ledger: ledger.New()}})
+				Accounts: fulfillmentAccounts{tenant: p.f.tenant, accounts: accounts}, RefundJournal: payments.RefundJournal{Ledger: ledger.New()}})
 			var total int64
 			for i, amount := range steps {
 				key := fmt.Sprintf("mixed-%d", i)

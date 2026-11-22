@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
-	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/returns/internal/store"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
@@ -129,11 +128,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 	if prepared.Status == "refunded" {
 		return prepared.Return, nil
 	}
-	if s.config.Payments == nil || s.config.Ledger == nil {
-		return contract.Return{}, contract.ErrUnavailable
-	}
-	poster, ok := s.config.Ledger.(payments.RefundPoster)
-	if !ok {
+	if s.config.Payments == nil || s.config.RefundJournal == nil {
 		return contract.Return{}, contract.ErrUnavailable
 	}
 	request := payment.PaymentOperation{CreatePaymentIntent: payment.CreatePaymentIntent{TenantID: tenant, OrderID: prepared.OrderID, OrderVersion: prepared.PaymentVersion, Amount: money.Money{Amount: prepared.RefundMinor, Currency: prepared.Currency}, IdempotencyKey: idempotency.DerivedKey("return.provider.v1", prepared.ID, prepared.RefundKey)}, ProviderRef: prepared.ProviderRef}
@@ -146,7 +141,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 	}
 	var out contract.Return
 	err = s.config.Runner.InTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
-		if err := poster.LockReturnCheckout(ctx, tx, prepared.ID); err != nil {
+		if err := s.config.RefundJournal.LockReturnCheckout(ctx, tx, prepared.ID); err != nil {
 			return store.MapError(err)
 		}
 		latest, exists, err := s.repo.LockPrepared(ctx, tx, tenant, in)
@@ -167,7 +162,7 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 		if err != nil {
 			return err
 		}
-		journal, err := poster.PostReturnRefund(ctx, tx, prepared.ID, prepared.RefundKey, result.RefundID, posting)
+		journal, err := s.config.RefundJournal.PostReturnRefund(ctx, tx, prepared.ID, prepared.RefundKey, result.RefundID, posting)
 		if err != nil {
 			return store.MapError(err)
 		}

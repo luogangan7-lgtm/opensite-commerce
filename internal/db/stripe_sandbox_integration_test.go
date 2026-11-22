@@ -314,7 +314,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	// bootstrap; no caller-supplied amount, capture or account fixture is trusted.
 	journal := payments.RefundJournal{Ledger: ledger.New()}
 	coordinator := returns.New(returns.Config{Runner: fulfillmentRunner{runner: f.runner, role: "service"}, Payments: adapter,
-		Captures: sandboxReturnReaders{journal}, Accounts: sandboxReturnReaders{journal}, Ledger: journal})
+		Captures: sandboxReturnReaders{journal}, Accounts: sandboxReturnReaders{journal}, RefundJournal: journal})
 	var line, shipmentLine string
 	version := func() int64 {
 		t.Helper()
