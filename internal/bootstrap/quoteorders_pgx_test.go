@@ -187,7 +187,8 @@ func quoteOrdersDB(t *testing.T, expiry time.Duration) *quoteOrderFixture {
 	}
 	f.fake = paymentfake.New()
 	f.prepay = &quoteOrderPaymentProbe{fake: f.fake}
-	f.checkout = checkout.New(checkout.Config{Run: f.runner.InTenant, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: f.prepay})
+	poster := ledger.New()
+	f.checkout = checkout.New(checkout.Config{Run: f.runner.InTenant, Orders: orders.New(), Ledger: poster, Refunds: payments.RefundJournal{Ledger: poster}, Payment: f.prepay})
 	f.app, err = bootstrap.NewQuoteConversion(bootstrap.QuoteConversionConfig{Runner: f.runner, Quotes: m, Orders: orders.NewQuoteCreator()}, f.checkout)
 	if err != nil {
 		t.Fatal(err)
