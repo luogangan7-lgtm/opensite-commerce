@@ -1,6 +1,7 @@
 // Upload handlers use sqlc and the private LocalFS, called only through the
-// authenticated strict service. The upload row lock serializes content/replay;
-// actual stream bytes, size, hash and image structure determine readiness.
+// authenticated strict service. Reserve uses shared C-04 claims and exact
+// durable replay; upload row locks serialize content/completion. Actual stream
+// bytes, size, hash and image structure determine readiness.
 package media
 
 import (
@@ -18,6 +19,7 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
 	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 	"github.com/oapi-codegen/nullable"
 )
 
@@ -32,39 +34,76 @@ func session(u db.AppMediaUpload) httpapi.UploadSession {
 }
 func declared(u db.AppMediaUpload) string { return u.DeclaredMime.String }
 func (s *Service) CreateMediaUpload(ctx context.Context, r httpapi.CreateMediaUploadRequestObject) (httpapi.CreateMediaUploadResponseObject, error) {
-	var result db.AppMediaUpload
-	err := s.transaction(ctx, r.TenantId, func(q *db.Queries) error {
-		if r.Body == nil {
-			return invalid("Upload metadata is required")
+	tenant, err := httpapi.AuthorizedTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if tenant != r.TenantId.String() {
+		return nil, notFound()
+	}
+	actor, err := httpapi.AuthorizedActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s.initErr != nil {
+		return nil, apperrors.New(503, "media_unavailable", "Media persistence is unavailable")
+	}
+	if r.Body == nil {
+		return nil, invalid("Upload metadata is required")
+	}
+	b := r.Body
+	if !validFilename(b.Filename) {
+		return nil, invalid("Filename must not contain path separators or control characters")
+	}
+	if int64(b.SizeBytes) > MaxBytes {
+		return nil, apperrors.New(413, "media_too_large", "Upload exceeds 10 MiB")
+	}
+	if b.SizeBytes < 1 {
+		return nil, invalid("size_bytes must be positive")
+	}
+	hash, err := hex.DecodeString(b.Sha256)
+	if err != nil || len(hash) != 32 {
+		return nil, invalid("sha256 must be 64 hexadecimal characters")
+	}
+	mime := pgtype.Text{}
+	if b.DeclaredMime != nil {
+		if !allowedMIME(*b.DeclaredMime) {
+			return nil, apperrors.New(415, "invalid_media", "Unsupported image MIME")
 		}
-		b := r.Body
-		if !validFilename(b.Filename) {
-			return invalid("Filename must not contain path separators or control characters")
+		mime = pgtype.Text{String: *b.DeclaredMime, Valid: true}
+	}
+	command, replay, err := httpapi.BeginCommand(ctx, s.reserve, "createMediaUpload")
+	if err != nil {
+		return nil, err
+	}
+	if replay != nil {
+		return reserveResponse{*replay}, nil
+	}
+	// The claim is admitted first; the upload and exact response complete in
+	// one authorized transaction. Store/fencing/commit errors roll both back.
+	err = s.reserve.Run(ctx, tenant, func(txctx context.Context, tx pgx.Tx) error {
+		if current, e := httpapi.AuthorizedTenant(txctx); e != nil || current != tenant {
+			return notFound()
 		}
-		if int64(b.SizeBytes) > MaxBytes {
-			return apperrors.New(413, "media_too_large", "Upload exceeds 10 MiB")
+		if current, e := httpapi.AuthorizedActor(txctx); e != nil || current != actor {
+			return notFound()
 		}
-		if b.SizeBytes < 1 {
-			return invalid("size_bytes must be positive")
+		result, err := db.New(tx).ReserveMediaUpload(txctx, db.ReserveMediaUploadParams{TenantID: dbID(r.TenantId), OriginalFilename: b.Filename, DeclaredMime: mime, ExpectedSize: pgtype.Int8{Int64: int64(b.SizeBytes), Valid: true}, ExpectedSha256: hash})
+		if err != nil {
+			return err
 		}
-		hash, e := hex.DecodeString(b.Sha256)
-		if e != nil || len(hash) != 32 {
-			return invalid("sha256 must be 64 hexadecimal characters")
-		}
-		mime := pgtype.Text{}
-		if b.DeclaredMime != nil {
-			if !allowedMIME(*b.DeclaredMime) {
-				return apperrors.New(415, "invalid_media", "Unsupported image MIME")
-			}
-			mime = pgtype.Text{String: *b.DeclaredMime, Valid: true}
-		}
-		result, e = q.ReserveMediaUpload(ctx, db.ReserveMediaUploadParams{TenantID: dbID(r.TenantId), OriginalFilename: b.Filename, DeclaredMime: mime, ExpectedSize: pgtype.Int8{Int64: int64(b.SizeBytes), Valid: true}, ExpectedSha256: hash})
-		return e
+		return command.Complete(txctx, tx, http.StatusCreated, session(result))
 	})
 	if err != nil {
 		return nil, err
 	}
-	return httpapi.CreateMediaUpload201JSONResponse(session(result)), nil
+	return reserveResponse{command.Response()}, nil
+}
+
+type reserveResponse struct{ idempotency.Response }
+
+func (r reserveResponse) VisitCreateMediaUploadResponse(w http.ResponseWriter) error {
+	return httpapi.WriteCommandResponse(w, r.Response)
 }
 
 func readContent(ctx context.Context, r io.Reader) ([]byte, error) {

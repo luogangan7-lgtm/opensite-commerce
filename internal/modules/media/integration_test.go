@@ -25,6 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/httpapi"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/tenanttx/pgxadapter"
 )
 
@@ -65,7 +67,7 @@ func TestMediaPostgresHTTP(t *testing.T) {
 	}
 	defer runner.Close()
 	root := t.TempDir()
-	srv := httptest.NewServer(mediaRouter(t, New(Config{Run: runner.Queries, Root: root})))
+	srv := httptest.NewServer(mediaRouter(t, New(Config{Run: runner.Queries, Root: root, Idempotency: httpapi.CommandConfig{Run: runner.RunAuthorizedTx}})))
 	defer srv.Close()
 	call := func(method, tenant, path, content string, body io.Reader, want int) []byte {
 		t.Helper()
@@ -74,7 +76,7 @@ func TestMediaPostgresHTTP(t *testing.T) {
 			t.Fatal(e)
 		}
 		req.Header.Set("Content-Type", content)
-		req.Header.Set("Idempotency-Key", "09af9445-5d48-5254-be70-9700bb00bbad")
+		req.Header.Set("Idempotency-Key", uuid.NewString())
 		res, e := http.DefaultClient.Do(req)
 		if e != nil {
 			t.Fatal(e)

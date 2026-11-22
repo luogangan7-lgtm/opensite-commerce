@@ -182,10 +182,11 @@ AUDIT_DB=""
 CALLER_KEYS_DB=""
 LIFECYCLE_DB=""
 IDENTITY_MERCHANT_DB=""
+MEDIA_IDEM_DB=""
 cleanup_forward_databases() {
  # Attempt each owned database independently even when an earlier DROP fails.
  local name
- for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB" "$CALLER_KEYS_DB" "$LIFECYCLE_DB" "$IDENTITY_MERCHANT_DB"; do
+ for name in "$RELIABILITY_DB" "$SHIPPING_DB" "$TAX_DB" "$CUSTOMERS_DB" "$LEDGER_DB" "$CATALOG_DB" "$ORDERS_DB" "$QUEUE_DB" "$LIMITS_DB" "$INVENTORY_DB" "$INVENTORY_OWNER_DB" "$PRICING_DB" "$LISTING_DB" "$CART_DB" "$STOREFRONT_DB" "$OPS_METRICS_DB" "$NOTIFICATIONS_DB" "$QUOTES_DB" "$IDENTITY_DB" "$LOGIN_DB" "$CMS_DB" "$CHECKOUT_DB" "$CUSTOMER_AUTH_DB" "$SERVING_DB" "$PAYMENTS_DB" "$DATA_RIGHTS_DB" "$FULFILLMENT_DB" "$CONVERSION_DB" "$CLOCK_DB" "$RECOVERY_DB" "$PRIVACY_HARDENING_DB" "$AUDIT_DB" "$CALLER_KEYS_DB" "$LIFECYCLE_DB" "$IDENTITY_MERCHANT_DB" "$MEDIA_IDEM_DB"; do
   [[ -z $name ]] || admin -c "DROP DATABASE IF EXISTS $name" >/dev/null 2>&1 || true
  done
 }
@@ -1425,6 +1426,45 @@ db "$LIFECYCLE_DB" -f tests/db_tenant_lifecycle.sql >/dev/null
 db "$LIFECYCLE_DB" -f tests/db_role_matrix.sql >/dev/null
 admin -c "DROP DATABASE $LIFECYCLE_DB" >/dev/null; LIFECYCLE_DB=""
 pass 'MDEL01 populated upgrade preserves business rows and every prior role scope'
+
+# FIX-MEDIA-IDEM: a capability-only upgrade preserves existing uploads and
+# completed shared receipts verbatim. Apply every predecessor, never a number.
+media_idem_files=(migrations/[0-9][0-9][0-9]_media_reserve_idempotency.sql)
+[[ ${#media_idem_files[@]} == 1 ]] || { bad 'exactly one media reserve idempotency migration required'; exit 1; }
+MEDIA_IDEM_DB=upgrade_media_idem_$$
+admin -c "CREATE DATABASE $MEDIA_IDEM_DB" >/dev/null
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f == "${media_idem_files[0]}" ]] && break
+ apply_forward "$MEDIA_IDEM_DB" "$f"
+done
+db "$MEDIA_IDEM_DB" <<'SQL' >/dev/null
+INSERT INTO app.tenants(name) VALUES('media-idem-upgrade') RETURNING id AS t \gset
+INSERT INTO app.media_uploads(tenant_id,original_filename,expected_size,expected_sha256,expires_at)
+ VALUES(:'t','existing.png',1,sha256('existing'::bytea),clock_timestamp()+interval '1 hour');
+INSERT INTO app.idempotency_records(tenant_id,actor_kind,actor_id,operation,idempotency_key,request_hash,expires_at,claim_token,state,response_status,response_body_reference,completed_at)
+ VALUES(:'t','user',uuidv7(),'existingOperation',uuidv7()::text,sha256('existing'::bytea),clock_timestamp()+interval '1 minute',uuidv7(),'completed',201,'existing-response-reference',clock_timestamp());
+CREATE TABLE public.media_idem_before AS
+ SELECT 'upload' AS tab,to_jsonb(x) AS snapshot FROM app.media_uploads x UNION ALL
+ SELECT 'receipt',to_jsonb(x) FROM app.idempotency_records x;
+SQL
+for f in migrations/[0-9][0-9][0-9]_*.sql; do
+ [[ $f < ${media_idem_files[0]} ]] && continue
+ apply_forward "$MEDIA_IDEM_DB" "$f"
+done
+db "$MEDIA_IDEM_DB" <<'SQL' >/dev/null
+DO $check$ BEGIN
+ IF EXISTS(WITH actual AS (
+  SELECT 'upload' AS tab,to_jsonb(x) AS snapshot FROM app.media_uploads x UNION ALL
+  SELECT 'receipt',to_jsonb(x) FROM app.idempotency_records x)
+  SELECT FROM ((SELECT * FROM actual EXCEPT SELECT * FROM public.media_idem_before)
+   UNION ALL (SELECT * FROM public.media_idem_before EXCEPT SELECT * FROM actual)) delta) THEN
+  RAISE EXCEPTION 'MEDIA_IDEM_UPGRADE_CHANGED_EXISTING_DATA'; END IF;
+END $check$;
+SQL
+db "$MEDIA_IDEM_DB" -f tests/db_media_reserve_idempotency.sql >/dev/null
+db "$MEDIA_IDEM_DB" -f tests/db_role_matrix.sql >/dev/null
+admin -c "DROP DATABASE $MEDIA_IDEM_DB" >/dev/null; MEDIA_IDEM_DB=""
+pass 'media reserve populated upgrade preserves existing uploads and completed shared receipts'
 
 # Aggregate only after all module upgrade steps.
 [[ $fail -eq 0 ]] || exit 1
