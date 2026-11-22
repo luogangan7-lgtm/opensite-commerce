@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
 	"testing"
 	"time"
@@ -43,7 +42,7 @@ func TestRefundFinalizerSignedFacts(t *testing.T) {
 				send("success", payment.StatusPartiallyRefunded)
 				before := p.witness(t)
 				abort := errors.New("C19D2 after all projections before commit")
-				m, err := payments.New(payments.Config{Key: p.key, Run: p.run, Apply: p.f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent,
+				m, err := payments.New(payments.Config{Key: p.key, Run: p.run, Apply: p.f.service.ApplyPaymentEvent,
 					TerminalRun: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
 						return p.runTerminal(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
 							if err := fn(ctx, tx, tenant, at); err != nil {

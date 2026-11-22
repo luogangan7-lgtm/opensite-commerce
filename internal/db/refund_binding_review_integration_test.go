@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/db"
-	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/money"
 )
 
@@ -43,7 +42,7 @@ func TestRefundFinalizerOriginalRMABinding(t *testing.T) {
 		if err = q.InsertPaymentEvent(ctx, db.InsertPaymentEventParams{TenantID: mustPGUUID(t, tenant), ID: inbox, ProviderAccountID: stripeAccount, ProviderRef: p.start.Payment.ProviderRef, EventKey: key, ClaimedOrderID: mustPGUUID(t, p.start.OrderID), OrderVersion: p.start.OrderVersion, Status: "captured", AmountMinor: p.start.AmountMinor, Currency: p.start.Currency}); err != nil {
 			return err
 		}
-		if _, err = p.f.service.(checkoutcontract.PaymentEventApplier).ApplyPaymentEvent(ctx, tx, payment.VerifiedEvent{EventID: key, TenantID: tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Status: payment.StatusCaptured, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}}); err != nil {
+		if _, err = p.f.service.ApplyPaymentEvent(ctx, tx, payment.VerifiedEvent{EventID: key, TenantID: tenant, OrderID: p.start.OrderID, OrderVersion: p.start.OrderVersion, ProviderRef: p.start.Payment.ProviderRef, Status: payment.StatusCaptured, Amount: money.Money{Amount: p.start.AmountMinor, Currency: p.start.Currency}}); err != nil {
 			return err
 		}
 		if err = q.SetPaymentEventOutcome(ctx, db.SetPaymentEventOutcomeParams{TenantID: mustPGUUID(t, tenant), ID: inbox, Applied: true}); err != nil {

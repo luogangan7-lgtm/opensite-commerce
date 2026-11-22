@@ -6,8 +6,36 @@ package bootstrap
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"testing"
+
+	paymentcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
+	apperrors "github.com/luogangan7-lgtm/opensite-commerce/internal/platform/errors"
 )
+
+func TestPaymentWiringRejectsUnsignedEvents(t *testing.T) {
+	t.Setenv("OPENSITE_ENVIRONMENT", "test")
+	t.Setenv("STRIPE_TEST_SECRET_KEY", "sk_test_fixture")
+	t.Setenv("STRIPE_TEST_WEBHOOK_SECRET", "whsec_offline_fixture_signing_secret")
+	t.Setenv("STRIPE_TEST_ACCOUNT_ID", "acct_fixture")
+	t.Setenv("STRIPE_TEST_PAYMENT_METHOD", "")
+	var fake, stripe Config
+	if err := wireFakePayments(&fake, nil, bytes.Repeat([]byte{7}, 32)); err != nil {
+		t.Fatal(err)
+	}
+	if err := wireStripePayments(&stripe, nil); err != nil {
+		t.Fatal(err)
+	}
+	for name, receiver := range map[string]paymentcontract.Receiver{"fake": fake.Checkout.Events, "stripe": stripe.Stripe} {
+		t.Run(name, func(t *testing.T) {
+			receipt, err := receiver.Receive(t.Context(), []byte("{}"), "")
+			var public *apperrors.Error
+			if receipt != (paymentcontract.Receipt{}) || !errors.As(err, &public) || public.Status != 401 || public.Code != "unauthenticated" {
+				t.Fatalf("unsigned event: receipt=%+v err=%v", receipt, err)
+			}
+		})
+	}
+}
 
 func TestFakePaymentEnvironmentAdmission(t *testing.T) {
 	key := func(n int) string { return base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{7}, n)) }

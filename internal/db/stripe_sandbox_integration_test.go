@@ -144,9 +144,9 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compose := func(method string) (ch.Service, *payments.Stripe) {
+	compose := func(method string) (ch.ServiceWithPaymentEvents, *payments.Stripe) {
 		t.Setenv("STRIPE_TEST_PAYMENT_METHOD", method)
-		var svc ch.Service
+		var svc ch.ServiceWithPaymentEvents
 		adapter, err := payments.NewStripe(payments.Config{Run: runner.RunStripePaymentTx,
 			TerminalRun: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
 				return runner.RunStripePaymentTx(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
@@ -157,7 +157,7 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 				})
 			},
 			Apply: func(ctx context.Context, tx pgx.Tx, e payment.VerifiedEvent) (bool, error) {
-				return svc.(ch.PaymentEventApplier).ApplyPaymentEvent(ctx, tx, e)
+				return svc.ApplyPaymentEvent(ctx, tx, e)
 			},
 			Admit: func(ctx context.Context, r payment.CreatePaymentIntent, capture bool) error {
 				return svc.(interface {

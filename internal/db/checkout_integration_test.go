@@ -107,7 +107,7 @@ type checkoutPGFixture struct {
 	actor                checkoutcontract.AuthorizedActor
 	cart                 checkoutCartFixture
 	provider             *checkoutPaymentProbe
-	service              checkoutcontract.Service
+	service              checkoutcontract.ServiceWithPaymentEvents
 	rollbackPaid         atomic.Bool
 }
 

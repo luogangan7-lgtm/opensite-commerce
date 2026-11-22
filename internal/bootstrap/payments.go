@@ -9,7 +9,6 @@ import (
 	"errors"
 	payment "github.com/luogangan7-lgtm/opensite-commerce/internal/contracts/payment/v1"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout"
-	checkoutcontract "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments"
@@ -37,7 +36,7 @@ func stripeSandboxEnvironment() (bool, error) {
 }
 
 func wireStripePayments(c *Config, r *pgxadapter.QueryRunner) error {
-	consumer := checkout.New(checkout.Config{Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}}).(checkoutcontract.PaymentEventApplier)
+	consumer := checkout.New(checkout.Config{Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}})
 	adapter, err := payments.NewStripe(payments.Config{TerminalRun: c.PaymentTerminalRun, Run: r.RunStripePaymentTx, Apply: consumer.ApplyPaymentEvent, Admit: func(ctx context.Context, in payment.CreatePaymentIntent, capture bool) error {
 		if c.Checkout == nil || c.Checkout.Service == nil {
 			return errors.New("Stripe cart consent unavailable")
@@ -81,7 +80,7 @@ func fakePaymentEnvironment() (bool, []byte, error) {
 	return true, key, nil
 }
 func wireFakePayments(config *Config, runner *pgxadapter.QueryRunner, key []byte) error {
-	consumer := checkout.New(checkout.Config{Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}}).(checkoutcontract.PaymentEventApplier)
+	consumer := checkout.New(checkout.Config{Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}})
 	receiver, e := payments.New(payments.Config{TerminalRun: config.PaymentTerminalRun, Key: key, Run: runner.RunFakePaymentTx, Apply: consumer.ApplyPaymentEvent, ObserveCommittedCapture: func(event payment.VerifiedEvent) error {
 		// Resolve late: storefront/quote composition installs the shared Fake after
 		// the mapped receiver. No public payload or uncommitted fact reaches it.

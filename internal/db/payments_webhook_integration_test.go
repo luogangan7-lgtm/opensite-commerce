@@ -97,11 +97,7 @@ func (p *paymentFactFixture) newModule(t *testing.T, override func(context.Conte
 	t.Helper()
 	apply := override
 	if apply == nil {
-		applier, ok := p.f.service.(checkoutcontract.PaymentEventApplier)
-		if !ok {
-			t.Fatal("real checkout does not implement PaymentEventApplier")
-		}
-		apply = applier.ApplyPaymentEvent
+		apply = p.f.service.ApplyPaymentEvent
 	}
 	m, err := payments.New(payments.Config{Key: p.key, Run: p.run, TerminalRun: p.runTerminal, Apply: apply})
 	if err != nil {
@@ -471,11 +467,10 @@ func TestPaymentsPGConcurrentDuplicate(t *testing.T) {
 
 func TestPaymentsPGAdmissionAndEffectsRollbackTogether(t *testing.T) {
 	p := newPaymentFactFixture(t)
-	applier := p.f.service.(checkoutcontract.PaymentEventApplier)
 	injected := errors.New("C19_AFTER_PAYMENT_EFFECTS_ROLLBACK")
 	injectedAfterApply := false
 	p.module = p.newModule(t, func(ctx context.Context, tx pgx.Tx, event payment.VerifiedEvent) (bool, error) {
-		applied, err := applier.ApplyPaymentEvent(ctx, tx, event)
+		applied, err := p.f.service.ApplyPaymentEvent(ctx, tx, event)
 		if err != nil {
 			return applied, err
 		}
@@ -634,10 +629,9 @@ func TestPaymentsPGRejectedRefundDoesNotPoisonCapture(t *testing.T) {
 // A committed fact may update the simulation; a transaction rollback may not.
 func TestFakeCaptureObservationAfterCommitPG(t *testing.T) {
 	p := newPaymentFactFixture(t)
-	applier := p.f.service.(checkoutcontract.PaymentEventApplier)
 	rollback := true
 	calls := 0
-	module, err := payments.New(payments.Config{Key: p.key, Apply: applier.ApplyPaymentEvent, Run: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
+	module, err := payments.New(payments.Config{Key: p.key, Apply: p.f.service.ApplyPaymentEvent, Run: func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {
 		return p.run(ctx, account, func(ctx context.Context, tx pgx.Tx, tenant string, at time.Time) error {
 			if err := fn(ctx, tx, tenant, at); err != nil {
 				return err
