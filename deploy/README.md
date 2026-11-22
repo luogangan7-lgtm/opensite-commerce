@@ -93,6 +93,12 @@ not a continuous database-readiness probe. Compose also checks PostgreSQL
 readiness. HTTP metrics count requests, errors and latency with bounded
 method/status labels; they contain no path, query, customer or tenant labels.
 
+## CMS 运行接线
+
+带 `pgx` 构建标签的 API 使用 `OPENSITE_DATABASE_URL` 连接已迁移的 PostgreSQL，并在组合根接入 CMS 写事务、只读快照和 C04 幂等回执；回执完成与业务写入使用同一事务。`OPENSITE_IDEMPOTENCY_ROOT` 指定幂等响应文件目录，需持久保存并仅由 API 服务访问。`OPENSITE_CMS_PREVIEW_KEY` 必须是无填充 URL-safe Base64 编码的随机密钥，解码后至少 32 字节，密钥通过环境变量传入；缺少密钥时不构造 CMS writer。生产组合根未提供 staff authenticator 时，管理接口返回 401；认证器还必须提供可信 tenant 和稳定 actor，不能由请求字段代替。真实 PG 测试使用独立的 `DATABASE_URL` 指向已迁移的测试数据库。
+
+预览令牌最长有效 5 分钟，通过 `Authorization: Bearer` 传递。预览响应禁用缓存及搜索索引。令牌固定 CMS 草稿 revision，草稿改变后旧令牌不可继续读取；预览商品来自读取时的目录快照，可能随商品或价格变化。发布后商品、页面与媒体引用随 sealed release 固定，恢复通过 publication revision 防止旧状态覆盖新发布。
+
 ## One application database per cluster
 
 Before migration or restoration, preflight inspects every non-template database
