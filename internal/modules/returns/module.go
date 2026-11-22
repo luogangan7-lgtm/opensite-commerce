@@ -11,4 +11,9 @@ import (
 
 type Config = contract.Config
 
-func New(config Config) contract.Service { return service.New(config) }
+type Coordinator interface {
+	contract.Service
+	contract.RefundCompleter
+}
+
+func New(config Config) Coordinator { return service.New(config) }
