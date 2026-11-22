@@ -19,7 +19,6 @@ import (
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/modules/checkout/internal/store"
 	ledger "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/ledger/contract"
 	orders "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/orders/contract"
-	payments "github.com/luogangan7-lgtm/opensite-commerce/internal/modules/payments/contract"
 	"github.com/luogangan7-lgtm/opensite-commerce/internal/platform/idempotency"
 )
 
@@ -203,11 +202,10 @@ func (s *Service) applyRefundFact(ctx context.Context, tx pgx.Tx, q *db.Queries,
 			posting.Entries[i].Side = ledger.Debit
 		}
 	}
-	poster, ok := s.config.Ledger.(payments.RefundPoster)
-	if !ok {
+	if s.config.Refunds == nil {
 		return contract.ErrUnavailable
 	}
-	if _, err = poster.PostRefund(ctx, tx, posting); err != nil {
+	if _, err = s.config.Refunds.PostRefund(ctx, tx, posting); err != nil {
 		return err
 	}
 	_, err = q.UpdateCheckoutRefundTotals(ctx, db.UpdateCheckoutRefundTotalsParams{TenantID: row.TenantID, ID: row.ID, RefundedNetMinor: row.RefundedNetMinor + parts.IncomeMinor, RefundedTaxMinor: row.RefundedTaxMinor + parts.TaxMinor, RefundedShippingMinor: row.RefundedShippingMinor + parts.ShippingMinor})

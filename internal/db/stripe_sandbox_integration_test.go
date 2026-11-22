@@ -169,7 +169,8 @@ func TestStripeSandboxLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		rules := checkout.NewSQLRules(checkout.RuleMetadata{Profiles: map[string]string{f.tenant: f.profile}, SKUs: map[string]map[string]checkout.SKUMetadata{f.tenant: {f.sku: {TaxCategory: "standard", WeightG: 100}}}})
-		svc = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: adapter})
+		poster := ledger.New()
+		svc = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: poster, Refunds: payments.RefundJournal{Ledger: poster}, Payment: adapter})
 		return svc, adapter
 	}
 	svc, adapter := compose("pm_card_visa")
