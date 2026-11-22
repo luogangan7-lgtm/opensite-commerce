@@ -97,7 +97,7 @@ func returnsCoordinatorRefund(t *testing.T, source string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(closeRuntime)
-	if cfg.ReturnsCoordinator.Runner == nil || cfg.Returns.Service == nil {
+	if cfg.ReturnsCoordinator.Runner == nil || cfg.Returns.Service == nil || cfg.Returns.RefundCompleter == nil {
 		t.Fatal("RETURNS_AUTHORITY_RED: production coordinator not composed")
 	}
 	called := false

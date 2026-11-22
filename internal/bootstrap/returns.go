@@ -31,5 +31,6 @@ func wireReturns(c *Config) {
 	c.ReturnsCoordinator.Payments, c.ReturnsCoordinator.Ledger = c.Payment, journal
 	c.ReturnsCoordinator.Captures = returnsReaders{journal}
 	c.ReturnsCoordinator.Accounts = returnsReaders{journal}
-	c.Returns.Service = returns.New(c.ReturnsCoordinator)
+	coordinator := returns.New(c.ReturnsCoordinator)
+	c.Returns.Service, c.Returns.RefundCompleter = coordinator, coordinator
 }

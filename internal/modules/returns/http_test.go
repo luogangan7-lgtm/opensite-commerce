@@ -428,6 +428,23 @@ func TestHTTPReceiveRefundUseAtomicCompletionAndExactReplay(t *testing.T) {
 	}
 }
 
+func TestHTTPExplicitRefundCompleterAndReplayWithoutCapability(t *testing.T) {
+	service, refunds := &httpService{}, &httpService{}
+	claims := &httpClaims{}
+	config := HTTPConfig{Service: service, RefundCompleter: refunds, Idempotency: claimConfig(t, claims), Run: func(ctx context.Context, _ string, fn func(context.Context, pgx.Tx) error) error { return fn(ctx, nil) }}
+	refund := func() *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		httpRouter(t, NewHTTP(config), httpAuth{}).ServeHTTP(w, commandRequest("refund", "{}", `"4"`, "d5287bc5-5649-5093-b02f-c01277d56d30"))
+		return w
+	}
+	first := refund()
+	config.Service, config.RefundCompleter = noCompletionService{service}, nil
+	replay := refund()
+	if first.Code != 200 || replay.Code != 200 || !bytes.Equal(first.Body.Bytes(), replay.Body.Bytes()) || refunds.calls != 1 || service.calls != 0 || claims.completions != 1 {
+		t.Fatalf("refund=%d replay=%d explicit calls=%d service calls=%d completions=%d", first.Code, replay.Code, refunds.calls, service.calls, claims.completions)
+	}
+}
+
 type noCompletionService struct{ wrapped *httpService }
 
 func (s noCompletionService) Request(ctx context.Context, tx pgx.Tx, tenant string, in contract.RequestInput) (contract.Return, error) {

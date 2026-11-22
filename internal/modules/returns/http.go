@@ -20,9 +20,10 @@ import (
 )
 
 type HTTPConfig struct {
-	Run         func(context.Context, string, func(context.Context, pgx.Tx) error) error
-	Service     contract.Service
-	Idempotency httpapi.CommandConfig
+	Run             func(context.Context, string, func(context.Context, pgx.Tx) error) error
+	Service         contract.Service
+	RefundCompleter contract.RefundCompleter
+	Idempotency     httpapi.CommandConfig
 }
 type HTTP struct {
 	httpapi.StrictServerInterface
@@ -35,6 +36,10 @@ func NewHTTP(config HTTPConfig) *HTTP {
 	}
 	if config.Service == nil {
 		config.Service = New(Config{})
+	}
+	if config.RefundCompleter == nil {
+		// Older callers supply both capabilities through Service.
+		config.RefundCompleter, _ = config.Service.(contract.RefundCompleter)
 	}
 	return &HTTP{config: config}
 }
@@ -266,13 +271,12 @@ func (s *HTTP) RefundReturn(ctx context.Context, r httpapi.RefundReturnRequestOb
 	if replay != nil {
 		return commandResponse{*replay}, nil
 	}
-	completer, ok := s.config.Service.(contract.RefundCompleter)
-	if !ok {
+	if s.config.RefundCompleter == nil {
 		return nil, mapHTTPError(contract.ErrUnavailable)
 	}
 	in.IdempotencyKey = session.Key()
 	var completionErr error
-	_, err = completer.RefundWithCompletion(ctx, tenant, in, func(txctx context.Context, tx pgx.Tx, result contract.Return) error {
+	_, err = s.config.RefundCompleter.RefundWithCompletion(ctx, tenant, in, func(txctx context.Context, tx pgx.Tx, result contract.Return) error {
 		completionErr = session.Complete(txctx, tx, http.StatusOK, returnDTO(result))
 		return completionErr
 	})
