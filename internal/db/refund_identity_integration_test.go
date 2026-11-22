@@ -65,6 +65,53 @@ func TestPaymentsRefundDeliveryIdentity(t *testing.T) {
 	}
 }
 
+func TestPaymentsRefundWithoutCheckoutRefundPoster(t *testing.T) {
+	p := newPaymentFactFixture(t)
+	// Even a Ledger that implements PostRefund cannot substitute for the missing port.
+	consumer := checkout.New(checkout.Config{Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}})
+	var refund payment.VerifiedEvent
+	var refundErr error
+	p.module = p.newModule(t, func(ctx context.Context, tx pgx.Tx, event payment.VerifiedEvent) (bool, error) {
+		done, err := consumer.ApplyPaymentEvent(ctx, tx, event)
+		if event.Status == payment.StatusPartiallyRefunded {
+			refund, refundErr = event, err
+		}
+		return done, err
+	})
+	if r := p.receive(t, "early-refund", payment.StatusPartiallyRefunded, 1); r.Status != "pending" {
+		t.Fatalf("early refund status = %s", r.Status)
+	}
+	before := p.witness(t)
+	raw := p.raw("capture", payment.StatusCaptured, p.start.AmountMinor)
+	var public *apperrors.Error
+	_, err := p.module.Receive(p.f.ctx, raw, p.signature(raw, p.at))
+	if !errors.Is(refundErr, checkoutcontract.ErrUnavailable) || !errors.As(err, &public) || public.Status != 503 || public.Code != "payment_unavailable" {
+		t.Fatalf("missing refund poster: checkout=%v ingress=%v", refundErr, err)
+	}
+	if after := p.witness(t); after != before {
+		t.Fatalf("failed drain changed state: before=%+v after=%+v", before, after)
+	}
+	p.module = p.newModule(t, nil)
+	p.receive(t, "capture", payment.StatusCaptured, p.start.AmountMinor)
+	before = p.witness(t)
+	if before.applied != 2 || before.refunded != 1 || before.checkout.journals != 2 {
+		t.Fatalf("retry did not finish both facts: %+v", before)
+	}
+	err = p.f.run(p.f.ctx, p.f.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		done, err := consumer.ApplyPaymentEvent(ctx, tx, refund)
+		if err != nil || !done {
+			return fmt.Errorf("checkout refund receipt replay: applied=%v err=%v", done, err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after := p.witness(t); after != before {
+		t.Fatalf("receipt replay changed state: before=%+v after=%+v", before, after)
+	}
+}
+
 func TestStripeDashboardRefundDurableUnmatched(t *testing.T) {
 	p := newPaymentFactFixture(t)
 	account := "acct_" + strings.ReplaceAll(uuid.NewString(), "-", "")
@@ -221,7 +268,8 @@ func TestStripeRefundFailedAfterSuccess(t *testing.T) {
 				t.Setenv("STRIPE_TEST_WEBHOOK_SECRET", "whsec_isolated_transition_signing_key")
 				t.Setenv("STRIPE_TEST_ACCOUNT_ID", account)
 				rules := checkout.NewSQLRules(checkout.RuleMetadata{Profiles: map[string]string{f.tenant: f.profile}, SKUs: map[string]map[string]checkout.SKUMetadata{f.tenant: {f.sku: {TaxCategory: "standard", WeightG: 100}}}})
-				f.service = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: stripeFactIntent{}})
+				poster := ledger.New()
+				f.service = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: poster, Refunds: payments.RefundJournal{Ledger: poster}, Payment: stripeFactIntent{}})
 				start := f.start(t)
 				var at time.Time
 				run := func(ctx context.Context, account string, fn func(context.Context, pgx.Tx, string, time.Time) error) error {

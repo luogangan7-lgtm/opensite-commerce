@@ -172,7 +172,8 @@ func newCheckoutPGFixture(t *testing.T, stock, quantity int64) *checkoutPGFixtur
 		t.Fatal(err)
 	}
 	rules := checkout.NewSQLRules(checkout.RuleMetadata{Profiles: map[string]string{f.tenant: f.profile}, SKUs: map[string]map[string]checkout.SKUMetadata{f.tenant: {f.sku: {TaxCategory: "standard", WeightG: 100}}}})
-	f.service = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: payments.RefundJournal{Ledger: ledger.New()}, Payment: f.provider})
+	poster := ledger.New()
+	f.service = checkout.New(checkout.Config{Run: f.run, Cart: f.cart, Rules: rules, Orders: orders.New(), Ledger: poster, Refunds: payments.RefundJournal{Ledger: poster}, Payment: f.provider})
 	t.Cleanup(func() {
 		if n := f.provider.violations.Load(); n != 0 {
 			t.Errorf("provider IO observed in %d transactions", n)

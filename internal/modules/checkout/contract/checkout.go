@@ -171,6 +171,10 @@ type RulesReader interface {
 	Load(context.Context, pgx.Tx, AuthorizedActor, Cart, ShippingAddress) (Rules, error)
 }
 
+type RefundPoster interface {
+	PostRefund(context.Context, pgx.Tx, ledger.Transaction) (string, error)
+}
+
 // Run supplies a transaction already stamped with the requested tenant and
 // effective app_runtime role. Login composition must set its local role before
 // the callback; this module never elevates or opens a connection itself.
@@ -183,5 +187,6 @@ type Config struct {
 	Rules        RulesReader
 	Orders       orders.Service
 	Ledger       ledger.Poster
+	Refunds      RefundPoster
 	Payment      payment.Port
 }
