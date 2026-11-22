@@ -1,7 +1,8 @@
 //go:build pgx
 
 // These orchestration tests use intent fixtures. checkout_cart_integration_test.go
-// covers the real Cart reader. Provider calls must run after transaction commit.
+// covers the real Cart reader. Checkout provider I/O must stay outside the
+// request's database transaction (issue #704).
 
 package db_test
 
@@ -448,8 +449,8 @@ func TestCheckoutPGEventAndActorCannotCrossBinding(t *testing.T) {
 	}
 }
 
-// Blocking at the provider boundary proves the durable winner is committed
-// BEFORE external IO; the losing command finishes while that IO is still parked.
+// Park the winning provider call so the competing command can finish while
+// that call is still blocked.
 func TestCheckoutPGConfirmCancelOneWinner(t *testing.T) {
 	for _, winner := range []paymentfake.Operation{paymentfake.Capture, paymentfake.Cancel} {
 		t.Run(string(winner), func(t *testing.T) {

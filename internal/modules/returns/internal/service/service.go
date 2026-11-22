@@ -1,7 +1,8 @@
 // Package service owns return commands and durable refund orchestration.
-// The PSP runs after preparation commits. Finalization takes the order and
+// Call the PSP outside the transaction after preparation commits so recovery
+// can reuse the frozen request (issue #704). Finalization takes the order and
 // return locks before any journal or receipt write so the refund budget and
-// response commit together (issue #190, docs/modules/returns.md).
+// response commit together (issue #190).
 package service
 
 import (
@@ -185,10 +186,10 @@ func (s *Service) RefundWithCompletion(ctx context.Context, tenant string, in co
 	return out, nil
 }
 
-// Only an adapter's permanently sealed no-effect proof may release a reservation.
-// Timeouts, unknown results and unmarked errors need reconciliation with the
-// same frozen PSP key. Persist even if the caller disconnected, but bound I/O.
-// See docs/modules/returns.md, Provider rejection and reconciliation.
+// Release the reservation only on trusted permanent no-effect proof for the
+// frozen operation and key. Unknown outcomes retain the reservation and key
+// for reconciliation (issue #704). Persist the outcome with a deadline even if
+// the caller disconnects (issue #704).
 func (s *Service) recordProviderFailure(ctx context.Context, tenant string, prepared contract.PreparedRefund, cause error) error {
 	var providerError *payment.PaymentError
 	rejected := errors.As(cause, &providerError) && providerError.NoSideEffect && !providerError.Retryable()

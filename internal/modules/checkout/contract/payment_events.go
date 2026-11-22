@@ -14,8 +14,9 @@ type ServiceWithPaymentEvents interface {
 
 // PaymentEventApplier consumes facts after signature verification, trusted
 // account mapping and inbox admission (V1_DECISIONS.md §2).
-// The caller owns the transaction and rolls back an application error
-// (C-19a, docs/architecture/modules/PAYMENTS_FAKE.md).
+// The caller owns the transaction. Roll back conflicting facts to a savepoint
+// so valid peers can finish, and abort the outer transaction on infrastructure
+// failures (issue #704).
 // A false result with nil error leaves the fact pending, such as a refund
 // received before capture (issue #293).
 type PaymentEventApplier interface {

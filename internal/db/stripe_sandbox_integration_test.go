@@ -1,7 +1,5 @@
 //go:build pgx && stripe_sandbox
 
-// Stripe CLI event bodies and signatures stay in process memory.
-
 package db_test
 
 import (
