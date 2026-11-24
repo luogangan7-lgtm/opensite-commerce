@@ -5,16 +5,30 @@ import { expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { BASELINES, sha256 } from './baseline-provenance';
-import { REAL_VISUAL_STATES, realVisualPaths, realBackendEvidence } from './real-visual-manifest';
+import { REAL_VISUAL_STATES, realVisualPaths, realBackendEvidence, assertDistinctCatalogPngs } from './real-visual-manifest';
 import { assertDistinctHistoryPngs, assertDistinctStaffPngs, SHARED_RENDER } from './real-visual-shared-render-manifest';
 
-test('VISUAL-230 runtime masks cannot compare their geometry with itself', () => {
+test('VISUAL-230 runtime masks resolve independent locators and measure their own geometry', () => {
   const source = readFileSync('tests/frontend/real-backend.spec.ts', 'utf8');
-  const calls = [...source.matchAll(/assertDateMaskBounds\(([^;]+)\);/g)];
+  expect(source).toContain('async function assertDateMaskBounds(mask: Locator, bounds: Locator, protectedBoxes: Box[])');
+  const checker = source.slice(source.indexOf('async function assertDateMaskBounds'), source.indexOf('// Keep the exact existing mask rectangle'));
+  expect(checker).toContain('await bounds.elementHandle()');
+  expect(checker).toContain('element === other');
+  expect(checker).toContain('Mask and bounds resolve to the same element');
+  expect(checker).toContain('mask.boundingBox()');
+  expect(checker).toContain('bounds.boundingBox()');
+  // Deliberate alias negatives belong only to the structural regression below.
+  const callers = source.replace(/test\('VISUAL-274 rejects oversized masks and aliases using independent DOM bounds'[\s\S]*?\n\}\);/, '');
+  const calls = [...callers.matchAll(/await (?:expect\()?assertDateMaskBounds\(([^,\n]+), ([^,\n]+), /g)];
+  expect(calls.length).toBeGreaterThan(0);
   for (const call of calls) {
-    const args = call[1].split(',').map(value => value.trim());
-    expect(args[0], `Self-comparing mask bounds: ${call[0]}`).not.toBe(args[1]);
+    expect(call[1], `Self-comparing mask bounds: ${call[0]}`).not.toBe(call[2]);
+    expect(`${call[1]} ${call[2]}`, `Precomputed mask geometry: ${call[0]}`).not.toMatch(/\b(?:box|\w+Box|\w+Bounds)\b|maskBox\(/);
   }
+  const runtime = source.slice(source.indexOf('async function runtimeMask('), source.indexOf('// This candidate extends only one pixel'));
+  expect(runtime).toContain('await assertDateMaskBounds(target, field, protectedBoxes)');
+  expect(runtime).not.toMatch(/target\.boundingBox\(\)|field\.boundingBox\(\)/);
+  expect(source).not.toMatch(/runtimeMask\(page, (metadata|completionID), \1\)/);
 });
 
 test('VISUAL-230 multiline fixture snapshots the actual catalog variant through Orders', () => {
@@ -77,8 +91,8 @@ test('VISUAL-250 rejects every data state in a shared render group', () => {
 
 test('VISUAL-250 validates the exact locator used for date screenshot masks', () => {
   const source = readFileSync('tests/frontend/real-backend.spec.ts', 'utf8');
-  expect(source).toMatch(/const dateMasks\s*=\s*\[date\]/);
-  expect(source).toMatch(/assertDateMaskBounds\(await maskBox\(dateMasks\[0\]\)/);
+  expect(source).toMatch(/const dateMasks\s*=\s*\[await maskFieldContents\(date\)\]/);
+  expect(source).toMatch(/await assertDateMaskBounds\(dateMasks\[0\], date, \[statusBox, amountBox\]\)/);
   expect(source).toMatch(/historySnapshot\(page, 'b2b-paid-list', false, true, dateMasks, maskColor\)/);
 });
 
@@ -133,8 +147,8 @@ test('VISUAL-230 committed PNGs cannot alias a different staff state', () => {
 // re-review before updating the digest, including alternate response constructors.
 test('VISUAL-REAL proxy and launcher match the reviewed no-DTO sources', () => {
   const approved: Record<string, string> = {
-    'scripts/frontend/real-proxy.ts': '76076331f022df650544b3a465952ef9b19cd78101a6e3c861b073d338b67189',
-    'scripts/frontend/start-real-backend.py': '3172947dbf65576660dba3031f56a9cc3de619de7ad84ac6a3ebe105a6f03831',
+    'scripts/frontend/real-proxy.ts': '62e5f5f1c8d89a6b078a028276358d90cf6a56c7da60528c0c0e61ac0a976506',
+    'scripts/frontend/start-real-backend.py': '78ab157106ac920330a26effa6ae94b2072de9eeb05c88383a1ef9e84e5895c0',
   };
   for (const [path, digest] of Object.entries(approved)) expect(sha256(path), path).toBe(digest);
 });
@@ -143,4 +157,43 @@ test('VISUAL-REAL cleanup continues after a failed database drop', () => {
   const result = spawnSync('python3', ['scripts/frontend/test_real_launcher.py',
     'LauncherCleanup.test_drop_database_failure_still_attempts_each_role'], { encoding: 'utf8' });
   expect(result.status, result.stderr).toBe(0);
+});
+
+// Independent owner inventory: fixtures and old routed PNGs cannot satisfy #274.
+test('VISUAL-274 requires each real staff catalog state in both viewports', () => {
+  const states = ['edit', 'access-loading', 'empty', 'invalid-amount', 'invalid-json', 'upload-failure',
+    'price-conflict', 'content-conflict', 'listing-conflict', 'content-saving', 'long-title', 'long-slug',
+    'long-json', 'network-error', 'permission-denied', 'draft-retained', 'reload-saved', 'price-editor',
+    'published', 'attached-published', 'create', 'variant-saved', 'create-busy',
+    'product-busy', 'variant-busy', 'invalid-uuid', 'uuid-recovered', 'invalid-key', 'key-recovered', 'reserve-failure', 'reserve-retry',
+    'content-failure', 'content-retry', 'complete-failure', 'complete-retry', 'media-ready', 'empty-media', 'long-filename'];
+  expect((REAL_VISUAL_STATES as unknown as Record<number, readonly string[]>)[274] ?? []).toEqual(states);
+  for (const viewport of ['desktop', 'mobile']) for (const state of states) {
+    const path = `${BASELINES}/${viewport}/real-274-${state}.png`;
+    expect(existsSync(path), `Missing real #274 state ${path}`).toBe(true);
+    expect(existsSync(`${path}.provenance.json`)).toBe(true);
+  }
+});
+
+// The admin has one bundled copy dictionary and no locale selector/router.
+test('VISUAL-274 supported admin locale list is English only (non-en row N/A)', () => {
+  const html = readFileSync('web/admin/index.html', 'utf8');
+  const supported = [...html.matchAll(/<html lang="([^"]+)"/g)].map(match => match[1]);
+  expect(supported).toEqual(['en']);
+  const copy = readFileSync('packages/component-contracts/src/index.ts', 'utf8');
+  expect(copy).toContain('export function t(key: MessageKey): string { return messages[key]; }');
+  expect(copy).not.toMatch(/export const (?:locales|translations|dictionaries)/);
+});
+
+test('VISUAL-274 rejects copied data-state and omitted viewport baselines', () => {
+  const hashes = Object.fromEntries(['desktop', 'mobile'].flatMap(viewport =>
+    REAL_VISUAL_STATES[274].map(state => [`${viewport}/real-274-${state}.png`, `${viewport}-${state}`])));
+  expect(() => assertDistinctCatalogPngs(hashes)).not.toThrow();
+  expect(() => assertDistinctCatalogPngs({ ...hashes, 'desktop/real-274-long-title.png': hashes['desktop/real-274-long-slug.png'] })).toThrow();
+  expect(() => assertDistinctCatalogPngs({ ...hashes, 'mobile/real-274-invalid-uuid.png': '' })).toThrow();
+});
+test('VISUAL-274 committed data states have distinct pixels', () => {
+  const hashes = Object.fromEntries(['desktop', 'mobile'].flatMap(viewport =>
+    REAL_VISUAL_STATES[274].map(state => [`${viewport}/real-274-${state}.png`, sha256(`${BASELINES}/${viewport}/real-274-${state}.png`)])));
+  assertDistinctCatalogPngs(hashes);
 });

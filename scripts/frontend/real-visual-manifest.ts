@@ -2,6 +2,12 @@
  * The issue inventory is explicit: deleting a screenshot call cannot silently pass.
  */
 export const REAL_VISUAL_STATES = {
+  274: ['edit', 'access-loading', 'empty', 'invalid-amount', 'invalid-json', 'upload-failure',
+    'price-conflict', 'content-conflict', 'listing-conflict', 'content-saving', 'long-title', 'long-slug',
+    'long-json', 'network-error', 'permission-denied', 'draft-retained', 'reload-saved', 'price-editor',
+    'published', 'attached-published', 'create', 'variant-saved', 'create-busy',
+    'product-busy', 'variant-busy', 'invalid-uuid', 'uuid-recovered', 'invalid-key', 'key-recovered', 'reserve-failure', 'reserve-retry',
+    'content-failure', 'content-retry', 'complete-failure', 'complete-retry', 'media-ready', 'empty-media', 'long-filename'],
   230: ['list', 'detail', 'long-list', 'long-detail', 'empty', 'pagination',
     'list-loading', 'detail-loading', 'list-503', 'order-detail-unavailable-503',
     'unauthenticated', 'cross-tenant', 'expired-session', 'permission-denied',
@@ -40,6 +46,18 @@ export function assertDistinctHistoryPngs(pngs: Record<string, string>) {
 }
 
 export function realBackendEvidence(snapshot: string) {
+  const catalog = /^real-274-(.+)\.png$/.exec(snapshot.split('/').at(-1) ?? '')?.[1];
+  if (catalog) return { application: 'Go', database: 'PostgreSQL 18.6', mode: 'test',
+    seed: 'real staff login and catalog/pricing/content/listing/media/CMS domain commands; distinct product per scenario; existing tenant/site/price-list seed',
+    fault: catalog.endsWith('-busy') || catalog.endsWith('-saving') || catalog === 'access-loading'
+      ? 'proxy holds exact-step real Go response'
+      : catalog.endsWith('-failure') || catalog === 'network-error' || catalog === 'long-filename'
+        ? 'proxy substitutes HTTP 503 after exact-step real Go response' : 'none',
+    boundary: catalog === 'permission-denied' ? 'staff identity/membership seed: no staff provisioning HTTP API; real viewer login and backend 403; no write controls'
+      : catalog.startsWith('published') || catalog === 'attached-published'
+        ? 'real staff publication and same-release SSR; shipped product renderer has no media slot; attachment proven through real API and admin state'
+        : 'real DTOs, second staff session for 412, stable per-file step keys; client UUID guard; en-US only admin copy' };
+
   const staff = /^real-230-(.+)\.png$/.exec(snapshot.split('/').at(-1) ?? '')?.[1];
   if (staff === 'multiline') return { application: 'Go', database: 'PostgreSQL 18.6', mode: 'test',
     seed: 'legacy spaced catalog variant; real inventory_reserve and orders_create commands snapshot that variant SKU, seal order and emit order.created; real staff login/read',
@@ -93,4 +111,13 @@ export function realBackendEvidence(snapshot: string) {
     boundary: state === 'completion-long-order' ? 'maximum legal UUID; unbounded order number is not exposed by this page'
       : state === 'completion-pending' ? 'real ready/authorized state; pending_payment/captured is unreachable'
       : 'real backend DTO, no route interception' };
+}
+
+/** Each #274 filename represents one distinct data or interaction state. */
+export function assertDistinctCatalogPngs(hashes: Record<string, string>) {
+  for (const viewport of ['desktop', 'mobile']) {
+    const values = REAL_VISUAL_STATES[274].map(state => hashes[`${viewport}/real-274-${state}.png`]);
+    if (values.some(hash => !hash) || new Set(values).size !== values.length)
+      throw new Error(`${viewport} catalog state images must exist and be distinct`);
+  }
 }

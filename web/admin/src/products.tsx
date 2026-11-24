@@ -1,5 +1,5 @@
 /** Responsibility: tenant product, SKU and upload pages. Dependencies: CatalogAPI, native UI and router.
- * Callers: admin routes. Invariants: retain drafts on conflicts, version every catalog edit, never infer media readiness. */
+ * Callers: admin routes. Invariants: retain drafts on conflicts, hide denied writes, version every catalog edit, never infer media readiness. */
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Badge, Button, DataTable, EmptyState, FormField, Select, TextInput } from '@opensite/ui';
@@ -145,6 +145,7 @@ function ProductEditor({ api, tenantId, productId }: PageProps & { productId: st
     return () => read.abort();
   }, [api, productId, reload]);
   const conflict = error instanceof APIError && error.status === 412;
+  const denied = error instanceof APIError && error.status === 403;
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!product) return;
@@ -162,14 +163,14 @@ function ProductEditor({ api, tenantId, productId }: PageProps & { productId: st
     {loading && <p role="status">Loading product…</p>}
     {product ? <>
       <section className="admin-panel" aria-labelledby="product-details-heading"><h2 id="product-details-heading">Product details</h2>
-        <form className="admin-form" onSubmit={save} aria-busy={busy}>
+        {denied ? <ErrorNotice error={error} /> : <form className="admin-form" onSubmit={save} aria-busy={busy}>
           <CodeField id="product-code" label="Product code" value={code} onChange={setCode} disabled={busy || loading || product.lifecycle_status === 'archived'} />
           <LifecycleField id="product-lifecycle" value={lifecycle} onChange={setLifecycle} disabled={busy || loading || product.lifecycle_status === 'archived'} />
           <ErrorNotice error={error} />
           {conflict && <p>Your unsaved values are retained. Reloading replaces them with the current server values.</p>}
           <div className="admin-actions"><Button type="submit" loading={busy} disabled={loading || conflict || product.lifecycle_status === 'archived'}>Save product</Button>
             <Button variant="secondary" disabled={busy || loading} onClick={() => setReload(value => value + 1)}>Reload product from server</Button></div>
-        </form>
+        </form>}
       </section>
       <VariantSection api={api} productId={productId} archived={product.lifecycle_status === 'archived'} />
       <PublicationEditor api={api} productId={productId} archived={product.lifecycle_status === 'archived'} />
@@ -204,6 +205,7 @@ function VariantSection({ api, productId, archived }: { api: CatalogAPI; product
     return () => read.abort();
   }, [api, productId, cursor, reload]);
   const conflict = error instanceof APIError && error.status === 412;
+  const denied = [error, listError].some(value => value instanceof APIError && value.status === 403);
   function select(variant?: Variant) {
     setEditing(variant); setSku(variant?.sku ?? ''); setOptionIds(variant?.option_value_ids.join(', ') ?? '');
     setLifecycle(variant?.lifecycle_status === 'ready' ? 'ready' : 'draft'); setError(undefined);
@@ -248,9 +250,9 @@ function VariantSection({ api, productId, archived }: { api: CatalogAPI; product
     <ErrorNotice error={listError} />
     {!!listError && <Button variant="secondary" onClick={() => setReload(value => value + 1)}>Reload SKUs from server</Button>}
     <DataTable caption="Product SKUs" loading={loading} emptyLabel="No SKUs on this page." columns={[{ key: 'sku', label: 'SKU' }, { key: 'status', label: 'Lifecycle' }, { key: 'options', label: 'Option values' }, { key: 'actions', label: 'Actions' }]}
-      rows={(listError ? [] : variants).map(variant => ({ id: variant.id, sku: variant.sku, status: <LifecycleBadge value={variant.lifecycle_status} />, options: variant.option_value_ids.length ? variant.option_value_ids.join(', ') : 'Default SKU', actions: <div className="admin-actions"><Button variant="secondary" size="sm" disabled={busy} onClick={() => select(variant)}>Edit {variant.sku}</Button><Button variant="danger" size="sm" disabled={busy || archived || variant.lifecycle_status === 'archived'} onClick={() => void archive(variant)}>Archive {variant.sku}</Button></div> }))} />
+      rows={(listError ? [] : variants).map(variant => ({ id: variant.id, sku: variant.sku, status: <LifecycleBadge value={variant.lifecycle_status} />, options: variant.option_value_ids.length ? variant.option_value_ids.join(', ') : 'Default SKU', actions: denied ? null : <div className="admin-actions"><Button variant="secondary" size="sm" disabled={busy} onClick={() => select(variant)}>Edit {variant.sku}</Button><Button variant="danger" size="sm" disabled={busy || archived || variant.lifecycle_status === 'archived'} onClick={() => void archive(variant)}>Archive {variant.sku}</Button></div> }))} />
     <nav className="admin-actions" aria-label="SKU pagination"><Button variant="secondary" disabled={loading || cursors.length === 1} onClick={() => setCursors(value => value.slice(0, -1))}>Previous SKUs</Button><Button variant="secondary" disabled={loading || !!listError || !nextCursor} onClick={() => setCursors(value => [...value, nextCursor!])}>Next SKUs</Button></nav>
-    <h3>{editing ? `Edit SKU ${editing.sku}` : 'Create SKU'}</h3>
+    {denied ? <ErrorNotice error={error} /> : <><h3>{editing ? `Edit SKU ${editing.sku}` : 'Create SKU'}</h3>
     <form className="admin-form" onSubmit={save} aria-busy={busy}>
       <CodeField id="sku-code" label="SKU code" value={sku} onChange={setSku} disabled={busy || archived || editing?.lifecycle_status === 'archived'} />
       <FormField id="sku-options" label="Option value UUIDs" help={editing ? 'Option assignments cannot be changed by the current edit API.' : 'Leave blank for a default SKU; otherwise enter comma-separated option UUIDs.'}>
@@ -263,6 +265,7 @@ function VariantSection({ api, productId, archived }: { api: CatalogAPI; product
         {editing && <><Button variant="secondary" disabled={busy} onClick={() => void reloadVariant()}>Reload SKU from server</Button><Button variant="ghost" disabled={busy} onClick={() => select()}>Cancel SKU edit</Button></>}</div>
     </form>
     {editing && <PriceEditor key={editing.id} api={api} variantId={editing.id} archived={archived || editing.lifecycle_status === 'archived'} />}
+    </>}
   </section>;
 }
 
@@ -278,6 +281,7 @@ function MediaSection({ api, productId, archived }: { api: CatalogAPI; productId
   const controller = useRef(new AbortController());
   // Stable per selected file until acknowledged, so a lost response is replayed, not duplicated.
   const uploadKey = useRef('');
+  const denied = error instanceof APIError && error.status === 403;
   useEffect(() => { controller.current = new AbortController(); return () => controller.current.abort(); }, []);
   async function uploadFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -308,7 +312,7 @@ function MediaSection({ api, productId, archived }: { api: CatalogAPI; productId
   }
   return <section className="admin-panel" aria-labelledby="media-heading"><h2 id="media-heading">Product media</h2>
     <p className="admin-muted">Upload a file, then attach its media ID. Stored or processing media is not proof that processing has finished.</p>
-    <form className="admin-form" onSubmit={uploadFile} aria-busy={busy}>
+    {denied ? <ErrorNotice error={error} /> : <><form className="admin-form" onSubmit={uploadFile} aria-busy={busy}>
       <FormField id="media-file" label="Media file" help="JPEG, PNG, WebP or AVIF, up to 10 MiB. Upload includes a checksum verification."><TextInput type="file" accept="image/jpeg,image/png,image/webp,image/avif" required disabled={busy || archived} onChange={event => { uploadKey.current = ''; setFile(event.target.files?.[0]); setUpload(undefined); setMediaId(''); setLinked(false); }} /></FormField>
       <Button type="submit" loading={busy} disabled={!file || archived}>Upload media</Button>
     </form>
@@ -322,5 +326,6 @@ function MediaSection({ api, productId, archived }: { api: CatalogAPI; productId
       {linked && <p role="status">Media attached to this product.</p>}
       <Button type="submit" loading={busy} disabled={!mediaId || archived || upload?.status === 'failed'}>Attach media</Button>
     </form>
+    </>}
   </section>;
 }
