@@ -1,0 +1,103 @@
+# Responsibility: isolated MDEL-04 causal mutations and CI-only formatting receipt.
+# Dependencies: pinned Go/PG18, normal forward migrations and Payments PG test.
+# Invariants: exact candidate SHA, assertion-specific probe failures, no secrets.
+name: mdel04-payments
+on:
+  pull_request:
+    paths:
+      - 'internal/modules/payments/**'
+      - 'internal/bootstrap/payments_merchant_test.go'
+      - 'internal/db/payments_merchant_deletion_integration_test.go'
+      - 'migrations/pending/mdel04-payments_*'
+      - 'tests/db_payments_merchant_deletion.sql'
+      - '.github/workflows/mdel04-payments.yml'
+permissions:
+  contents: read
+jobs:
+  format-receipt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - name: Produce handwritten-source formatting patch in CI only
+        run: |
+          git rev-parse HEAD
+          find internal/modules/payments internal/db internal/bootstrap -name '*merchant*go' -exec gofmt -w {} +
+          gofmt -w internal/bootstrap/api.go internal/bootstrap/runtime.go
+          git diff --binary -- internal/modules/payments internal/db/payments_merchant_deletion_integration_test.go internal/bootstrap > format.patch
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mdel04-format-${{ github.run_id }}-${{ github.run_attempt }}
+          path: format.patch
+          retention-days: 7
+  pg-probes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_DB: opensite
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opensite"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      GOTOOLCHAIN: local
+      DATABASE_URL: postgres://postgres:ci_test_only@localhost:5432/opensite?sslmode=disable
+      OPENSITE_ALLOW_PENDING_MIGRATIONS: '1'
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.27.2'
+      - run: ./scripts/ci_apt_install.sh --no-install-recommends postgresql-client
+      - name: Apply real predecessor and proposed migrations
+        run: |
+          git rev-parse HEAD
+          ./scripts/migrate_river.sh
+          ./scripts/migrate.sh
+      - name: Payments deletion invariant assertions
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f tests/db_payments_merchant_deletion.sql
+      - name: Payments owner-port and existing money replay tests
+        env:
+          OPENSITE_DISPOSABLE_PG: '1'
+        run: go test -tags pgx -count=1 -timeout=120s -v -run 'TestMerchantDeletion|TestRefundCaseRecovery' ./internal/modules/payments ./internal/db
+      - name: Two isolated mutation probes (temporary draft PR only)
+        if: startsWith(github.head_ref, 'codex/mdel-04-probes')
+        run: |
+          python3 - <<'PYTHON'
+          import os, subprocess
+          psql = ['psql', os.environ['DATABASE_URL'], '-X', '-At', '-v', 'ON_ERROR_STOP=1']
+          def command(sql):
+              return subprocess.check_output(psql, input=sql, text=True, stderr=subprocess.STDOUT, timeout=90)
+          mutations = [
+              ('WHERE tenant_id=p_tenant AND enabled;', 'WHERE enabled;', 'MDEL04_ERASE_TENANT_PREDICATE'),
+              ('UPDATE app.payment_provider_accounts SET enabled=false WHERE tenant_id=p_tenant AND enabled;', 'PERFORM 1;', 'MDEL04_DERIVED_ACCOUNT_SCRUB'),
+          ]
+          original = command("SELECT pg_get_functiondef('app.payments_erase_merchant_records(uuid,uuid,bigint)'::regprocedure);")
+          for old, new, marker in mutations:
+              assert original.count(old) == 1, 'mutation anchor drift'
+              try:
+                  command(original.replace(old, new))
+                  result = subprocess.run(psql + ['-f', 'tests/db_payments_merchant_deletion.sql'], text=True,
+                                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
+                  print(result.stdout, flush=True)
+                  assert result.returncode != 0 and marker in result.stdout, 'mutation missed assertion: ' + marker
+                  print('CAUSAL_RED ' + marker, flush=True)
+              finally:
+                  command(original)
+          subprocess.run(psql + ['-f', 'tests/db_payments_merchant_deletion.sql'], check=True, timeout=90)
+          PYTHON
