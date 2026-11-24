@@ -146,6 +146,23 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (AppOr
 	return i, err
 }
 
+const eraseOrdersMerchant = `-- name: EraseOrdersMerchant :one
+SELECT app.orders_erase_merchant($1::uuid,$2::uuid,$3::bigint)::bigint AS erased
+`
+
+type EraseOrdersMerchantParams struct {
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	RequestID pgtype.UUID `json:"request_id"`
+	Epoch     int64       `json:"epoch"`
+}
+
+func (q *Queries) EraseOrdersMerchant(ctx context.Context, arg EraseOrdersMerchantParams) (int64, error) {
+	row := q.db.QueryRow(ctx, eraseOrdersMerchant, arg.TenantID, arg.RequestID, arg.Epoch)
+	var erased int64
+	err := row.Scan(&erased)
+	return erased, err
+}
+
 const getAdminOrder = `-- name: GetAdminOrder :one
 SELECT id,order_number,state,version,currency,tax_minor,shipping_minor,total_minor,
  coalesce(shipping_snapshot->>'Method','')::text AS shipping_method,created_at,updated_at
@@ -266,6 +283,17 @@ func (q *Queries) GetOrder(ctx context.Context, arg GetOrderParams) (AppOrder, e
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getOrdersMerchantObligations = `-- name: GetOrdersMerchantObligations :one
+SELECT app.orders_merchant_obligations($1::uuid)::jsonb AS witness
+`
+
+func (q *Queries) GetOrdersMerchantObligations(ctx context.Context, tenantID pgtype.UUID) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getOrdersMerchantObligations, tenantID)
+	var witness []byte
+	err := row.Scan(&witness)
+	return witness, err
 }
 
 const getOrdersTenantContext = `-- name: GetOrdersTenantContext :one
